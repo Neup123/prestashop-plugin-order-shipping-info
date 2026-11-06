@@ -20,7 +20,7 @@ services:
       DB_USER: root
       DB_PASSWD: ci_demo_password
       PS_INSTALL_AUTO: '1'
-      PS_DEMO_MODE: '1'
+      PS_DEMO_MODE: '0'
       PS_COUNTRY: gr
       PS_DOMAIN: localhost:8080
       PS_FOLDER_ADMIN: admin-dev
