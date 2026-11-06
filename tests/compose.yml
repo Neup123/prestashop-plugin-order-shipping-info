@@ -32,5 +32,6 @@ services:
       - ./prestashop-quote-smoke.php:/tmp/prestashop-quote-smoke.php:ro
       - ./prestashop-calculator-smoke.php:/tmp/prestashop-calculator-smoke.php:ro
       - ./admin-url.php:/tmp/admin-url.php:ro
+      - ./browser-checkout-fixtures.php:/tmp/browser-checkout-fixtures.php:ro
     ports:
       - '8080:80'
