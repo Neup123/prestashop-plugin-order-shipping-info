@@ -17,7 +17,9 @@ jobs:
           set -euo pipefail
           for i in $(seq 1 90); do
             if docker compose -f tests/compose.yml exec -T prestashop test -f /var/www/html/app/config/parameters.php &&
-               docker compose -f tests/compose.yml exec -T prestashop php bin/console about >/dev/null 2>&1; then
+               docker compose -f tests/compose.yml exec -T prestashop php bin/console about >/dev/null 2>&1 &&
+               [ "$(docker compose -f tests/compose.yml exec -T mysql mariadb -N -uroot -pci_demo_password prestashop -e 'SELECT COUNT(*) FROM ps_employee' 2>/dev/null || echo 0)" -gt 0 ] &&
+               curl --max-time 10 -fsSL http://localhost:8080/ -o /dev/null; then
               exit 0
             fi
             sleep 10
