@@ -1,0 +1,26 @@
+name: Module ZIP
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create installable ZIP
+        run: |
+          set -euo pipefail
+          test -f grtransportshipping/grtransportshipping.php
+          zip -q -r grtransportshipping.zip grtransportshipping -x '*/.DS_Store'
+          unzip -t grtransportshipping.zip | tail -n 2
+          test "$(unzip -Z1 grtransportshipping.zip | grep -c '^grtransportshipping/grtransportshipping.php$')" -eq 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: prestashop-grtransportshipping
+          path: grtransportshipping.zip
+          if-no-files-found: error
+          retention-days: 30
