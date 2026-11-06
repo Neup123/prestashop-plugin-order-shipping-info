@@ -1,0 +1,44 @@
+name: Browser admin acceptance
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start PrestaShop and database
+        run: docker compose -f tests/compose.yml up -d
+      - name: Wait for shop to initialize
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 90); do
+            if docker compose -f tests/compose.yml exec -T prestashop test -f /var/www/html/app/config/parameters.php &&
+               docker compose -f tests/compose.yml exec -T prestashop php bin/console about >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 10
+          done
+          exit 1
+      - name: Install module and locate admin editor
+        run: |
+          set -euo pipefail
+          docker compose -f tests/compose.yml exec -T prestashop php bin/console prestashop:module install grtransportshipping
+          docker compose -f tests/compose.yml exec -T prestashop php /tmp/admin-url.php > /tmp/grtrans-admin-url
+      - name: Setup Playwright Chromium
+        run: |
+          npm install --no-save playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Verify admin route editing in real browser
+        env:
+          TEST_ADMIN_EMAIL: ci@example.invalid
+          TEST_ADMIN_PASSWORD: OnlyForEphemeralCI123!
+        run: |
+          ADMIN_URL="$(cat /tmp/grtrans-admin-url)" node tests/browser-admin.mjs
+      - if: failure()
+        run: docker compose -f tests/compose.yml logs --tail=100
+      - if: always()
+        run: docker compose -f tests/compose.yml down -v
