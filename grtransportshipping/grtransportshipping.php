@@ -13,7 +13,7 @@ class Grtransportshipping extends CarrierModule
     {
         $this->name = 'grtransportshipping';
         $this->tab = 'shipping_logistics';
-        $this->version = '0.2.0';
+        $this->version = '0.3.0';
         $this->author = 'Neup123';
         $this->need_instance = 0;
         $this->bootstrap = true;
@@ -33,7 +33,9 @@ class Grtransportshipping extends CarrierModule
         return $this->registerHook('actionCarrierUpdate')
             && $this->registerHook('displayCarrierExtraContent')
             && $this->registerHook('actionValidateOrder')
-            && $this->registerHook('displayAdminOrder');
+            && $this->registerHook('displayAdminOrder')
+            && $this->registerHook('displayOrderDetail')
+            && $this->registerHook('displayOrderConfirmation');
     }
 
     public function uninstall()
@@ -122,6 +124,36 @@ class Grtransportshipping extends CarrierModule
             . '<p>' . $this->escape($info['notice']) . '</p>'
             . (!empty($info['demo']) ? '<strong>DEMO PRICE — NOT VERIFIED</strong>' : '')
             . '</div></section>';
+    }
+
+    public function hookDisplayOrderDetail($params)
+    {
+        return $this->renderOrderPickup($params['order'] ?? null);
+    }
+
+    public function hookDisplayOrderConfirmation($params)
+    {
+        return $this->renderOrderPickup($params['order'] ?? null);
+    }
+
+    private function renderOrderPickup($order): string
+    {
+        if (!$order || !(int) $order->id) {
+            return '';
+        }
+        $info = Db::getInstance()->getRow('SELECT * FROM `' . _DB_PREFIX_ . 'grtrans_order` WHERE id_order = ' . (int) $order->id);
+        if (!$info) {
+            return '';
+        }
+        $title = !empty($info['pickup_only'])
+            ? $this->l('STATION PICKUP ONLY — NO HOME DELIVERY')
+            : $this->l('Transport destination information');
+        return '<div class="alert alert-info grtransport-pickup">'
+            . '<strong>' . $this->escape($title) . '</strong>'
+            . '<p>' . $this->escape($this->l('Collection location: ')) . $this->escape($info['station_name']) . '</p>'
+            . '<p>' . $this->escape($info['notice']) . '</p>'
+            . (!empty($info['demo']) ? '<strong>' . $this->escape($this->l('DEMO ESTIMATE — NOT VERIFIED')) . '</strong>' : '')
+            . '</div>';
     }
 
     private function createCarrier(): bool

@@ -11,6 +11,10 @@ foreach ([['26221','Patra','bus',12.5],['54622','Thessaloniki','bus',18.0],['241
         throw new RuntimeException('Incorrect demo quote for ' . $case[1]);
     }
 }
+$greek = GrTransportQuoteEngine::select($routes, '843 00', 'Νάξος');
+if (!$greek || $greek['mode'] !== 'ferry' || (float) $greek['price'] !== 29.0) {
+    throw new RuntimeException('Greek address city must match recognized postal prefix');
+}
 if (GrTransportQuoteEngine::select($routes, '99999', 'unknown') !== null) {
     throw new RuntimeException('Unknown postcode must not be quoted');
 }
