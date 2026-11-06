@@ -21,6 +21,7 @@ class Grtransportshipping extends CarrierModule
         $this->displayName = $this->l('Greek public transport shipping');
         $this->description = $this->l('Station-based parcel transport by KTEL bus, ferry and air.');
         $this->ps_versions_compliancy = ['min' => '9.0.0', 'max' => '9.99.99'];
+        $this->id_carrier = (int) Configuration::get('GRTRANS_CARRIER');
     }
 
     public function install()
@@ -133,7 +134,7 @@ class Grtransportshipping extends CarrierModule
         $carrier->external_module_name = $this->name;
         $carrier->shipping_method = Carrier::SHIPPING_METHOD_WEIGHT;
         $carrier->is_module = true;
-        $carrier->need_range = false;
+        $carrier->need_range = true;
         $carrier->range_behavior = 0;
         $carrier->grade = 0;
         $carrier->delay = [];
@@ -144,6 +145,13 @@ class Grtransportshipping extends CarrierModule
             return false;
         }
         Configuration::updateValue('GRTRANS_CARRIER', (int) $carrier->id);
+        $range = new RangeWeight();
+        $range->id_carrier = (int) $carrier->id;
+        $range->delimiter1 = 0;
+        $range->delimiter2 = 100000;
+        if (!$range->add()) {
+            return false;
+        }
         $gr = Country::getByIso('GR');
         if ($gr) {
             $country = new Country((int) $gr);
