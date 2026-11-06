@@ -1,0 +1,35 @@
+name: PrestaShop 9.2 install
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose -f tests/compose.yml up -d
+      - name: Wait for installation
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 90); do
+            if docker compose -f tests/compose.yml exec -T prestashop test -f /var/www/html/app/config/parameters.php &&
+               docker compose -f tests/compose.yml exec -T prestashop php bin/console about >/tmp/prestashop.txt 2>&1; then
+              cat /tmp/prestashop.txt
+              exit 0
+            fi
+            sleep 10
+          done
+          exit 1
+      - name: Install and validate module
+        run: |
+          set -euo pipefail
+          docker compose -f tests/compose.yml exec -T prestashop php bin/console prestashop:module install grtransportshipping
+          docker compose -f tests/compose.yml exec -T prestashop php bin/console prestashop:module:list --simple | grep grtransportshipping
+          docker compose -f tests/compose.yml exec -T mysql mariadb -uroot -pci_demo_password prestashop -e "SELECT COUNT(*) AS routes FROM ps_grtrans_route; SELECT COUNT(*) AS carriers FROM ps_carrier WHERE external_module_name='grtransportshipping' AND deleted=0;"
+      - if: failure()
+        run: docker compose -f tests/compose.yml logs --tail=150
+      - if: always()
+        run: docker compose -f tests/compose.yml down -v
