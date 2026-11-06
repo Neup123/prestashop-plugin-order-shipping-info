@@ -4,6 +4,10 @@
  * Only run in the disposable CI shop.
  */
 require_once '/var/www/html/config/config.inc.php';
+// Checkout's native Cart calculator resolves services through the Symfony kernel.
+global $kernel;
+$kernel = new AdminKernel('prod', false);
+$kernel->boot();
 
 function verify($condition, $message) {
     if (!$condition) {
