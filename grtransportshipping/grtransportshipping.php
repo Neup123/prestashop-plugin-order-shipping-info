@@ -13,7 +13,7 @@ class Grtransportshipping extends CarrierModule
     {
         $this->name = 'grtransportshipping';
         $this->tab = 'shipping_logistics';
-        $this->version = '0.1.0';
+        $this->version = '0.2.0';
         $this->author = 'Neup123';
         $this->need_instance = 0;
         $this->bootstrap = true;
@@ -30,7 +30,9 @@ class Grtransportshipping extends CarrierModule
         }
         $this->seedDemo();
         return $this->registerHook('actionCarrierUpdate')
-            && $this->registerHook('displayCarrierExtraContent');
+            && $this->registerHook('displayCarrierExtraContent')
+            && $this->registerHook('actionValidateOrder')
+            && $this->registerHook('displayAdminOrder');
     }
 
     public function uninstall()
@@ -64,7 +66,61 @@ class Grtransportshipping extends CarrierModule
             `notice` TEXT NULL,
             INDEX `lookup_prefix` (`postal_prefix`)
         ) ENGINE=' . _MYSQL_ENGINE_ . ' DEFAULT CHARSET=utf8mb4';
-        return (bool) Db::getInstance()->execute($sql);
+        return (bool) Db::getInstance()->execute($sql) && $this->installOrderSchema();
+    }
+
+    public function installOrderSchema(): bool
+    {
+        return (bool) Db::getInstance()->execute('CREATE TABLE IF NOT EXISTS `' . _DB_PREFIX_ . 'grtrans_order` (
+            `id_order` INT UNSIGNED NOT NULL PRIMARY KEY,
+            `mode` VARCHAR(16) NOT NULL,
+            `station_name` VARCHAR(190) NOT NULL,
+            `price` DECIMAL(12,2) NOT NULL,
+            `pickup_only` TINYINT(1) NOT NULL DEFAULT 1,
+            `notice` TEXT NULL,
+            `demo` TINYINT(1) NOT NULL DEFAULT 0
+        ) ENGINE=' . _MYSQL_ENGINE_ . ' DEFAULT CHARSET=utf8mb4');
+    }
+
+    public function hookActionValidateOrder($params)
+    {
+        $order = $params['order'] ?? null;
+        $cart = $params['cart'] ?? null;
+        if (!$order || !$cart || (int) $order->id_carrier !== (int) Configuration::get('GRTRANS_CARRIER')) {
+            return;
+        }
+        $quote = $this->currentQuote($cart);
+        if (!$quote) {
+            return;
+        }
+        Db::getInstance()->insert('grtrans_order', [
+            'id_order' => (int) $order->id,
+            'mode' => pSQL($quote['mode']),
+            'station_name' => pSQL($quote['station_name']),
+            'price' => (float) $quote['price'],
+            'pickup_only' => (int) $quote['pickup_only'],
+            'notice' => pSQL((string) $quote['notice']),
+            'demo' => (int) $quote['demo'],
+        ]);
+    }
+
+    public function hookDisplayAdminOrder($params)
+    {
+        $id = (int) ($params['id_order'] ?? 0);
+        if (!$id) {
+            return '';
+        }
+        $info = Db::getInstance()->getRow('SELECT * FROM `' . _DB_PREFIX_ . 'grtrans_order` WHERE id_order = ' . $id);
+        if (!$info) {
+            return '';
+        }
+        return '<section class="card"><div class="card-body"><h3>Public transport shipping</h3>'
+            . '<p>Mode: ' . $this->escape($info['mode']) . '</p>'
+            . '<p><strong>' . (!empty($info['pickup_only']) ? 'STATION PICKUP ONLY' : 'Delivery arrangement')
+            . ': ' . $this->escape($info['station_name']) . '</strong></p>'
+            . '<p>' . $this->escape($info['notice']) . '</p>'
+            . (!empty($info['demo']) ? '<strong>DEMO PRICE — NOT VERIFIED</strong>' : '')
+            . '</div></section>';
     }
 
     private function createCarrier(): bool
@@ -211,9 +267,17 @@ class Grtransportshipping extends CarrierModule
             foreach (['id_route','mode','origin_name','station_name','city','postal_prefix','price','pickup_only','active','demo'] as $key) {
                 $out .= '<td>' . $this->escape($r[$key]) . '</td>';
             }
-            $out .= '<td><form method="post" action="' . $action . '"><input type="hidden" name="id_route" value="' . (int) $r['id_route'] . '"><button name="grtrans_delete" value="1" onclick="return confirm(\'Delete route?\')">Delete</button></form></td></tr>';
+            $out .= '<td><a class="btn btn-default" href="' . $action . '&amp;grtrans_edit=' . (int) $r['id_route'] . '">Edit</a><form method="post" action="' . $action . '"><input type="hidden" name="id_route" value="' . (int) $r['id_route'] . '"><button name="grtrans_delete" value="1" onclick="return confirm(\'Delete route?\')">Delete</button></form></td></tr>';
         }
-        $out .= '</tbody></table><h4>Add or update route</h4><form method="post" action="' . $action . '">';
+        $editing = null;
+        $editId = (int) Tools::getValue('grtrans_edit', 0);
+        foreach ($rows as $item) {
+            if ((int) $item['id_route'] === $editId) {
+                $editing = $item;
+                break;
+            }
+        }
+        $out .= '</tbody></table><h4>' . ($editing ? 'Edit route #' . $editId : 'Add route') . '</h4><form method="post" action="' . $action . '">';
         $fields = [
             'id_route' => 'Route ID (0 to add)', 'mode' => 'Mode: bus / ferry / flight',
             'origin_name' => 'Origin terminal', 'station_name' => 'Destination pickup station',
@@ -222,7 +286,7 @@ class Grtransportshipping extends CarrierModule
             'active' => 'Active (1 / 0)', 'notice' => 'Customer notice',
         ];
         foreach ($fields as $field => $label) {
-            $default = ['id_route'=>'0', 'mode'=>'bus', 'origin_name'=>'Athens', 'price'=>'0.00', 'pickup_only'=>'1', 'active'=>'1'][$field] ?? '';
+            $default = $editing[$field] ?? (['id_route'=>'0', 'mode'=>'bus', 'origin_name'=>'Athens', 'price'=>'0.00', 'pickup_only'=>'1', 'active'=>'1'][$field] ?? '');
             $out .= '<label style="display:block;margin:8px 0">' . $this->escape($label)
                 . ' <input class="form-control" style="max-width:600px" name="' . $field
                 . '" value="' . $this->escape($default) . '" maxlength="500"></label>';
