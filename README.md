@@ -1,11 +1,22 @@
-# PrestaShop Greece Public-Transport Shipping
+# Greece public-transport shipping for PrestaShop 9
 
-A module for PrestaShop (latest version) for a food business in Athens that delivers all over Greece by **public transport** — KTEL intercity buses, public ferries, and sometimes domestic flights — instead of couriers.
+Work-in-progress module for Athens-origin parcel movement by KTEL, ferry and domestic flight, with destination-specific estimates and **station/port/airport pickup**.
 
-The customer enters a Greek address at checkout; the module resolves it to the serving station/port/airport from an owner-maintained transport dataset (routes, stations, prices), computes the shipping cost, and tells the customer the price — including, for station-pickup destinations, exactly which station they collect their order from.
+**Demo amounts are invented illustrative parcel fees, not verified carrier freight tariffs.** Never operate a live shop with demo prices.
 
-Planned beyond the core: live strike awareness (suspending destinations whose route is on strike), destination-tailored customer notices, and a visual map of stations and routes.
+## Current scope
 
-Full specification: [PROJECT-BRIEF.md](PROJECT-BRIEF.md). Development starts from seeded demo data researched from real Greek transport (KTEL networks, ferry routes from Piraeus/Rafina/Lavrio, domestic flights), to be replaced by the owner's real routes.
+- Carrier pricing and basic route/destination administration.
+- Greek delivery address required; unmatched/disabled destinations unavailable.
+- Demo routes represent plausible links but have no contractual or operational guarantee.
+- For installation, copy the entire `grtransportshipping` directory into `modules/`, then install in Module Manager. The module creates a carrier and seeds assumed routes.
+- Configure Greek zone/carrier restrictions and confirm checkout before production.
+- PHP 8.2/8.4 lint and pure pricing tests run in GitHub Actions.
 
-Status: in development.
+## Security bar
+
+Admin mutations use PrestaShop employee token verification, strict validated input and escaping; client-side prices are never trusted. Unknown destination => no quote. No credentials or external network access.
+
+## Acceptance still required
+
+Real PrestaShop 9.2 install, carrier zone integration, checkout browser tests in Classic and Hummingbird 2, save order pickup information, and admin regression. See issue #1.
