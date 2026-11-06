@@ -1,0 +1,17 @@
+<?php
+require __DIR__ . '/../grtransportshipping/classes/QuoteEngine.php';
+$seed = require __DIR__ . '/../grtransportshipping/demo/routes.php';
+$routes = [];
+foreach ($seed as $i => $r) {
+    $routes[] = ['id_route'=>$i + 1,'active'=>1,'mode'=>$r[0],'station_name'=>$r[2],'city'=>$r[3],'postal_prefix'=>$r[4],'price'=>$r[5],'pickup_only'=>$r[6]];
+}
+foreach ([['26221','Patra','bus',12.5],['54622','Thessaloniki','bus',18.0],['24100','Kalamata','bus',13.0],['84300','Naxos','ferry',29.0],['84100','Ermoupoli','ferry',24.0],['84500','Andros','ferry',22.0],['71601','Heraklion','flight',45.0],['85100','Rhodes','flight',55.0]] as $case) {
+    $q = GrTransportQuoteEngine::select($routes, $case[0], $case[1]);
+    if (!$q || $q['mode'] !== $case[2] || (float)$q['price'] !== $case[3] || !$q['pickup_only']) {
+        throw new RuntimeException('Incorrect demo quote for ' . $case[1]);
+    }
+}
+if (GrTransportQuoteEngine::select($routes, '99999', 'unknown') !== null) {
+    throw new RuntimeException('Unknown postcode must not be quoted');
+}
+echo "Demo route quotes passed\n";
