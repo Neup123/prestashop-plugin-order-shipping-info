@@ -19,7 +19,8 @@ class GrTransportQuoteEngine
             if ($prefix !== '' && strpos($postalCode, $prefix) !== 0) {
                 continue;
             }
-            if ($ruleCity !== '' && $ruleCity !== $city) {
+            // A precise postal prefix is authoritative even when the customer writes the city in Greek.
+            if ($prefix === '' && $ruleCity !== '' && $ruleCity !== $city) {
                 continue;
             }
             if ($prefix === '' && $ruleCity === '') {
