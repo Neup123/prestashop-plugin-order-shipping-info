@@ -149,10 +149,11 @@ class Grtransportshipping extends CarrierModule
             $country = new Country((int) $gr);
             $carrier->addZone((int) $country->id_zone);
         }
+        $groupIds = [];
         foreach (Group::getGroups((int) Configuration::get('PS_LANG_DEFAULT')) as $group) {
-            $carrier->addGroup((int) $group['id_group']);
+            $groupIds[] = (int) $group['id_group'];
         }
-        return true;
+        return $carrier->setGroups($groupIds);
     }
 
     private function seedDemo(): void
