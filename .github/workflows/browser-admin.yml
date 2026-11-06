@@ -38,6 +38,16 @@ jobs:
           TEST_ADMIN_PASSWORD: OnlyForEphemeralCI123!
         run: |
           ADMIN_URL="$(cat /tmp/grtrans-admin-url)" node tests/browser-admin.mjs
+      - name: Prepare disposable Greek checkout
+        env:
+          TEST_CUSTOMER_PASSWORD: BrowserOnlyCiPassword123
+        run: |
+          docker compose -f tests/compose.yml exec -T -e TEST_CUSTOMER_PASSWORD prestashop php /tmp/browser-checkout-fixtures.php > /tmp/grtrans-browser-fixture.json
+          node -e "let f=require('/tmp/grtrans-browser-fixture.json');if(!f.product_url||!f.checkout_url)process.exit(1)"
+      - name: Verify customer sees port pickup at checkout
+        env:
+          TEST_CUSTOMER_PASSWORD: BrowserOnlyCiPassword123
+        run: node tests/browser-checkout.mjs
       - if: failure()
         run: docker compose -f tests/compose.yml logs --tail=100
       - if: always()
