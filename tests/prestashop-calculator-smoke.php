@@ -50,6 +50,8 @@ $cart->id_carrier = $idCarrier;
 $cart->id_shop = (int) Context::getContext()->shop->id;
 verify($cart->add(), 'Cannot create test cart');
 verify($cart->updateQty(1, (int) $product->id), 'Cannot add physical parcel to cart');
+Context::getContext()->cart = $cart;
+Context::getContext()->country = $gr;
 
 $shipping = $cart->getPackageShippingCost($idCarrier, false, $gr);
 verify(is_numeric($shipping) && abs((float) $shipping - 29.0) < 0.001, 'Cart shipping calculator returned ' . var_export($shipping, true));
