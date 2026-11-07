@@ -33,6 +33,8 @@ jobs:
         run: docker compose -f tests/compose.yml exec -T prestashop php /tmp/prestashop-quote-smoke.php
       - name: Verify checkout shipping calculator and delivery options
         run: docker compose -f tests/compose.yml exec -T prestashop php /tmp/prestashop-calculator-smoke.php
+      - name: Verify saved order pickup snapshots and customer/admin notices
+        run: docker compose -f tests/compose.yml exec -T prestashop php /tmp/prestashop-order-snapshot-smoke.php
       - if: failure()
         run: docker compose -f tests/compose.yml logs --tail=150
       - if: always()
