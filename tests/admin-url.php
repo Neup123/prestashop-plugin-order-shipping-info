@@ -6,7 +6,11 @@ if (!$id) {
     throw new RuntimeException('No active PrestaShop employee');
 }
 Context::getContext()->employee = new Employee($id);
-echo Context::getContext()->link->getAdminLink('AdminModules', true, [], [
-    'configure' => 'grtransportshipping',
-    'module_name' => 'grtransportshipping',
-]);
+$token = Tools::getAdminTokenLite('AdminModules');
+if (!is_string($token) || strlen($token) < 8) {
+    throw new RuntimeException('Could not generate an admin module token');
+}
+// CLI has no HTTP request context; Link::getAdminLink can return an empty
+// value even when the shop and employee are valid.
+echo 'http://localhost:8080/admin-dev/index.php?controller=AdminModules'
+    . '&configure=grtransportshipping&module_name=grtransportshipping&token=' . rawurlencode($token);
