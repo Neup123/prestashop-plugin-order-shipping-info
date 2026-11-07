@@ -27,7 +27,33 @@ try {
   await page.getByText('Route dataset updated', {exact:false}).first().waitFor({timeout:20000});
   assert.match(await page.locator('body').innerText(), /16\.25/);
   assert.equal((await page.locator('table.table tbody tr').first().locator('td').nth(9).innerText()).trim(), '1', 'price edit must not mark demo route as verified');
-  console.log('Browser admin route editing passed');
+  // Prove that staff can add and delete an area/station from the UI,
+  // including its transport mode, fare, pickup policy and customer notice.
+  await page.goto(adminUrl, {waitUntil:'domcontentloaded', timeout:45000});
+  const addForm = page.locator('form').filter({has:page.locator('button[name="grtrans_save"]')}).first();
+  assert.equal(await addForm.locator('input[name="id_route"]').inputValue(), '0', 'expected blank add form');
+  await addForm.locator('select[name="mode"]').selectOption('ferry');
+  await addForm.locator('input[name="origin_name"]').fill('Port of Lavrio');
+  await addForm.locator('input[name="station_name"]').fill('CI temporary port');
+  await addForm.locator('input[name="city"]').fill('CI Town');
+  await addForm.locator('input[name="postal_prefix"]').fill('99998');
+  await addForm.locator('input[name="price"]').fill('6.75');
+  await addForm.locator('select[name="pickup_only"]').selectOption('1');
+  await addForm.locator('select[name="active"]').selectOption('1');
+  await addForm.locator('select[name="demo"]').selectOption('1');
+  await addForm.locator('textarea[name="notice"]').fill('CI customer collection note');
+  await addForm.locator('button[name="grtrans_save"]').click();
+  await page.getByText('Route dataset updated', {exact:false}).first().waitFor({timeout:20000});
+  const inserted = page.locator('table.table tbody tr').filter({hasText:'99998'});
+  assert.equal(await inserted.count(), 1, 'New route should appear in admin table');
+  assert.equal((await inserted.locator('td').nth(3).innerText()).trim(), 'CI temporary port');
+  assert.equal((await inserted.locator('td').nth(9).innerText()).trim(), '1', 'new route must remain demo');
+  page.once('dialog', async dialog => await dialog.accept());
+  await inserted.locator('button[name="grtrans_delete"]').click();
+  await page.getByText('Route dataset updated', {exact:false}).first().waitFor({timeout:20000});
+  assert.equal(await page.locator('table.table tbody tr').filter({hasText:'99998'}).count(), 0,
+    'Deleted rule should not appear in admin route list');
+  console.log('Browser admin route create, edit, and delete passed');
 } catch (error) {
   console.error('Browser acceptance failed:', error);
   console.error('Current path:', new URL(page.url()).pathname);
