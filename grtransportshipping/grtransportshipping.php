@@ -281,8 +281,8 @@ class Grtransportshipping extends CarrierModule
             // PrestaShop 9 uses Symfony masked CSRF tokens: two valid tokens
             // need not have identical byte strings. Ask the core validator
             // rather than comparing against a newly generated token.
-            $container = \\PrestaShop\\PrestaShop\\Adapter\\SymfonyContainer::getInstance();
-            $tokenManager = $container ? $container->get(\\PrestaShopBundle\\Security\\Admin\\UserTokenManager::class) : null;
+            $container = \PrestaShop\PrestaShop\Adapter\SymfonyContainer::getInstance();
+            $tokenManager = $container ? $container->get(\PrestaShopBundle\Security\Admin\UserTokenManager::class) : null;
             $hasFormToken = isset($_POST['token']) && is_string($_POST['token']) && $_POST['token'] !== '';
             if (!$hasFormToken || !$tokenManager || !$tokenManager->isTokenValid()) {
                 return $this->displayError($this->l('Invalid admin token.'));
