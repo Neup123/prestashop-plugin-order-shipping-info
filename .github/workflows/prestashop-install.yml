@@ -37,6 +37,8 @@ jobs:
         run: docker compose -f tests/compose.yml exec -T -u www-data prestashop php /tmp/prestashop-calculator-smoke.php
       - name: Verify saved order pickup snapshots and customer/admin notices
         run: docker compose -f tests/compose.yml exec -T -u www-data prestashop php /tmp/prestashop-order-snapshot-smoke.php
+      - name: Validate actual pending-payment PrestaShop order and pickup persistence
+        run: docker compose -f tests/compose.yml exec -T -u www-data prestashop php /tmp/prestashop-real-order-smoke.php
       - if: failure()
         run: docker compose -f tests/compose.yml logs --tail=150
       - if: always()
