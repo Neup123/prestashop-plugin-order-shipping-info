@@ -15,14 +15,14 @@ function transportAssert(bool $result, string $message): void
 $module = Module::getInstanceByName('grtransportshipping');
 transportAssert($module instanceof CarrierModule, 'Module unavailable');
 $carrierId = (int) Configuration::get('GRTRANS_CARRIER');
-$idRoute = (int) Db::getInstance()->getValue(
-    "SELECT id_route FROM `" . _DB_PREFIX_ . "grtrans_route` WHERE postal_prefix = '843' LIMIT 1"
-);
-transportAssert($carrierId > 0 && $idRoute > 0,
-    'Missing demo carrier or Naxos route; carrier=' . $carrierId . ' idRoute=' . $idRoute
-    . ' rows=' . json_encode(Db::getInstance()->executeS(
-        'SELECT id_route, postal_prefix, station_name FROM `' . _DB_PREFIX_ . 'grtrans_route`'
-    )) . ' dbError=' . Db::getInstance()->getMsgError());
+$idRoute = 0;
+foreach (Db::getInstance()->executeS('SELECT id_route, postal_prefix FROM `' . _DB_PREFIX_ . 'grtrans_route`') ?: [] as $row) {
+    if ((string) $row['postal_prefix'] === '843') {
+        $idRoute = (int) $row['id_route'];
+        break;
+    }
+}
+transportAssert($carrierId > 0 && $idRoute > 0, 'Missing demo carrier or Naxos route');
 $oldRow = Db::getInstance()->getRow('SELECT * FROM `' . _DB_PREFIX_ . 'grtrans_route` WHERE id_route = ' . $idRoute);
 $address = new Address();
 $address->id_customer = 0;
