@@ -70,4 +70,51 @@ foreach ($cases as $case) {
     }
     $address->delete();
 }
+// A disabled precise island route must block a broader active regional rule.
+$db = Db::getInstance();
+$naxosRoute = null;
+foreach ($db->executeS('SELECT id_route, postal_prefix, active FROM `' . _DB_PREFIX_ . 'grtrans_route`') ?: [] as $rule) {
+    if ((string) $rule['postal_prefix'] === '843') {
+        $naxosRoute = $rule;
+        break;
+    }
+}
+assertion(is_array($naxosRoute), 'Missing Naxos seed for disabled-route test');
+assertion($db->insert('grtrans_route', [
+    'mode' => pSQL('ferry'), 'origin_name' => pSQL('Port of Piraeus'),
+    'station_name' => pSQL('Regional island port'), 'city' => pSQL(''),
+    'postal_prefix' => pSQL('84'), 'price' => 9.00,
+    'pickup_only' => 1, 'active' => 1, 'demo' => 1,
+    'notice' => pSQL('CI regional fallback only'),
+]), 'Unable to create broad regional route');
+$regionalId = (int) $db->Insert_ID();
+$address = new Address();
+$address->id_customer = $idCustomer;
+$address->alias = 'CI suspended Naxos';
+$address->firstname = 'Test';
+$address->lastname = 'Checkout';
+$address->address1 = 'Test street 1';
+$address->postcode = '84300';
+$address->city = 'Νάξος';
+$address->id_country = $idGr;
+try {
+    assertion($address->add(), 'Could not create disabled-route address');
+    $cart = new Cart();
+    $cart->id_address_delivery = (int) $address->id;
+    $cart->id_carrier = $carrierId;
+    assertion($db->update('grtrans_route', ['active' => 0], 'id_route = ' . (int) $naxosRoute['id_route']),
+        'Could not suspend Naxos');
+    assertion($module->getOrderShippingCostExternal($cart) === false,
+        'Disabled Naxos must not inherit the generic region shipping price');
+    assertion($db->update('grtrans_route', ['active' => 1], 'id_route = ' . (int) $naxosRoute['id_route']),
+        'Could not reactivate Naxos');
+    assertion(abs((float) $module->getOrderShippingCostExternal($cart) - 29.00) < 0.001,
+        'Reactivated Naxos should quote its precise own price');
+} finally {
+    $db->update('grtrans_route', ['active' => (int) $naxosRoute['active']], 'id_route = ' . (int) $naxosRoute['id_route']);
+    $db->delete('grtrans_route', 'id_route = ' . $regionalId);
+    if ((int) $address->id) {
+        $address->delete();
+    }
+}
 echo "Real PrestaShop cart, Greek address, carrier visibility and quote smoke checks passed\n";
