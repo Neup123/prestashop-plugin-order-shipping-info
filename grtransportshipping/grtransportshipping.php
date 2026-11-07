@@ -233,7 +233,7 @@ class Grtransportshipping extends CarrierModule
         if ($country->iso_code !== 'GR') {
             return null;
         }
-        $routes = Db::getInstance()->executeS('SELECT * FROM `' . _DB_PREFIX_ . 'grtrans_route` WHERE active = 1');
+        $routes = Db::getInstance()->executeS('SELECT * FROM `' . _DB_PREFIX_ . 'grtrans_route`');
         return GrTransportQuoteEngine::select($routes ?: [], (string) $address->postcode, (string) $address->city);
     }
 
