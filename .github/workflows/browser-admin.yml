@@ -27,6 +27,14 @@ jobs:
         run: |
           set -euo pipefail
           docker compose -f tests/compose.yml exec -T prestashop php bin/console prestashop:module install grtransportshipping
+          # The core CLI can boot while the Docker auto-installer is still
+          # finishing its employee/customer fixtures.
+          for i in $(seq 1 90); do
+            EMPLOYEES="$(docker compose -f tests/compose.yml exec -T mysql mariadb -N -uroot -pci_demo_password prestashop -e 'SELECT COUNT(*) FROM ps_employee' 2>/dev/null || true)"
+            if [[ "$EMPLOYEES" =~ ^[1-9][0-9]*$ ]]; then break; fi
+            sleep 10
+          done
+          [ "${EMPLOYEES:-0}" -gt 0 ]
           docker compose -f tests/compose.yml exec -T prestashop php /tmp/admin-url.php > /tmp/grtrans-admin-url
       - name: Setup Playwright Chromium
         run: |
