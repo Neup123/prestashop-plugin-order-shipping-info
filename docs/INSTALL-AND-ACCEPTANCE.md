@@ -2,7 +2,7 @@
 
 ## Automated verification
 
-GitHub Actions runs PHP 8.2/8.4 lint and quote tests; a separate PrestaShop 9.2 Docker job installs the module and verifies database records, carrier eligibility, Greek addresses and freight-like sample quotes. The **Module ZIP** workflow packages a downloadable installable module ZIP with `grtransportshipping/` as its root directory.
+GitHub Actions runs PHP 8.2/8.4 lint and quote tests. A real PrestaShop 9.2 Docker job installs the module and checks carrier eligibility, Greek addresses, and the native Cart shipping calculator with physical goods. Browser CI logs into the real PrestaShop back office to edit a price, then logs in as a Greek buyer and verifies ferry-station pickup disclosure at checkout. A separate hook integration smoke test checks persisted order pickup snapshots and their stability after route edits; it does **not** place a paid order. The **Module ZIP** workflow packages a downloadable module ZIP with `grtransportshipping/` at its root.
 
 ## Manual install
 
@@ -21,4 +21,4 @@ Demo fares are arbitrary estimates. Public transport passenger tickets and depar
 
 ## Outstanding checks
 
-Browser checkout acceptance on Classic/Hummingbird frontends, order-confirmation hook visual confirmation, complete admin CRUD UI, and real merchant route and fee entry remain mandatory before production release.
+Automated browser coverage currently uses the CI shop's default front-end theme; Hummingbird-specific browser acceptance and a completed real test-payment order (including customer confirmation/account details) are still outstanding. Full add/delete UI regression and live merchant route/fare verification remain mandatory before production release. Never mistake assumed demo parcel prices for operator freight tariffs.
