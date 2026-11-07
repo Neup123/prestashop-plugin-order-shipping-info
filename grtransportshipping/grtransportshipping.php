@@ -278,7 +278,13 @@ class Grtransportshipping extends CarrierModule
     {
         $out = '';
         if (Tools::isSubmit('grtrans_save') || Tools::isSubmit('grtrans_delete')) {
-            if (!hash_equals(Tools::getAdminTokenLite('AdminModules'), (string) Tools::getValue('token'))) {
+            // PrestaShop 9 uses Symfony masked CSRF tokens: two valid tokens
+            // need not have identical byte strings. Ask the core validator
+            // rather than comparing against a newly generated token.
+            $container = \PrestaShop\PrestaShop\Adapter\SymfonyContainer::getInstance();
+            $tokenManager = $container ? $container->get(\PrestaShopBundle\Security\Admin\UserTokenManager::class) : null;
+            $hasFormToken = isset($_POST['token']) && is_string($_POST['token']) && $_POST['token'] !== '';
+            if (!$hasFormToken || !$tokenManager || !$tokenManager->isTokenValid()) {
                 return $this->displayError($this->l('Invalid admin token.'));
             }
             try {
@@ -300,6 +306,7 @@ class Grtransportshipping extends CarrierModule
             'configure' => $this->name, 'module_name' => $this->name,
         ]);
         $action = $this->escape($url);
+        $csrf = $this->escape(Tools::getAdminTokenLite('AdminModules'));
         $rows = Db::getInstance()->executeS('SELECT * FROM `' . _DB_PREFIX_ . 'grtrans_route` ORDER BY id_route ASC') ?: [];
         $out .= '<div class="panel"><h3>Greek public transport routes</h3><p>DEMO rows are assumptions, not verified freight charges. Replace before accepting orders.</p>'
             . '<table class="table"><thead><tr><th>ID</th><th>Mode</th><th>From</th><th>Pickup station</th><th>City</th><th>Postcode prefix</th><th>EUR</th><th>Pickup only</th><th>Active</th><th>Demo</th><th>Actions</th></tr></thead><tbody>';
@@ -308,7 +315,7 @@ class Grtransportshipping extends CarrierModule
             foreach (['id_route','mode','origin_name','station_name','city','postal_prefix','price','pickup_only','active','demo'] as $key) {
                 $out .= '<td>' . $this->escape($r[$key]) . '</td>';
             }
-            $out .= '<td><a class="btn btn-default" href="' . $action . '&amp;grtrans_edit=' . (int) $r['id_route'] . '">Edit</a><form method="post" action="' . $action . '"><input type="hidden" name="id_route" value="' . (int) $r['id_route'] . '"><button name="grtrans_delete" value="1" onclick="return confirm(\'Delete route?\')">Delete</button></form></td></tr>';
+            $out .= '<td><a class="btn btn-default" href="' . $action . '&amp;grtrans_edit=' . (int) $r['id_route'] . '">Edit</a><form method="post" action="' . $action . '"><input type="hidden" name="id_route" value="' . (int) $r['id_route'] . '"><input type="hidden" name="token" value="' . $csrf . '"><button name="grtrans_delete" value="1" onclick="return confirm(\'Delete route?\')">Delete</button></form></td></tr>';
         }
         $editing = null;
         $editId = (int) Tools::getValue('grtrans_edit', 0);
@@ -318,7 +325,7 @@ class Grtransportshipping extends CarrierModule
                 break;
             }
         }
-        $out .= '</tbody></table><h4>' . ($editing ? 'Edit route #' . $editId : 'Add route') . '</h4><form method="post" action="' . $action . '">';
+        $out .= '</tbody></table><h4>' . ($editing ? 'Edit route #' . $editId : 'Add route') . '</h4><form method="post" action="' . $action . '"><input type="hidden" name="token" value="' . $csrf . '">';
         $fields = [
             'id_route' => 'Route ID (0 to add)', 'mode' => 'Mode: bus / ferry / flight',
             'origin_name' => 'Origin terminal', 'station_name' => 'Destination pickup station',
