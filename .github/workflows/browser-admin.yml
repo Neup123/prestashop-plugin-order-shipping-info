@@ -24,6 +24,10 @@ jobs:
           done
           echo "PrestaShop frontend never became available" >&2
           exit 1
+      - name: Ensure Greek Symfony translation cache is writable
+        # Docker's root auto-installer can own untranslated cache directories;
+        # the customer frontend creates el-GR catalogues as www-data.
+        run: docker compose -f tests/compose.yml exec -T prestashop chown -R www-data:www-data /var/www/html/var/cache
       - name: Install module and locate admin editor
         run: |
           set -euo pipefail
