@@ -11,9 +11,6 @@ class GrTransportQuoteEngine
         $city = self::normalize($city);
         $matches = [];
         foreach ($routes as $route) {
-            if (empty($route['active'])) {
-                continue;
-            }
             $prefix = (string) ($route['postal_prefix'] ?? '');
             $ruleCity = self::normalize((string) ($route['city'] ?? ''));
             if ($prefix !== '' && strpos($postalCode, $prefix) !== 0) {
@@ -36,11 +33,19 @@ class GrTransportQuoteEngine
             return null;
         }
         $winner = $matches[0];
+        // An explicitly suspended precise destination must not fall through
+        // to a broader postal-area price or a different station.
+        if (empty($winner['active'])) {
+            return null;
+        }
         // Equal-priority rules pointing to different destinations cannot be
         // resolved safely by database insertion order.
         foreach (array_slice($matches, 1) as $candidate) {
             if ($candidate['_specificity'] !== $winner['_specificity']) {
                 break;
+            }
+            if (empty($candidate['active'])) {
+                return null;
             }
             if ((string) ($candidate['station_name'] ?? '') !== (string) ($winner['station_name'] ?? '')
                 || (string) ($candidate['mode'] ?? '') !== (string) ($winner['mode'] ?? '')
