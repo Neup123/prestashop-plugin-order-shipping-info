@@ -331,12 +331,13 @@ class Grtransportshipping extends CarrierModule
             'origin_name' => 'Origin terminal', 'station_name' => 'Destination pickup station',
             'city' => 'City (optional)', 'postal_prefix' => 'Postal prefix (optional)',
             'price' => 'Transport price EUR', 'pickup_only' => 'Station pickup only (1 / 0)',
-            'active' => 'Active (1 / 0)', 'notice' => 'Customer notice',
+            'active' => 'Active (1 / 0)', 'demo' => 'Unverified demo estimate (1) / operator-confirmed price (0)',
+            'notice' => 'Customer notice',
         ];
         foreach ($fields as $field => $label) {
-            $default = (string) ($editing[$field] ?? (['id_route'=>'0', 'mode'=>'bus', 'origin_name'=>'Athens', 'price'=>'0.00', 'pickup_only'=>'1', 'active'=>'1'][$field] ?? ''));
+            $default = (string) ($editing[$field] ?? (['id_route'=>'0', 'mode'=>'bus', 'origin_name'=>'Athens', 'price'=>'0.00', 'pickup_only'=>'1', 'active'=>'1', 'demo'=>'1'][$field] ?? ''));
             $out .= '<label style="display:block;margin:8px 0">' . $this->escape($label);
-            if ($field === 'mode' || $field === 'pickup_only' || $field === 'active') {
+            if ($field === 'mode' || $field === 'pickup_only' || $field === 'active' || $field === 'demo') {
                 $values = $field === 'mode'
                     ? ['bus' => 'KTEL bus', 'ferry' => 'Ferry', 'flight' => 'Domestic flight']
                     : ['1' => 'Yes', '0' => 'No'];
@@ -381,7 +382,9 @@ class Grtransportshipping extends CarrierModule
         }
         $pickup = (string) Tools::getValue('pickup_only');
         $active = (string) Tools::getValue('active');
-        if (!in_array($pickup, ['0','1'], true) || !in_array($active, ['0','1'], true)) {
+        $demo = (string) Tools::getValue('demo');
+        if (!in_array($pickup, ['0','1'], true) || !in_array($active, ['0','1'], true)
+            || !in_array($demo, ['0','1'], true)) {
             throw new InvalidArgumentException('Invalid flags');
         }
         $data = [
@@ -389,7 +392,7 @@ class Grtransportshipping extends CarrierModule
             'station_name'=>pSQL($station), 'city'=>pSQL($city),
             'postal_prefix'=>pSQL($prefix), 'price'=>round((float) $price, 2),
             'pickup_only'=>(int) $pickup, 'active'=>(int) $active,
-            'notice'=>pSQL($notice), 'demo'=>0,
+            'notice'=>pSQL($notice), 'demo'=>(int) $demo,
         ];
         $db = Db::getInstance();
         if ($id > 0) {
