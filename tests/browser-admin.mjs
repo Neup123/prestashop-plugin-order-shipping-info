@@ -26,6 +26,7 @@ try {
   await form.locator('button[name="grtrans_save"]').click();
   await page.getByText('Route dataset updated', {exact:false}).first().waitFor({timeout:20000});
   assert.match(await page.locator('body').innerText(), /16\.25/);
+  assert.equal((await page.locator('table.table tbody tr').first().locator('td').nth(9).innerText()).trim(), '1', 'price edit must not mark demo route as verified');
   console.log('Browser admin route editing passed');
 } catch (error) {
   console.error('Browser acceptance failed:', error);
