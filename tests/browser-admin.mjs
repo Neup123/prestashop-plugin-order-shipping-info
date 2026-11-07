@@ -21,6 +21,7 @@ try {
   const editLink = page.getByRole('link', {name:'Edit'}).first();
   await editLink.click();
   const form = page.locator('form').filter({has:page.locator('button[name="grtrans_save"]')}).first();
+  assert.equal(await form.locator('select[name="demo"]').inputValue(), '1', 'assumed data must remain explicitly marked');
   await form.locator('input[name="price"]').fill('16.25');
   await form.locator('button[name="grtrans_save"]').click();
   await page.getByText('Route dataset updated', {exact:false}).first().waitFor({timeout:20000});
