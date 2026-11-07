@@ -55,8 +55,12 @@ jobs:
         env:
           TEST_CUSTOMER_PASSWORD: BrowserOnlyCiPassword123
         run: |
-          docker compose -f tests/compose.yml exec -T -e TEST_CUSTOMER_PASSWORD prestashop php /tmp/browser-checkout-fixtures.php > /tmp/grtrans-browser-fixture.json
+          docker compose -f tests/compose.yml exec -T -u www-data -e TEST_CUSTOMER_PASSWORD prestashop php /tmp/browser-checkout-fixtures.php > /tmp/grtrans-browser-fixture.json
           node -e "let f=require('/tmp/grtrans-browser-fixture.json');if(!f.product_url||!f.checkout_url)process.exit(1)"
+      - name: Verify Greek customer login page responds
+        run: |
+          docker compose -f tests/compose.yml exec -T prestashop chown -R www-data:www-data /var/www/html/var/cache
+          curl --fail-with-body -L --max-time 20 http://localhost:8080/login -o /dev/null
       - name: Verify customer sees port pickup at checkout
         env:
           TEST_CUSTOMER_PASSWORD: BrowserOnlyCiPassword123
