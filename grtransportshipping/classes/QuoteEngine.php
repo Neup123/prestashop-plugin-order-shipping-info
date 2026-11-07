@@ -36,6 +36,19 @@ class GrTransportQuoteEngine
             return null;
         }
         $winner = $matches[0];
+        // Equal-priority rules pointing to different destinations cannot be
+        // resolved safely by database insertion order.
+        foreach (array_slice($matches, 1) as $candidate) {
+            if ($candidate['_specificity'] !== $winner['_specificity']) {
+                break;
+            }
+            if ((string) ($candidate['station_name'] ?? '') !== (string) ($winner['station_name'] ?? '')
+                || (string) ($candidate['mode'] ?? '') !== (string) ($winner['mode'] ?? '')
+                || (float) ($candidate['price'] ?? 0) !== (float) ($winner['price'] ?? 0)
+                || (int) ($candidate['pickup_only'] ?? 1) !== (int) ($winner['pickup_only'] ?? 1)) {
+                return null;
+            }
+        }
         unset($winner['_specificity']);
         return $winner;
     }
