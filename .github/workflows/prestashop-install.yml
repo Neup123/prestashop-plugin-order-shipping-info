@@ -11,30 +11,32 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: docker compose -f tests/compose.yml up -d
-      - name: Wait for installation
+      - name: Wait for completed PrestaShop HTTP install
         run: |
           set -euo pipefail
-          for i in $(seq 1 90); do
-            if docker compose -f tests/compose.yml exec -T prestashop test -f /var/www/html/app/config/parameters.php &&
-               docker compose -f tests/compose.yml exec -T prestashop php bin/console about >/tmp/prestashop.txt 2>&1; then
-              cat /tmp/prestashop.txt
+          # Do not run PHP CLI before the Docker auto-installer finishes:
+          # an early root CLI boot can create unwritable Symfony cache files.
+          for i in $(seq 1 120); do
+            if curl -fLsS --max-time 8 http://localhost:8080/ -o /dev/null 2>/dev/null; then
+              docker compose -f tests/compose.yml exec -T -u www-data prestashop php bin/console about
               exit 0
             fi
-            sleep 10
+            sleep 5
           done
+          echo "PrestaShop frontend never became available" >&2
           exit 1
       - name: Install and validate module
         run: |
           set -euo pipefail
-          docker compose -f tests/compose.yml exec -T prestashop php bin/console prestashop:module install grtransportshipping
-          docker compose -f tests/compose.yml exec -T prestashop php bin/console prestashop:module:list --simple | grep grtransportshipping
+          docker compose -f tests/compose.yml exec -T -u www-data prestashop php bin/console prestashop:module install grtransportshipping
+          docker compose -f tests/compose.yml exec -T -u www-data prestashop php bin/console prestashop:module:list --simple | grep grtransportshipping
           docker compose -f tests/compose.yml exec -T mysql mariadb -uroot -pci_demo_password prestashop -e "SELECT COUNT(*) AS routes FROM ps_grtrans_route; SELECT COUNT(*) AS carriers FROM ps_carrier WHERE external_module_name='grtransportshipping' AND deleted=0;"
       - name: Verify real Greek delivery addresses and shipping quotes
-        run: docker compose -f tests/compose.yml exec -T prestashop php /tmp/prestashop-quote-smoke.php
+        run: docker compose -f tests/compose.yml exec -T -u www-data prestashop php /tmp/prestashop-quote-smoke.php
       - name: Verify checkout shipping calculator and delivery options
-        run: docker compose -f tests/compose.yml exec -T prestashop php /tmp/prestashop-calculator-smoke.php
+        run: docker compose -f tests/compose.yml exec -T -u www-data prestashop php /tmp/prestashop-calculator-smoke.php
       - name: Verify saved order pickup snapshots and customer/admin notices
-        run: docker compose -f tests/compose.yml exec -T prestashop php /tmp/prestashop-order-snapshot-smoke.php
+        run: docker compose -f tests/compose.yml exec -T -u www-data prestashop php /tmp/prestashop-order-snapshot-smoke.php
       - if: failure()
         run: docker compose -f tests/compose.yml logs --tail=150
       - if: always()
