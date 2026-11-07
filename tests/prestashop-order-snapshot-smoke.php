@@ -16,7 +16,7 @@ $module = Module::getInstanceByName('grtransportshipping');
 transportAssert($module instanceof CarrierModule, 'Module unavailable');
 $carrierId = (int) Configuration::get('GRTRANS_CARRIER');
 $idRoute = (int) Db::getInstance()->getValue(
-    'SELECT id_route FROM `' . _DB_PREFIX_ . 'grtrans_route` WHERE postal_prefix = "843" LIMIT 1'
+    "SELECT id_route FROM `" . _DB_PREFIX_ . "grtrans_route` WHERE postal_prefix = '843' LIMIT 1"
 );
 transportAssert($carrierId > 0 && $idRoute > 0, 'Missing demo carrier or Naxos route');
 $oldRow = Db::getInstance()->getRow('SELECT * FROM `' . _DB_PREFIX_ . 'grtrans_route` WHERE id_route = ' . $idRoute);
