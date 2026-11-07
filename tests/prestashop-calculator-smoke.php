@@ -38,6 +38,8 @@ verify($module instanceof CarrierModule, 'Transport module not available');
 $cases = [
     ['26221', 'Πάτρα', 12.50, 'Patras KTEL station', 'bus'],
     ['84300', 'Νάξος', 29.00, 'Naxos Port', 'ferry'],
+    ['84002', 'Κέα', 18.00, 'Kea Korissia Port', 'ferry'],
+    ['84006', 'Κύθνος', 24.00, 'Kythnos Merichas Port', 'ferry'],
     ['71601', 'Ηράκλειο', 45.00, 'Heraklion Airport', 'flight'],
     ['85100', 'Ρόδος', 55.00, 'Rhodes Airport', 'flight'],
 ];
