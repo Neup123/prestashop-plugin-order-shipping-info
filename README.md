@@ -6,12 +6,12 @@ Work-in-progress module for Athens-origin parcel movement by KTEL, ferry and dom
 
 ## Current scope
 
-- Carrier pricing and basic route/destination administration.
+- Carrier pricing and route/destination administration, including explicitly retained demo/verified flags.
 - Greek delivery address required; unmatched/disabled destinations unavailable.
 - Demo routes represent plausible links but have no contractual or operational guarantee.
 - For installation, copy the entire `grtransportshipping` directory into `modules/`, then install in Module Manager. The module creates a carrier and seeds assumed routes.
 - Configure Greek zone/carrier restrictions and confirm checkout before production.
-- PHP 8.2/8.4 lint and pure pricing tests run in GitHub Actions.
+- PHP 8.2/8.4 lint, pure pricing tests, live PrestaShop 9.2 Docker native cart checks, and Chromium admin/checkout browser acceptance run in GitHub Actions.
 
 ## Security bar
 
@@ -19,4 +19,4 @@ Admin mutations use PrestaShop employee token verification, strict validated inp
 
 ## Acceptance still required
 
-Real PrestaShop 9.2 install, carrier zone integration, checkout browser tests in Classic and Hummingbird 2, save order pickup information, and admin regression. See issue #1.
+A real PrestaShop 9.2.1 Docker instance now installs the module, exercises the native Cart price/zone path, and completes Chromium admin editing plus a Greek customer's ferry checkout pickup-notice flow. The order pickup snapshot is verified in an integration hook test. Still needed: final paid-order confirmation/account acceptance, Hummingbird 2 coverage, full add/delete regression, and real transport contracts/fares. See issue #1.
