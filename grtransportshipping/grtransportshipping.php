@@ -309,7 +309,7 @@ class Grtransportshipping extends CarrierModule
             foreach (['id_route','mode','origin_name','station_name','city','postal_prefix','price','pickup_only','active','demo'] as $key) {
                 $out .= '<td>' . $this->escape($r[$key]) . '</td>';
             }
-            $out .= '<td><a class="btn btn-default" href="' . $action . '&amp;grtrans_edit=' . (int) $r['id_route'] . '">Edit</a><form method="post" action="' . $action . '"><input type="hidden" name="id_route" value="' . (int) $r['id_route'] . '"><button name="grtrans_delete" value="1" onclick="return confirm(\'Delete route?\')">Delete</button></form></td></tr>';
+            $out .= '<td><a class="btn btn-default" href="' . $action . '&amp;grtrans_edit=' . (int) $r['id_route'] . '">Edit</a><form method="post" action="' . $action . '"><input type="hidden" name="id_route" value="' . (int) $r['id_route'] . '"><input type="hidden" name="grtrans_csrf" value="' . $csrf . '"><button name="grtrans_delete" value="1" onclick="return confirm(\'Delete route?\')">Delete</button></form></td></tr>';
         }
         $editing = null;
         $editId = (int) Tools::getValue('grtrans_edit', 0);
