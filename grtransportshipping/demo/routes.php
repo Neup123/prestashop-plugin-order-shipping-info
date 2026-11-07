@@ -10,6 +10,9 @@ return [
     ['ferry', 'Port of Piraeus', 'Naxos Port', '', '843', 29.00, 1, 'Port pickup only; ferry schedules are subject to weather.'],
     ['ferry', 'Port of Piraeus', 'Syros Port', '', '841', 24.00, 1, 'Port pickup only; confirm the vessel arrival.'],
     ['ferry', 'Port of Rafina', 'Andros Gavrio Port', '', '845', 22.00, 1, 'Gavrio port pickup; sailing subject to weather.'],
+    // Real passenger routes exist from Lavrio; these are NOT validated parcel tariffs.
+    ['ferry', 'Port of Lavrio', 'Kea Korissia Port', '', '84002', 18.00, 1, 'Korissia port pickup only. Sailing dates vary; ask the operator whether parcel carriage is accepted.'],
+    ['ferry', 'Port of Lavrio', 'Kythnos Merichas Port', '', '84006', 24.00, 1, 'Merichas port pickup only. Sailing dates vary; ask the operator whether parcel carriage is accepted.'],
     ['flight', 'Athens International Airport', 'Heraklion Airport', '', '716', 45.00, 1, 'Airport collection only, conditional on cargo acceptance and flight operation.'],
     ['flight', 'Athens International Airport', 'Rhodes Airport', '', '851', 55.00, 1, 'Airport collection only; flights may be delayed or cancelled.'],
 ];
