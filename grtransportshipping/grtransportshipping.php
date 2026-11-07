@@ -327,10 +327,27 @@ class Grtransportshipping extends CarrierModule
             'active' => 'Active (1 / 0)', 'notice' => 'Customer notice',
         ];
         foreach ($fields as $field => $label) {
-            $default = $editing[$field] ?? (['id_route'=>'0', 'mode'=>'bus', 'origin_name'=>'Athens', 'price'=>'0.00', 'pickup_only'=>'1', 'active'=>'1'][$field] ?? '');
-            $out .= '<label style="display:block;margin:8px 0">' . $this->escape($label)
-                . ' <input class="form-control" style="max-width:600px" name="' . $field
-                . '" value="' . $this->escape($default) . '" maxlength="500"></label>';
+            $default = (string) ($editing[$field] ?? (['id_route'=>'0', 'mode'=>'bus', 'origin_name'=>'Athens', 'price'=>'0.00', 'pickup_only'=>'1', 'active'=>'1'][$field] ?? ''));
+            $out .= '<label style="display:block;margin:8px 0">' . $this->escape($label);
+            if ($field === 'mode' || $field === 'pickup_only' || $field === 'active') {
+                $values = $field === 'mode'
+                    ? ['bus' => 'KTEL bus', 'ferry' => 'Ferry', 'flight' => 'Domestic flight']
+                    : ['1' => 'Yes', '0' => 'No'];
+                $out .= '<select class="form-control" style="max-width:600px" name="' . $field . '">';
+                foreach ($values as $value => $name) {
+                    $out .= '<option value="' . $this->escape($value) . '"'
+                        . ($default === (string) $value ? ' selected' : '') . '>' . $this->escape($name) . '</option>';
+                }
+                $out .= '</select>';
+            } elseif ($field === 'notice') {
+                $out .= '<textarea class="form-control" rows="3" style="max-width:600px"'
+                    . ' name="notice" maxlength="2000">' . $this->escape($default) . '</textarea>';
+            } else {
+                $lengths = ['id_route'=>10, 'origin_name'=>190, 'station_name'=>190, 'city'=>128, 'postal_prefix'=>5, 'price'=>16];
+                $out .= '<input class="form-control" style="max-width:600px" name="' . $field
+                    . '" value="' . $this->escape($default) . '" maxlength="' . $lengths[$field] . '">';
+            }
+            $out .= '</label>';
         }
         $out .= '<button type="submit" name="grtrans_save" value="1" class="btn btn-primary">Save route</button></form></div>';
         return $out;
