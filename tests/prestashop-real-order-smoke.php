@@ -231,6 +231,17 @@ $placeAdjusted = static function (Cart $c, string $label) use ($payment, $pendin
         'CI ' . $label, null, [], (int) $c->id_currency, false, (string) $c->secure_key),
         'PrestaShop failed order: ' . $label);
     $placed = new Order((int) $payment->currentOrder);
+    if ($label === 'expired quote with current route') {
+        echo 'CI #47 order diagnostics: cart=' . (int)$c->id
+            . ', cart_carrier=' . (int)$c->id_carrier
+            . ', delivery=' . json_encode($c->getDeliveryOption())
+            . ', requested_amount=' . $amount
+            . ', placed_id=' . (int)$placed->id
+            . ', placed_carrier=' . (int)$placed->id_carrier
+            . ', placed_shipping=' . (float)$placed->total_shipping_tax_excl
+            . ', persisted_snapshot=' . json_encode(GrTransportOrderSnapshot::find((int)$placed->id))
+            . PHP_EOL;
+    }
     testAssert(Validate::isLoadedObject($placed)
         && GrTransportOrderSnapshot::find((int) $placed->id) !== null,
         'Missing order or pickup after ' . $label);
