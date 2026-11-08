@@ -48,7 +48,7 @@ testAssert($customCarrier->name === 'Custom merchant carrier'
 $customCarrier->name = GrTransportCarrierLifecycle::BILINGUAL_NAME;
 if ($greekLanguageId > 0) {
     $customCarrier->delay[$greekLanguageId] =
-        $module->l(GrTransportCarrierLifecycle::DEFAULT_DELAY, 'grtransportshipping', 'el');
+        $module->l(GrTransportCarrierLifecycle::DEFAULT_DELAY, 'grtransportshipping', 'el-GR');
 }
 testAssert($customCarrier->update(), 'Could not restore test carrier default presentation');
 echo "PASS #50 carrier upgrade localization idempotent and merchant overrides preserved\n";
