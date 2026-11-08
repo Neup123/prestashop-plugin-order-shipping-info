@@ -418,8 +418,7 @@ class Grtransportshipping extends CarrierModule
                 $values = $field === 'mode'
                     ? ['bus' => 'KTEL bus', 'ferry' => 'Ferry', 'flight' => 'Domestic flight']
                     : ($field === 'route_status'
-                        ? ['draft' => 'Draft — no quote, no veto', 'available' => 'Available — can be quoted',
-                           'suspended' => 'Suspended — blocks broader matching routes']
+                        ? GrTransportRouteState::STATE_LABELS
                         : ['1' => 'Yes', '0' => 'No']);
                 $out .= '<select class="form-control" style="max-width:600px" name="' . $field . '">';
                 foreach ($values as $value => $name) {
