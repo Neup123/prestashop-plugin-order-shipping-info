@@ -33,6 +33,8 @@ $carrier->deleted = true;
 carrierCheck((bool) $carrier->save(), 'Could not simulate carrier deletion');
 carrierCheck(GrTransportCarrierLifecycle::inspect()['state'] === GrTransportCarrierLifecycle::DELETED,
     'Deleted carrier state was not recognized');
+carrierCheck(str_contains($module->getContent(), 'Repair transport carrier'),
+    'Admin configuration must offer an explicit carrier repair action');
 carrierCheck(GrTransportCarrierLifecycle::activeId($module) === 0 && (int) $module->id_carrier === 0,
     'Deleted carrier still selected for customer quotes');
 carrierCheck((bool) GrTransportCarrierLifecycle::ensure($module), 'Admin repair could not replace deleted carrier');
