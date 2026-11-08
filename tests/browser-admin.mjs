@@ -219,6 +219,62 @@ try {
   await page.getByText('Route does not exist', {exact:false}).first().waitFor({timeout:20000});
   assert.doesNotMatch(await page.locator('body').innerText(), /Route dataset updated\./);
   console.log('Browser admin grid, edit scroll, failed-save retention, edit-target protection, add/delete and stale delete passed');
+
+  // #43 — actual persisted PrestaShop 9.2.1 order admin surface.
+  // The test's order was created by the existing native PaymentModule
+  // smoke, not from synthetic HTML or a stubbed HTTP POST. Covers dialog
+  // dismissal (no write request) and consent (unchanged repair handler).
+  // Does not cover other browsers, browsers with JavaScript disabled, or
+  // deliberate raw HTTP requests bypassing the UI confirmation.
+  const orderId = Number(process.env.TEST_ORDER_ID);
+  assert.ok(Number.isSafeInteger(orderId) && orderId > 0,
+    'Browser acceptance requires a real persisted transport order ID');
+  const orderView = 'http://localhost:8080/admin-dev/index.php/sell/orders/' + orderId + '/view';
+  await page.goto(orderView, {waitUntil:'domcontentloaded', timeout:45000});
+  const regenerate = page.locator('button[name="grtrans_repair_order"]').first();
+  await regenerate.waitFor({timeout:30000});
+  assert.equal(await regenerate.innerText(), 'Regenerate original pickup snapshot');
+  assert.equal(await regenerate.getAttribute('value'), String(orderId));
+  const regenForm = regenerate.locator('xpath=ancestor::form[1]');
+  const confirmationJs = await regenForm.getAttribute('onsubmit');
+  assert.match(confirmationJs ?? '', /return confirm\(/);
+  assert.match(confirmationJs ?? '', /overwrite the saved historical pickup snapshot/);
+  assert.match(confirmationJs ?? '', /original checkout quote/);
+  const targetAction = new URL(await regenForm.getAttribute('action'), page.url()).pathname;
+  let repairPosts = 0;
+  page.on('request', request => {
+    if (request.method() === 'POST' && new URL(request.url()).pathname === targetAction) {
+      repairPosts++;
+    }
+  });
+  let canceledDialog = '';
+  page.once('dialog', async dialog => {
+    canceledDialog = dialog.message();
+    assert.match(canceledDialog, /order #\d+/);
+    assert.match(canceledDialog, /overwrite the saved historical pickup snapshot/);
+    await dialog.dismiss();
+  });
+  await regenerate.click();
+  assert.match(canceledDialog, /original checkout quote/);
+  await page.waitForTimeout(200);
+  assert.equal(repairPosts, 0, 'Cancel must stop the overwrite before any POST');
+  assert.equal(await regenerate.count(), 1,
+    'Canceled regeneration must leave the stored order card in view');
+  console.log('LIVE ORDER CANCEL: original historical snapshot remains, confirmation dismissed and zero POST requests');
+
+  let acceptedDialog = '';
+  page.once('dialog', async dialog => {
+    acceptedDialog = dialog.message();
+    await dialog.accept();
+  });
+  await regenerate.click();
+  assert.equal(acceptedDialog, canceledDialog,
+    'Accepted prompt must describe the same overwrite consequence');
+  await page.getByText('Order pickup snapshot regenerated from its original cart quote.', {exact:false})
+    .first().waitFor({timeout:30000});
+  assert.equal(repairPosts, 1, 'Confirm must submit through the existing handler exactly once');
+  console.log('LIVE ORDER CONFIRM: one confirmed POST and original-quote snapshot regeneration success');
+
 } catch (error) {
   console.error('Browser acceptance failed:', error);
   console.error('Current path:', new URL(page.url()).pathname);
