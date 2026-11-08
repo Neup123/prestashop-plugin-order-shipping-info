@@ -79,8 +79,8 @@ foreach ($cases as [$postal, $city, $price, $station, $mode]) {
         testAssert($matches, 'Transport carrier not displayed in checkout options for ' . $city);
         $notice = $module->hookDisplayCarrierExtraContent([]);
         testAssert(str_contains($notice, $station), 'Checkout notice does not name ' . $station);
-        testAssert(str_contains($notice, 'STATION PICKUP ONLY'), 'Pickup-only notice missing for ' . $city);
-        testAssert(str_contains($notice, 'DEMO ESTIMATE'), 'Unverified demo warning missing for ' . $city);
+        testAssert((str_contains($notice, 'STATION PICKUP ONLY') || str_contains($notice, 'ΠΑΡΑΛΑΒΗ ΜΟΝΟ ΑΠΟ ΣΤΑΘΜΟ')), 'Pickup-only notice missing for ' . $city);
+        testAssert((str_contains($notice, 'DEMO ESTIMATE') || str_contains($notice, 'ΕΝΔΕΙΚΤΙΚΗ ΕΚΤΙΜΗΣΗ')), 'Unverified demo warning missing for ' . $city);
     } finally {
         if ((int) $cart->id > 0) {
             $cart->delete();
