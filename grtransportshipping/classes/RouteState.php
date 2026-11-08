@@ -23,6 +23,11 @@ final class GrTransportRouteState
     public const AVAILABLE = 'available';
     public const SUSPENDED = 'suspended';
     public const STATES = [self::DRAFT, self::AVAILABLE, self::SUSPENDED];
+    public const STATE_LABELS = [
+        self::DRAFT => 'Draft — no quote, no veto',
+        self::AVAILABLE => 'Available — can be quoted',
+        self::SUSPENDED => 'Suspended — blocks broader matching routes',
+    ];
     public const TRANSITIONS = [
         self::DRAFT => self::STATES,
         self::AVAILABLE => self::STATES,
