@@ -152,7 +152,7 @@ final class GrTransportCarrierLifecycle
                 || (string) $carrier->delay[$langId] !== self::DEFAULT_DELAY) {
                 continue;
             }
-            $translated = $module->l(self::DEFAULT_DELAY, self::MODULE, $iso);
+            $translated = $module->l(self::DEFAULT_DELAY, self::MODULE, (string) $language['locale']);
             if ($translated !== self::DEFAULT_DELAY) {
                 $carrier->delay[$langId] = $translated;
                 $changed = true;
@@ -270,7 +270,7 @@ final class GrTransportCarrierLifecycle
         $carrier->delay = [];
         foreach (Language::getLanguages(false) as $language) {
             $carrier->delay[(int) $language['id_lang']] =
-                $module->l(self::DEFAULT_DELAY, self::MODULE, (string) $language['iso_code']);
+                $module->l(self::DEFAULT_DELAY, self::MODULE, (string) $language['locale']);
         }
         if (!$carrier->add()) {
             return false;
