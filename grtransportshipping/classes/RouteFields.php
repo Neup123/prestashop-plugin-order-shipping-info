@@ -10,6 +10,7 @@ final class GrTransportRouteFields
 {
     public const SEED_CONFIG = 'GRTRANS_SEED_INITIALIZED';
     public const NOTICE_CHECK_NAME = 'chk_grtrans_notice_length';
+    public const LOOKUP_PREFIX_INDEX = 'lookup_prefix';
     public const BOOL_CHOICES = ['1' => 'Yes', '0' => 'No'];
 
     public static function spec(): array
@@ -57,6 +58,11 @@ final class GrTransportRouteFields
             . self::limit('notice') . ')';
     }
 
+    public static function lookupIndexSql(): string
+    {
+        return 'INDEX `' . self::LOOKUP_PREFIX_INDEX . '` (`postal_prefix`)';
+    }
+
     public static function schemaColumns(): string
     {
         $sql = [];
@@ -68,7 +74,7 @@ final class GrTransportRouteFields
             $sql[] = '`' . $name . '` ' . $type;
         }
         $sql[] = self::noticeConstraintSql();
-        $sql[] = 'INDEX `lookup_prefix` (`postal_prefix`)';
+        $sql[] = self::lookupIndexSql();
         return implode(",\n            ", $sql);
     }
 
