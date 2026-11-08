@@ -481,9 +481,12 @@ class Grtransportshipping extends CarrierModule
             .grtrans-editor .help-block{display:block;margin-top:5px}
         </style>';
         $out .= '<div class="grtrans-route-grid table-responsive"><table class="table table-hover">'
-            . '<thead><tr><th>ID</th><th>Mode</th><th>From</th><th>Pickup station</th><th>City</th>'
-            . '<th>Postcode prefix</th><th>EUR</th><th>Pickup only</th><th>State</th><th>Demo</th>'
-            . '<th>Actions</th></tr></thead><tbody>';
+            . '<thead><tr><th>' . $this->escape($this->l('ID')) . '</th><th>' . $this->escape($this->l('Mode')) . '</th>'
+            . '<th>' . $this->escape($this->l('From')) . '</th><th>' . $this->escape($this->l('Pickup station')) . '</th>'
+            . '<th>' . $this->escape($this->l('City')) . '</th><th>' . $this->escape($this->l('Postcode prefix')) . '</th>'
+            . '<th>' . $this->escape($this->l('EUR')) . '</th><th>' . $this->escape($this->l('Pickup only')) . '</th>'
+            . '<th>' . $this->escape($this->l('State')) . '</th><th>' . $this->escape($this->l('Demo')) . '</th>'
+            . '<th>' . $this->escape($this->l('Actions')) . '</th></tr></thead><tbody>';
         foreach ($rows as $r) {
             $id = (int) $r['id_route'];
             $status = GrTransportRouteState::status($r);
@@ -499,17 +502,17 @@ class Grtransportshipping extends CarrierModule
             $pickupChoices = GrTransportRouteFields::choices('pickup_only');
             $out .= '<td>' . $this->escape($pickupChoices[(string) $r['pickup_only']] ?? 'Unknown') . '</td>'
                 . '<td><span class="grtrans-pill grtrans-state-' . $this->escape($status) . '">'
-                . $this->escape(GrTransportRouteState::STATE_LABELS[$status]) . '</span></td>'
+                . $this->escape($this->l(GrTransportRouteState::STATE_LABELS[$status])) . '</span></td>'
                 . '<td><span class="grtrans-pill ' . ($isDemo ? 'grtrans-demo' : 'grtrans-verified') . '">'
-                . ($isDemo ? 'Unverified estimate' : 'Operator-confirmed') . '</span></td>';
+                . $this->escape($isDemo ? $this->l('Unverified estimate') : $this->l('Operator-confirmed')) . '</span></td>';
             $out .= '<td><div class="grtrans-actions">'
                 . '<a class="btn btn-default btn-sm" href="' . $action . '&amp;grtrans_edit=' . $id
-                . '#grtrans-route-editor">Edit</a>'
+                . '#grtrans-route-editor">' . $this->escape($this->l('Edit')) . '</a>'
                 . '<form method="post" action="' . $action . '"><input type="hidden" name="id_route" value="'
                 . $id . '"><input type="hidden" name="token" value="' . $csrf . '">'
                 . '<button type="submit" class="btn btn-danger btn-sm" name="grtrans_delete" value="1"'
-                . ' onclick="return confirm(&quot;Delete route #' . $id
-                . '? This cannot be undone.&quot;)">Delete</button></form></div></td></tr>';
+                . ' onclick="return confirm(&quot;' . $this->escape(sprintf($this->l('Delete route #%d? This cannot be undone.'), $id))
+                . '&quot;)">' . $this->escape($this->l('Delete')) . '</button></form></div></td></tr>';
         }
         $out .= '</tbody></table></div></div>';
 
@@ -528,11 +531,13 @@ class Grtransportshipping extends CarrierModule
         $formAction = $action . ($editing ? '&amp;grtrans_edit=' . $editId : '') . '#grtrans-route-editor';
         $out .= '<section id="grtrans-route-editor" aria-labelledby="grtrans-editor-title" class="panel grtrans-editor'
             . ($editing ? ' is-editing' : '') . '">'
-            . '<h3 id="grtrans-editor-title">' . ($editing ? 'Editing route #' . $editId : 'Add route') . '</h3>';
+            . '<h3 id="grtrans-editor-title">' . $this->escape($editing
+                ? sprintf($this->l('Editing route #%d'), $editId) : $this->l('Add route')) . '</h3>';
         if ($editing) {
-            $out .= '<div class="alert alert-info">Editing route #' . $editId
-                . '. Changes affect this route only. <a href="' . $action
-                . '#grtrans-route-editor">Cancel editing</a>.</div>';
+            $out .= '<div class="alert alert-info">' . $this->escape(sprintf(
+                $this->l('Editing route #%d. Changes affect this route only.'), $editId
+            )) . ' <a href="' . $action . '#grtrans-route-editor">'
+                . $this->escape($this->l('Cancel editing')) . '</a>.</div>';
         }
         if ($saveError !== '') {
             $out .= '<div id="grtrans-form-errors" role="alert" class="alert alert-danger">'
@@ -541,7 +546,7 @@ class Grtransportshipping extends CarrierModule
                 $out .= '<ul>';
                 foreach ($fieldErrors as $field => $message) {
                     $out .= '<li><a href="#grtrans-field-' . $this->escape($field) . '">'
-                        . $this->escape($message) . '</a></li>';
+                        . $this->escape($this->l($message)) . '</a></li>';
                 }
                 $out .= '</ul>';
             }
@@ -571,7 +576,7 @@ class Grtransportshipping extends CarrierModule
                 // with the first valid option after a failed save.
                 if (!array_key_exists($value, $choices)) {
                     $out .= '<option value="' . $this->escape($value)
-                        . '" selected disabled>Invalid submitted selection</option>';
+                        . '" selected disabled>' . $this->escape($this->l('Invalid submitted selection')) . '</option>';
                 }
                 foreach ($choices as $option => $label) {
                     $out .= '<option value="' . $this->escape($option) . '"'
@@ -594,16 +599,16 @@ class Grtransportshipping extends CarrierModule
             }
             if ($hasError) {
                 $out .= '<span class="help-block text-danger" id="' . $errorId . '">'
-                    . $this->escape($fieldErrors[$field]) . '</span>';
+                    . $this->escape($this->l($fieldErrors[$field])) . '</span>';
             }
             $out .= '</div>';
         }
         if ($editing && empty($editing['demo']) && !empty($editing['verified_at'])) {
-            $out .= '<p>Operator-confirmed: ' . $this->escape($editing['verified_at'])
-                . ' by employee #' . (int) $editing['verified_by_employee'] . '</p>';
+            $out .= '<p>' . $this->escape($this->l('Operator-confirmed:')) . ' ' . $this->escape($editing['verified_at'])
+                . ' ' . $this->escape($this->l('by employee #')) . (int) $editing['verified_by_employee'] . '</p>';
         }
         $out .= '<button type="submit" name="grtrans_save" value="1" class="btn btn-primary">'
-            . ($editing ? 'Save route changes' : 'Add route') . '</button></form></section>';
+            . $this->escape($editing ? $this->l('Save route changes') : $this->l('Add route')) . '</button></form></section>';
         return $out;
     }
 
