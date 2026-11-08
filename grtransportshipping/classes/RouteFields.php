@@ -15,18 +15,18 @@ final class GrTransportRouteFields
     {
         return [
             'id_route' => ['sql' => 'INT UNSIGNED AUTO_INCREMENT PRIMARY KEY', 'label' => 'Route ID (0 to add)', 'kind' => 'input', 'max' => 10, 'default' => '0'],
-            'mode' => 'normalize' => true, 'sql' => 'VARCHAR', 'max' => 16, 'label' => 'Mode', 'kind' => 'select', 'default' => 'bus', 'choices' => ['bus' => 'KTEL bus', 'ferry' => 'Ferry', 'flight' => 'Domestic flight']],
-            'origin_name' => 'normalize' => true, 'sql' => 'VARCHAR', 'max' => 190, 'label' => 'Origin terminal', 'kind' => 'input', 'default' => 'Athens'],
-            'station_name' => 'normalize' => true, 'sql' => 'VARCHAR', 'max' => 190, 'label' => 'Destination pickup station', 'kind' => 'input', 'default' => ''],
-            'city' => 'normalize' => true, 'sql' => 'VARCHAR', 'max' => 128, 'label' => 'City (optional)', 'kind' => 'input', 'default' => ''],
-            'postal_prefix' => 'normalize' => true, 'sql' => 'VARCHAR', 'max' => 5, 'label' => 'Postal prefix (optional)', 'kind' => 'input', 'default' => ''],
+            'mode' => ['normalize' => true, 'sql' => 'VARCHAR', 'max' => 16, 'label' => 'Mode', 'kind' => 'select', 'default' => 'bus', 'choices' => ['bus' => 'KTEL bus', 'ferry' => 'Ferry', 'flight' => 'Domestic flight']],
+            'origin_name' => ['normalize' => true, 'sql' => 'VARCHAR', 'max' => 190, 'label' => 'Origin terminal', 'kind' => 'input', 'default' => 'Athens'],
+            'station_name' => ['normalize' => true, 'sql' => 'VARCHAR', 'max' => 190, 'label' => 'Destination pickup station', 'kind' => 'input', 'default' => ''],
+            'city' => ['normalize' => true, 'sql' => 'VARCHAR', 'max' => 128, 'label' => 'City (optional)', 'kind' => 'input', 'default' => ''],
+            'postal_prefix' => ['normalize' => true, 'sql' => 'VARCHAR', 'max' => 5, 'label' => 'Postal prefix (optional)', 'kind' => 'input', 'default' => ''],
             'price' => ['sql' => 'DECIMAL(12,2) NOT NULL', 'max' => 16, 'max_value' => 999999, 'label' => 'Transport price EUR', 'kind' => 'input', 'default' => '0.00'],
             'pickup_only' => ['sql' => 'TINYINT(1) NOT NULL DEFAULT 1', 'label' => 'Station pickup only', 'kind' => 'select', 'default' => '1', 'choices' => self::BOOL_CHOICES],
             'route_status' => ['sql' => "VARCHAR(12) NOT NULL DEFAULT 'draft'", 'label' => 'Route state: Draft does not veto; Suspended blocks regional fallback', 'kind' => 'select', 'default' => GrTransportRouteState::DRAFT, 'choices' => GrTransportRouteState::STATE_LABELS],
             'demo' => ['sql' => 'TINYINT(1) NOT NULL DEFAULT 0', 'label' => 'Unverified demo estimate (1) / operator-confirmed (0)', 'kind' => 'select', 'default' => '1', 'choices' => self::BOOL_CHOICES],
             'verified_at' => ['sql' => 'DATETIME NULL'],
             'verified_by_employee' => ['sql' => 'INT NULL'],
-            'notice' => 'normalize' => true, 'sql' => 'TEXT NULL', 'max' => 2000, 'label' => 'Customer notice', 'kind' => 'textarea', 'default' => ''],
+            'notice' => ['normalize' => true, 'sql' => 'TEXT NULL', 'max' => 2000, 'label' => 'Customer notice', 'kind' => 'textarea', 'default' => ''],
         ];
     }
 
