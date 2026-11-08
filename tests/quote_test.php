@@ -32,6 +32,7 @@ $suspended[1]['route_status'] = 'available';
 check(GrTransportQuoteEngine::select($suspended, '84300', 'Naxos')['price'] === 29, 'route resumes on reactivation');
 $suspended[0]['postal_prefix'] = '843';
 check(GrTransportQuoteEngine::select($suspended, '84300', 'Naxos') === null, 'equally specific mismatched routes remain unavailable');
+$suspended[0]['postal_prefix'] = '84';
 $draft = $suspended;
 $draft[1]['route_status'] = 'draft';
 check(GrTransportQuoteEngine::select($draft, '84300', 'Naxos')['price'] === 20,
