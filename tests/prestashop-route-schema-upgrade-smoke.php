@@ -44,4 +44,36 @@ testAssert(upgrade_module_0_5_1($module)
 testAssert(upgrade_module_0_5_1($module),
     'Repeated 0.5.1 hook upgrade must remain idempotent');
 echo "0.5.1 independent checkout hook installation and upgrade registration passed\n";
+// #48/#49: Compare clean installation against the versioned historical
+// schema upgrade. Test that missing indexes are restored and retries are safe.
+require_once '/var/www/html/modules/grtransportshipping/upgrade/upgrade-0.5.2.php';
+$countIndex = static function (string $tableName, string $index) use ($db): int {
+    return (int) $db->getValue(
+        'SELECT COUNT(*) FROM information_schema.STATISTICS'
+        . ' WHERE TABLE_SCHEMA = DATABASE()'
+        . " AND TABLE_NAME = '" . pSQL($tableName) . "'"
+        . " AND INDEX_NAME = '" . pSQL($index) . "'"
+    );
+};
+$indexes = [
+    [$table, GrTransportRouteFields::LOOKUP_PREFIX_INDEX],
+    [_DB_PREFIX_ . 'grtrans_cart_quote', GrTransportCartQuote::PRUNE_INDEX],
+];
+foreach ($indexes as [$targetTable, $index]) {
+    testAssert($countIndex($targetTable, $index) > 0,
+        'Clean install missing ' . $index);
+    testAssert($db->execute('ALTER TABLE `' . bqSQL($targetTable)
+        . '` DROP INDEX `' . bqSQL($index) . '`'),
+        'Could not simulate pre-0.5.2 index ' . $index);
+    testAssert($countIndex($targetTable, $index) === 0,
+        'Pre-upgrade missing-index simulation failed');
+}
+testAssert(upgrade_module_0_5_2($module), 'Cannot upgrade indexes on 0.5.1 schema');
+foreach ($indexes as [$targetTable, $index]) {
+    testAssert($countIndex($targetTable, $index) > 0,
+        'Upgrade did not restore ' . $index);
+}
+testAssert(upgrade_module_0_5_2($module),
+    'Repeated 0.5.2 schema migration must be idempotent');
+echo "0.5.2 existing-install route and quote indexes restored idempotently\n";
 echo "0.5.0 route field schema migration and seed-marker initialization passed\n";
