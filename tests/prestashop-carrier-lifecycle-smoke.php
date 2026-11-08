@@ -69,7 +69,8 @@ $carrier->deleted = true;
 testAssert((bool) $carrier->save(), 'Could not simulate carrier deletion');
 testAssert(GrTransportCarrierLifecycle::inspect()['state'] === GrTransportCarrierLifecycle::DELETED,
     'Deleted carrier state was not recognized');
-testAssert(str_contains($module->getContent(), 'Repair transport carrier'),
+testAssert(str_contains($module->getContent(), 'Repair transport carrier')
+    || str_contains($module->getContent(), 'Αποκατάσταση μεταφορικής υπηρεσίας'),
     'Admin configuration must offer an explicit carrier repair action');
 testAssert(GrTransportCarrierLifecycle::activeId($module) === 0 && (int) $module->id_carrier === 0,
     'Deleted carrier still selected for customer quotes');
