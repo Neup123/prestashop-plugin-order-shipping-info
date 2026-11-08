@@ -54,4 +54,53 @@ testAssert(count(GrTransportQuoteEngine::shadowedSuspensions($suspended)) === 1,
     'Admin warning must detect suspended region override');
 testAssert(GrTransportQuoteEngine::shadowedSuspensions($draft) === [],
     'Draft must never produce suspension warning');
+
+// #45: Greek city-only routes (no postcode fallback) need accent-insensitive
+// comparison, yet genuinely distinct cities must remain unavailable.
+$greekCity = [
+    'id_route'=>100, 'route_status'=>'available', 'postal_prefix'=>'',
+    'city'=>'Νάξος', 'mode'=>'ferry', 'station_name'=>'Naxos Port',
+    'price'=>31, 'pickup_only'=>1, 'demo'=>1, 'notice'=>'City-only rate',
+];
+foreach (['Νάξος', 'Ναξος', 'ΝΑΞΟΣ', 'Νάξοσ', "Να\u{0301}ξος"] as $customerCity) {
+    $result = GrTransportQuoteEngine::resolve([$greekCity], '00000', $customerCity);
+    testAssert($result['status'] === 'quoted' && (float)$result['quote']['price'] === 31,
+        'City-only Naxos failed for: ' . $customerCity);
+}
+$chaidari = array_replace($greekCity, [
+    'id_route'=>101, 'city'=>'Χαϊδάρι', 'station_name'=>'Chaidari station',
+]);
+foreach (['Χαϊδάρι', 'Χαιδαρι', 'ΧΑΪΔΑΡΙ', 'ΧΑΪΔΆΡΙ'] as $customerCity) {
+    testAssert(GrTransportQuoteEngine::resolve([$chaidari], '00000', $customerCity)['status'] === 'quoted',
+        'Dialytika/tonos match failed: ' . $customerCity);
+}
+$kos = array_replace($greekCity, [
+    'id_route'=>102, 'city'=>'Κως', 'station_name'=>'Kos port',
+]);
+foreach (['Κως', 'Κωσ', 'ΚΩΣ', 'κως'] as $customerCity) {
+    testAssert(GrTransportQuoteEngine::resolve([$kos], '00000', $customerCity)['status'] === 'quoted',
+        'Final sigma match failed: ' . $customerCity);
+}
+foreach (['Λάρισα', 'Κρήτη', 'Χανιά'] as $otherCity) {
+    testAssert(GrTransportQuoteEngine::resolve([$greekCity], '00000', $otherCity)['status'] === 'unmatched',
+        'Unserved Greek city must fail closed: ' . $otherCity);
+}
+// Accent-equivalent stored cities compete under the existing ambiguity rule.
+// Distinct station details cause an unavailable quote; identical details work.
+$accentDuplicate = array_replace($greekCity, [
+    'id_route'=>103, 'city'=>'Ναξοσ', 'station_name'=>'Different Naxos port',
+]);
+testAssert(GrTransportQuoteEngine::resolve([$greekCity, $accentDuplicate], '00000', 'ΝΑΞΟΣ')['status'] === 'ambiguous',
+    'Normalized city ties with differing stations must fail closed');
+$accentDuplicate['station_name'] = 'Naxos Port';
+testAssert(GrTransportQuoteEngine::resolve([$greekCity, $accentDuplicate], '00000', 'Ναξος')['status'] === 'quoted',
+    'Identical normalized city records should remain usable');
+testAssert($greekCity['city'] === 'Νάξος' && $accentDuplicate['city'] === 'Ναξοσ',
+    'Matching must not rewrite stored Greek city names');
+// Preserve the existing Latin matching rule and unknown-city denial.
+testAssert((float) GrTransportQuoteEngine::select($routes, '26000', 'PATRA')['price'] === 12.5,
+    'Latin city comparison must remain case-insensitive');
+testAssert(GrTransportQuoteEngine::select($routes, '26000', 'OTHER') === null,
+    'Unknown Latin city must fail closed');
+
 echo "Quote tests passed\\n";
