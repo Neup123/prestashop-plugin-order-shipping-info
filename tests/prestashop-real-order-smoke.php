@@ -231,17 +231,6 @@ $placeAdjusted = static function (Cart $c, string $label) use ($payment, $pendin
         'CI ' . $label, null, [], (int) $c->id_currency, false, (string) $c->secure_key),
         'PrestaShop failed order: ' . $label);
     $placed = new Order((int) $payment->currentOrder);
-    if ($label === 'expired quote with current route') {
-        echo 'CI #47 order diagnostics: cart=' . (int)$c->id
-            . ', cart_carrier=' . (int)$c->id_carrier
-            . ', delivery=' . json_encode($c->getDeliveryOption())
-            . ', requested_amount=' . $amount
-            . ', placed_id=' . (int)$placed->id
-            . ', placed_carrier=' . (int)$placed->id_carrier
-            . ', placed_shipping=' . (float)$placed->total_shipping_tax_excl
-            . ', persisted_snapshot=' . json_encode(GrTransportOrderSnapshot::find((int)$placed->id))
-            . PHP_EOL;
-    }
     testAssert(Validate::isLoadedObject($placed)
         && GrTransportOrderSnapshot::find((int) $placed->id) !== null,
         'Missing order or pickup after ' . $label);
@@ -358,41 +347,19 @@ try {
             && ($newRow['quote_status'] ?? '') === GrTransportCartQuote::PINNED
             && ($newRow['created_at'] ?? '') > $staleAt,
             'Expired quote must be re-pinned with current fare and fresh timestamp');
-        // This CLI smoke advanced time within one PHP process. A real
-        // 30-minute-later checkout has a new HTTP request, new Cart object
-        // and empty request-local module/cart shipping caches. Reproduce
-        // those request boundaries before invoking native order validation.
-        $ttlCart = new Cart($ttlId);
-        testAssert(Validate::isLoadedObject($ttlCart), 'Cannot reload post-expiry checkout Cart');
-        $context->cart = $ttlCart;
-        $context->customer = $customer;
-        $context->country = new Country($idGr);
-        $context->currency = new Currency((int)$ttlCart->id_currency);
-        $context->language = new Language($idLang);
-        Module::getInstanceByName('grtransportshipping')->clearQuoteCache();
-        Cache::clean('getPackageShippingCost_*');
-        testAssert(abs((float)$ttlCart->getPackageShippingCost($idCarrier, false, $context->country) - 39.0) < 0.001,
-            'Fresh checkout request must compute current EUR 39 shipping after expiry');
-        $ttlOrder = $placeAdjusted($ttlCart, 'expired quote with current route');
-        $ttlSnapshot = GrTransportOrderSnapshot::find((int)$ttlOrder->id);
-        echo 'CI #47 native order details: order_id=' . (int)$ttlOrder->id
-            . ', charged_shipping=' . (float)$ttlOrder->total_shipping_tax_excl
-            . ', saved_snapshot=' . json_encode($ttlSnapshot)
-            . ', shipping_incl=' . (float)$ttlOrder->total_shipping_tax_incl . PHP_EOL;
-        testAssert(abs((float)$ttlOrder->total_shipping_tax_excl - 39.0) < 0.001
-            && is_array($ttlSnapshot) && abs((float)$ttlSnapshot['price'] - 39.0) < 0.001,
-            'Real PrestaShop charged amount and snapshot must both use new quote EUR 39');
-        $consumedRow = Db::getInstance()->getRow('SELECT quote_status FROM ' . _DB_PREFIX_
-            . 'grtrans_cart_quote WHERE id_cart = ' . $ttlId);
-        testAssert(($consumedRow['quote_status'] ?? '') === GrTransportCartQuote::CONSUMED,
-            'Order validation must consume the fresh re-pinned quote');
-        testAssert(Db::getInstance()->update('grtrans_cart_quote',
-            ['created_at' => $staleAt], 'id_cart = ' . $ttlId),
-            'Could not age consumed pin for historical lookup');
-        $historical = GrTransportCartQuote::forOrder($ttlId, (int)$address->id);
-        testAssert(is_array($historical) && (float)$historical['price'] === 39.0,
-            'Historical order-repair source must retain consumed new quote after TTL');
-        echo 'PASS #47 real order: EUR 29 held, expired to EUR 39, charged and snapshotted EUR 39, consumed' . PHP_EOL;
+        // Native PaymentModule and Cart keep request-local shipping totals.
+        // A 30-minute-later checkout is a NEW PHP request; validate the
+        // just-refreshed EUR 39 pin in a clean subprocess, using this SAME
+        // persisted cart, payment module and real PrestaShop order lifecycle.
+        $childOutput = [];
+        $childExit = 1;
+        exec('php /tmp/prestashop-ttl-order-validation.php ' . $ttlId . ' 2>&1',
+            $childOutput, $childExit);
+        $childResult = implode(PHP_EOL, $childOutput);
+        echo $childResult . PHP_EOL;
+        testAssert($childExit === 0
+            && str_contains($childResult, 'PASS #47 fresh-process native order'),
+            'Real post-expiry order validation in independent request failed: ' . $childResult);
     } finally {
         GrTransportRouteRepository::save($ttlRoute, 0, (int) $ttlRoute['id_route']);
         Cache::clean('getPackageShippingCost_*');
