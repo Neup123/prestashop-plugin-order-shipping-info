@@ -1,28 +1,32 @@
 <?php
+require_once __DIR__ . '/RouteState.php';
+
 /**
- * Pure quote-selection logic, independent of PrestaShop globals.
- * Destination rules are sorted by longest postal prefix, then by specificity.
+ * Pure, deterministic route resolution. No DB queries, no duplicated
+ * availability predicates. Distinct outcomes are propagated to the module:
+ * quoted, unmatched, draft_only, suspended, ambiguous.
  */
-class GrTransportQuoteEngine
+final class GrTransportQuoteEngine
 {
     public static function select(array $routes, string $postalCode, string $city): ?array
     {
-        $postalCode = preg_replace('/\\s+/', '', $postalCode);
+        return self::resolve($routes, $postalCode, $city)['quote'];
+    }
+
+    public static function resolve(array $routes, string $postalCode, string $city): array
+    {
+        $postalCode = preg_replace('/\s+/', '', $postalCode);
         $city = self::normalize($city);
         $matches = [];
         foreach ($routes as $route) {
-            $prefix = (string) ($route['postal_prefix'] ?? '');
-            $ruleCity = self::normalize((string) ($route['city'] ?? ''));
-            if ($prefix !== '' && strpos($postalCode, $prefix) !== 0) {
+            if (!self::matches($route, $postalCode, $city)) {
                 continue;
             }
-            if ($ruleCity !== '' && $ruleCity !== $city) {
-                continue;
+            $state = GrTransportRouteState::status($route);
+            if ($state === GrTransportRouteState::DRAFT) {
+                continue; // Drafts must not veto a broader available route.
             }
-            if ($prefix === '' && $ruleCity === '') {
-                continue;
-            }
-            $route['_specificity'] = strlen($prefix) * 2 + ($ruleCity !== '' ? 1 : 0);
+            $route['_specificity'] = self::specificity($route);
             $matches[] = $route;
         }
         usort($matches, static function ($a, $b) {
@@ -30,37 +34,91 @@ class GrTransportQuoteEngine
             return $priority ?: ((int) $a['id_route'] <=> (int) $b['id_route']);
         });
         if (!$matches) {
-            return null;
+            foreach ($routes as $route) {
+                if (GrTransportRouteState::status($route) === GrTransportRouteState::DRAFT
+                    && self::matches($route, $postalCode, $city)) {
+                    return self::result('draft_only');
+                }
+            }
+            return self::result('unmatched');
         }
         $winner = $matches[0];
-        // An explicitly suspended precise destination must not fall through
-        // to a broader postal-area price or a different station.
-        if (empty($winner['active'])) {
-            return null;
+        if (GrTransportRouteState::isSuspended($winner)) {
+            return self::result('suspended', (int) ($winner['id_route'] ?? 0));
         }
-        // Equal-priority rules pointing to different destinations cannot be
-        // resolved safely by database insertion order.
         foreach (array_slice($matches, 1) as $candidate) {
             if ($candidate['_specificity'] !== $winner['_specificity']) {
                 break;
             }
-            if (empty($candidate['active'])) {
-                return null;
+            if (GrTransportRouteState::isSuspended($candidate)) {
+                return self::result('suspended', (int) ($candidate['id_route'] ?? 0));
             }
-            if ((string) ($candidate['station_name'] ?? '') !== (string) ($winner['station_name'] ?? '')
-                || (string) ($candidate['mode'] ?? '') !== (string) ($winner['mode'] ?? '')
-                || (float) ($candidate['price'] ?? 0) !== (float) ($winner['price'] ?? 0)
-                || (int) ($candidate['pickup_only'] ?? 1) !== (int) ($winner['pickup_only'] ?? 1)) {
-                return null;
+            // Two equivalent destinations with different warnings or provenance
+            // must NOT silently pick the earlier database row.
+            foreach (['station_name', 'mode', 'price', 'pickup_only', 'demo', 'notice'] as $field) {
+                if ((string) ($candidate[$field] ?? '') !== (string) ($winner[$field] ?? '')) {
+                    return self::result('ambiguous');
+                }
             }
         }
         unset($winner['_specificity']);
-        return $winner;
+        return ['status' => 'quoted', 'quote' => $winner, 'route_id' => (int) ($winner['id_route'] ?? 0)];
+    }
+
+    /**
+     * Warn only where an actual suspended rule can overshadow an available,
+     * less-specific region rule. Reuses the same route matcher and resolver.
+     */
+    public static function shadowedSuspensions(array $routes): array
+    {
+        $blocked = [];
+        foreach ($routes as $specific) {
+            if (!GrTransportRouteState::isSuspended($specific)) {
+                continue;
+            }
+            $postal = (string) ($specific['postal_prefix'] ?? '');
+            $city = (string) ($specific['city'] ?? '');
+            if ($postal === '' && $city === '') {
+                continue;
+            }
+            foreach ($routes as $broader) {
+                if (!GrTransportRouteState::isAvailable($broader)
+                    || self::specificity($broader) >= self::specificity($specific)
+                    || !self::matches($broader, $postal, self::normalize($city))) {
+                    continue;
+                }
+                $resolution = self::resolve([$specific, $broader], $postal, $city);
+                if ($resolution['status'] === 'suspended') {
+                    $blocked[] = ['suspended' => (int) $specific['id_route'], 'fallback' => (int) $broader['id_route']];
+                }
+            }
+        }
+        return $blocked;
+    }
+
+    private static function result(string $status, int $id = 0): array
+    {
+        return ['status' => $status, 'quote' => null, 'route_id' => $id];
+    }
+
+    private static function matches(array $route, string $postal, string $city): bool
+    {
+        $prefix = (string) ($route['postal_prefix'] ?? '');
+        $ruleCity = self::normalize((string) ($route['city'] ?? ''));
+        return !($prefix === '' && $ruleCity === '')
+            && ($prefix === '' || strpos($postal, $prefix) === 0)
+            && ($ruleCity === '' || $ruleCity === $city);
+    }
+
+    private static function specificity(array $route): int
+    {
+        return strlen((string) ($route['postal_prefix'] ?? '')) * 2
+            + (self::normalize((string) ($route['city'] ?? '')) !== '' ? 1 : 0);
     }
 
     private static function normalize(string $text): string
     {
-        $text = trim(preg_replace('/\\s+/u', ' ', $text));
+        $text = trim(preg_replace('/\s+/u', ' ', $text));
         return function_exists('mb_strtolower') ? mb_strtolower($text, 'UTF-8') : strtolower($text);
     }
 }
