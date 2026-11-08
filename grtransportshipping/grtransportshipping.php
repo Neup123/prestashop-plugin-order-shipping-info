@@ -111,7 +111,7 @@ class Grtransportshipping extends CarrierModule
     {
         $order = $params['order'] ?? null;
         $cart = $params['cart'] ?? null;
-        if (!$order || !$cart || (int) $order->id_carrier !== (int) Configuration::get('GRTRANS_CARRIER')) {
+        if (!$order || !$cart || (int) $order->id_carrier !== GrTransportCarrierLifecycle::activeId($this)) {
             return;
         }
         $quote = $this->currentQuote($cart);
@@ -286,7 +286,7 @@ class Grtransportshipping extends CarrierModule
 
     public function getOrderShippingCostExternal($cart)
     {
-        if ((int) $this->id_carrier !== (int) Configuration::get('GRTRANS_CARRIER')) {
+        if (GrTransportCarrierLifecycle::activeId($this) <= 0) {
             return false;
         }
         $resolved = $this->quoteResult($cart);
