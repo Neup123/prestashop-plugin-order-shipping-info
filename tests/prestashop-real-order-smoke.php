@@ -50,35 +50,47 @@ testAssert($product->updateCategories([(int) $product->id_category_default]), 'C
 StockAvailable::setQuantity((int) $product->id, 0, 100);
 testAssert($product->checkAccess((int) $customer->id), 'Customer cannot access physical parcel');
 
-$cart = new Cart();
-$cart->id_customer = (int) $customer->id;
-$cart->secure_key = (string) $customer->secure_key;
-$cart->id_address_delivery = (int) $address->id;
-$cart->id_address_invoice = (int) $address->id;
-$cart->id_currency = (int) Configuration::get('PS_CURRENCY_DEFAULT');
-$cart->id_lang = $idLang;
-$cart->id_carrier = $idCarrier;
-$cart->id_shop = (int) $context->shop->id;
-testAssert($cart->add(), 'Cannot create persisted cart');
-testAssert($cart->updateQty(1, (int) $product->id), 'Cannot put parcel in cart');
-$context->cart = $cart;
-$context->customer = $customer;
-$context->country = new Country($idGr);
-$context->currency = new Currency((int) $cart->id_currency);
-$context->language = new Language($idLang);
-$available = $cart->getDeliveryOptionList($context->country, true);
-$key = null;
-foreach ($available[(int) $address->id] ?? [] as $candidateKey => $entry) {
-    foreach ($entry['carrier_list'] ?? [] as $item) {
-        if ((int) ($item['instance']->id ?? 0) === $idCarrier) {
-            $key = $candidateKey;
-            break 2;
+/**
+ * One fixture path for baseline, voucher, and handling-fee orders. Uses the
+ * real Cart, delivery options and physical product. No mock carrier prices.
+ * Coverage: one Greek address/one physical package; not multi-shipment.
+ */
+function makeCheckoutCart(Customer $customer, Address $address, Product $product,
+    int $carrierId, int $langId, int $countryId, Context $context): Cart
+{
+    $cart = new Cart();
+    $cart->id_customer = (int) $customer->id;
+    $cart->secure_key = (string) $customer->secure_key;
+    $cart->id_address_delivery = (int) $address->id;
+    $cart->id_address_invoice = (int) $address->id;
+    $cart->id_currency = (int) Configuration::get('PS_CURRENCY_DEFAULT');
+    $cart->id_lang = $langId;
+    $cart->id_carrier = $carrierId;
+    $cart->id_shop = (int) $context->shop->id;
+    testAssert($cart->add(), 'Cannot create persisted cart');
+    testAssert($cart->updateQty(1, (int) $product->id), 'Cannot put parcel in cart');
+    $context->cart = $cart;
+    $context->customer = $customer;
+    $context->country = new Country($countryId);
+    $context->currency = new Currency((int) $cart->id_currency);
+    $context->language = new Language($langId);
+    $available = $cart->getDeliveryOptionList($context->country, true);
+    $key = null;
+    foreach ($available[(int) $address->id] ?? [] as $candidateKey => $entry) {
+        foreach ($entry['carrier_list'] ?? [] as $item) {
+            if ((int) ($item['instance']->id ?? 0) === $carrierId) {
+                $key = $candidateKey;
+                break 2;
+            }
         }
     }
+    testAssert(is_string($key), 'Our carrier is not a selectable checkout option');
+    $cart->setDeliveryOption([(int) $address->id => $key]);
+    testAssert($cart->update(), 'Cannot persist delivery selection');
+    return $cart;
 }
-testAssert(is_string($key), 'Our carrier is not a selectable checkout option');
-$cart->setDeliveryOption([(int) $address->id => $key]);
-testAssert($cart->update(), 'Cannot persist delivery selection');
+
+$cart = makeCheckoutCart($customer, $address, $product, $idCarrier, $idLang, $idGr, $context);
 $freight = $cart->getPackageShippingCost($idCarrier, false, $context->country);
 testAssert(is_numeric($freight) && abs((float) $freight - 29.0) < 0.001, 'Incorrect Naxos checkout shipping quote');
 
