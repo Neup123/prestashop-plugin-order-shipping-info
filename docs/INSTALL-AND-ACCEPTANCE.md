@@ -22,3 +22,11 @@ Demo fares are arbitrary estimates. Public transport passenger tickets and depar
 ## Outstanding checks
 
 Automated browser coverage currently uses the CI shop's default front-end theme; Hummingbird-specific browser acceptance and a completed real test-payment order (including customer confirmation/account details) are still outstanding. Full add/delete UI regression and live merchant route/fare verification remain mandatory before production release. Never mistake assumed demo parcel prices for operator freight tariffs.
+
+## Route lifecycle and quote price integrity (0.4.0)
+
+Routes have three explicit states: **Draft** (not quoted and does not prevent a regional fallback), **Available** (normal pricing), and **Suspended** (intentionally blocks broader regional offers). Suspended rows that overshadow available regional rows display an operator warning in the back office; no hidden suspension is created by an ordinary draft. Equal-specificity rules with different station, price, notice, demo flag or pickup policy are treated as ambiguous and are not sold. Confirming a demo rate records the employee and time; changes to a confirmed rate must be re-confirmed.
+
+The same shipping quote is cached for the current request and **pinned for a persisted cart**, keyed by both the address ID and its country/postcode/city fingerprint. The pinned price and station/notice are used for display, charging and order metadata, even if the merchant edits the live tariff between requests. A pinned quote expires after 30 minutes or when delivery-address details change. Current pins cannot be cancelled instantly by a route suspension; operators should account for this short hold when temporarily closing service.
+
+Upgrading from 0.3.x converts legacy active rules to Available and inactive rules to Suspended, preserving the prior veto behavior, while newly created routes default to Draft. The 0.4.0 migration adds verification provenance and persisted cart quote storage. The pure state/quote tests and live Docker checkout cover the new behavior; they do not simulate several simultaneous browser sessions editing the same cart.

@@ -18,8 +18,8 @@ jobs:
           php-version: ${{ matrix.php }}
           tools: php
       - name: Lint PHP
-        run: find grtransportshipping -name '*.php' -print0 | xargs -0 -n1 php -l
+        run: find grtransportshipping tests -name '*.php' -print0 | xargs -0 -n1 php -l
       - name: Quote engine tests
-        run: php tests/quote_test.php && php tests/demo_quotes_test.php
+        run: php tests/quote_test.php && php tests/demo_quotes_test.php && php tests/route_state_test.php
       - name: Validate demo seed format
         run: php tests/seed_test.php

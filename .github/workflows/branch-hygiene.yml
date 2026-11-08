@@ -1,0 +1,32 @@
+name: Remove finished GitHub branches
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
+  pull-requests: read
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            // Repository hygiene only: never remove protected or active PR branches.
+            const { owner, repo } = context.repo;
+            const branches = await github.paginate(github.rest.repos.listBranches, {owner, repo, per_page: 100});
+            const closed = await github.paginate(github.rest.pulls.list, {owner, repo, state: 'closed', per_page: 100});
+            const open = await github.paginate(github.rest.pulls.list, {owner, repo, state: 'open', per_page: 100});
+            const active = new Set(open.filter(pr => pr.head.repo?.full_name === context.repo.owner + '/' + repo).map(pr => pr.head.ref));
+            const finished = new Set(closed.filter(pr => pr.head.repo?.full_name === context.repo.owner + '/' + repo).map(pr => pr.head.ref));
+            for (const branch of branches) {
+              if (branch.name === 'main' || branch.protected || active.has(branch.name) || !finished.has(branch.name)) continue;
+              core.info('Deleting completed or superseded branch: ' + branch.name);
+              try {
+                await github.rest.git.deleteRef({owner, repo, ref: 'heads/' + branch.name});
+              } catch (error) {
+                core.warning('Could not delete ' + branch.name + ': ' + error.message);
+                throw error;
+              }
+            }

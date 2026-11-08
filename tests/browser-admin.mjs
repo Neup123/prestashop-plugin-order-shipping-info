@@ -39,7 +39,7 @@ try {
   await addForm.locator('input[name="postal_prefix"]').fill('99998');
   await addForm.locator('input[name="price"]').fill('6.75');
   await addForm.locator('select[name="pickup_only"]').selectOption('1');
-  await addForm.locator('select[name="active"]').selectOption('1');
+  await addForm.locator('select[name="route_status"]').selectOption('available');
   await addForm.locator('select[name="demo"]').selectOption('1');
   await addForm.locator('textarea[name="notice"]').fill('CI customer collection note');
   await addForm.locator('button[name="grtrans_save"]').click();
