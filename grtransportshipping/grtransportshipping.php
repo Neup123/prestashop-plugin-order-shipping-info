@@ -326,6 +326,10 @@ class Grtransportshipping extends CarrierModule
     public function getContent()
     {
         $out = '';
+        $submitted = null;
+        $fieldErrors = [];
+        $saveError = '';
+        $saveAttempt = Tools::isSubmit('grtrans_save');
         if (Tools::isSubmit('grtrans_save') || Tools::isSubmit('grtrans_delete')
             || Tools::isSubmit('grtrans_repair_order') || Tools::isSubmit('grtrans_repair_carrier')) {
             // PrestaShop 9 uses Symfony masked CSRF tokens: two valid tokens
@@ -348,8 +352,11 @@ class Grtransportshipping extends CarrierModule
                     GrTransportOrderSnapshot::repair($idOrder);
                     $out .= $this->displayConfirmation($this->l('Order pickup snapshot regenerated from its original cart quote.'));
                 } else {
-                    if (Tools::isSubmit('grtrans_save')) {
-                        $this->saveRule();
+                    if ($saveAttempt) {
+                        // This same named-field collection feeds the one repository
+                        // validator and, on failure, the exact form re-render.
+                        $submitted = $this->routeInputValues();
+                        $this->saveRule($submitted);
                     } else {
                         $id = (int) Tools::getValue('id_route');
                         GrTransportRouteRepository::delete($id);
@@ -357,8 +364,21 @@ class Grtransportshipping extends CarrierModule
                     }
                     $out .= $this->displayConfirmation($this->l('Route dataset updated.'));
                 }
+            } catch (GrTransportRouteValidationException $e) {
+                if ($saveAttempt) {
+                    $submitted ??= $this->routeInputValues();
+                    $fieldErrors = $e->fieldErrors();
+                    $saveError = 'Route not saved. Correct the highlighted fields and try again.';
+                } else {
+                    $out .= $this->displayError($this->escape($e->getMessage()));
+                }
             } catch (Exception $e) {
-                $out .= $this->displayError($this->escape($e->getMessage()));
+                if ($saveAttempt) {
+                    $submitted ??= $this->routeInputValues();
+                    $saveError = 'Route not saved: ' . $e->getMessage();
+                } else {
+                    $out .= $this->displayError($this->escape($e->getMessage()));
+                }
             }
         }
         $url = $this->context->link->getAdminLink('AdminModules', true, [], [
@@ -374,7 +394,8 @@ class Grtransportshipping extends CarrierModule
                 . '<form method="post" action="' . $action . '"><input type="hidden" name="token" value="' . $csrf . '">'
                 . '<button name="grtrans_repair_carrier" value="1" class="btn btn-warning">Repair transport carrier</button></form></div>';
         } else {
-            $out .= '<p>Transport carrier ready: #' . (int) $carrierState['id'] . '</p>';
+            $out .= '<div class="alert alert-success" role="status"><strong>Transport carrier ready</strong>'
+                . ' — Carrier #' . (int) $carrierState['id'] . ' is available for matching routes.</div>';
         }
         $rows = Db::getInstance()->executeS('SELECT * FROM `' . _DB_PREFIX_ . 'grtrans_route` ORDER BY id_route ASC') ?: [];
         $warnings = GrTransportQuoteEngine::shadowedSuspensions($rows);
