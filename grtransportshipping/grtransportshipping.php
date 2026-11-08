@@ -551,16 +551,46 @@ class Grtransportshipping extends CarrierModule
         return $out;
     }
 
-    private function saveRule(): void
+    /** One named-field collection shared by saving and failed-save re-rendering. */
+    private function routeInputValues(): array
     {
         $values = [];
         foreach (GrTransportRouteFields::formFields() as $field => $_spec) {
-            if ($field !== 'id_route') {
-                $values[$field] = Tools::getValue($field);
-            }
+            $values[$field] = Tools::getValue($field);
         }
-        GrTransportRouteRepository::save($values, (int) ($this->context->employee->id ?? 0),
-            (int) Tools::getValue('id_route', 0));
+        return $values;
+    }
+
+    /** A stateless, employee-bound edit intent; it never grants edit permission. */
+    private function routeEditProof(int $id): string
+    {
+        return hash_hmac('sha256', 'grtrans-edit:' . $id . ':'
+            . (int) ($this->context->employee->id ?? 0), _COOKIE_KEY_);
+    }
+
+    private function saveRule(array $values): void
+    {
+        // The primary key cannot be supplied from the edit form. Only an
+        // explicitly opened route (GET + signed, employee-bound intent) can
+        // be edited; a submitted replacement ID cannot turn an edit into an
+        // update of a different route, or an unintended insertion.
+        if (array_key_exists('id_route', $_POST)) {
+            throw new InvalidArgumentException('Route ID cannot be changed in the form.');
+        }
+        $rawId = $_GET['grtrans_edit'] ?? null;
+        if ($rawId !== null && (!is_string($rawId) || !ctype_digit($rawId) || (int) $rawId <= 0)) {
+            throw new InvalidArgumentException('Invalid route edit target. Reopen the route from the grid.');
+        }
+        $id = $rawId === null ? 0 : (int) $rawId;
+        if ($id > 0) {
+            $received = $_POST['grtrans_edit_proof'] ?? '';
+            if (!is_string($received) || !hash_equals($this->routeEditProof($id), $received)) {
+                throw new InvalidArgumentException('Route edit target changed. Reopen the correct route from the grid.');
+            }
+        } elseif (isset($_POST['grtrans_edit_proof'])) {
+            throw new InvalidArgumentException('Route edit target missing. Reopen the route from the grid.');
+        }
+        GrTransportRouteRepository::save($values, (int) ($this->context->employee->id ?? 0), $id);
         $this->clearQuoteCache();
     }
 
