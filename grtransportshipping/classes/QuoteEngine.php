@@ -119,9 +119,29 @@ final class GrTransportQuoteEngine
             + (self::normalize((string) ($route['city'] ?? '')) !== '' ? 1 : 0);
     }
 
+    /**
+     * Comparison key only: never overwrite a merchant's stored city spelling.
+     * Greek standard tonos/dialytika and final sigma are equivalent; Latin
+     * city-name comparison retains its existing case/whitespace semantics.
+     * The explicit Greek mapping works even when mbstring/intl are absent
+     * (including the lightweight PHP CI runner).
+     */
     private static function normalize(string $text): string
     {
         $text = trim(preg_replace('/\s+/u', ' ', $text));
-        return function_exists('mb_strtolower') ? mb_strtolower($text, 'UTF-8') : strtolower($text);
+        $text = function_exists('mb_strtolower') ? mb_strtolower($text, 'UTF-8') : strtolower($text);
+        $text = strtr($text, [
+            'Α'=>'α', 'Β'=>'β', 'Γ'=>'γ', 'Δ'=>'δ', 'Ε'=>'ε', 'Ζ'=>'ζ', 'Η'=>'η',
+            'Θ'=>'θ', 'Ι'=>'ι', 'Κ'=>'κ', 'Λ'=>'λ', 'Μ'=>'μ', 'Ν'=>'ν', 'Ξ'=>'ξ',
+            'Ο'=>'ο', 'Π'=>'π', 'Ρ'=>'ρ', 'Σ'=>'σ', 'Τ'=>'τ', 'Υ'=>'υ', 'Φ'=>'φ',
+            'Χ'=>'χ', 'Ψ'=>'ψ', 'Ω'=>'ω',
+            'ά'=>'α', 'έ'=>'ε', 'ή'=>'η', 'ί'=>'ι', 'ό'=>'ο', 'ύ'=>'υ', 'ώ'=>'ω',
+            'ϊ'=>'ι', 'ϋ'=>'υ', 'ΐ'=>'ι', 'ΰ'=>'υ', 'ς'=>'σ',
+            'Ά'=>'α', 'Έ'=>'ε', 'Ή'=>'η', 'Ί'=>'ι', 'Ό'=>'ο', 'Ύ'=>'υ', 'Ώ'=>'ω',
+            'Ϊ'=>'ι', 'Ϋ'=>'υ',
+        ]);
+        // Handle decomposed Greek vowels (base letter + combining tonos or
+        // dialytika) without stripping unrelated Latin combining marks.
+        return preg_replace('/(?<=\\p{Greek})\\p{Mn}+/u', '', $text);
     }
 }
