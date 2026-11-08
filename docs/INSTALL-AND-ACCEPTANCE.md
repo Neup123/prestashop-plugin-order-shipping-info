@@ -78,3 +78,22 @@ On a PrestaShop order **with an existing stored pickup snapshot**, **Regenerate 
 For an order **missing** its pickup snapshot, **Repair missing pickup snapshot** deliberately remains one-click: it creates the missing data rather than overwriting an existing historical record. Both confirmed regeneration and missing-snapshot repair still use the original PrestaShop admin CSRF token, the existing `grtrans_repair_order` POST handler and the one source-verified `GrTransportOrderSnapshot::repair()` writer. No change is made to snapshot content, its validity checks, or its audit log.
 
 **Acceptance coverage:** The real PrestaShop 9.2.1 pending-payment order smoke checks that the stored-order form contains the overwrite warning and confirmation, while the missing-order form does not. In the disposable shop, Chromium loads the actual admin order page, dismisses the confirmation and verifies **no repair POST**, then accepts it and verifies **one POST and a successful regeneration message**. It does not block deliberately crafted HTTP requests from an authorized administrator, and it does not replace CSRF protections or test non-JavaScript browser settings. No production order is touched.
+
+## Checkout no-quote visibility (issue #44; module 0.5.1)
+
+**Checkout contract — actual Shipping Method step in the default Hummingbird theme:** PrestaShop hides a carrier when its external price callback returns `false`; `displayCarrierExtraContent` is therefore not a viable place for the reason. We subscribe to core `displayBeforeCarrier` instead, rendered by `CheckoutDeliveryStep` independently of the delivery-option list. When a delivery address exists and no Greek transport quote is available, this hook shows a styled informational alert above the remaining shipping choices, explaining **why Greek public transport is unavailable**. The ordinary shipping choices, carrier eligibility and route rejection semantics are unchanged. A matched address shows no no-quote alert and retains the existing station-pickup/demo disclosure attached to its carrier option.
+
+| Cart/address result | Carrier and checkout rendering |
+|---|---|
+| Matched and priced | Greek transport option appears; selecting it shows the station, pickup-only condition and demo estimate notice through `displayCarrierExtraContent`. No unavailable alert. |
+| Greek destination with no matching price | Greek transport option is absent; `displayBeforeCarrier` shows **No priced transport route matches this destination.** |
+| Only matching Draft route | No transport offer; independent alert explains Draft is not for sale (without blocking any available regional route). |
+| Matching Suspended route | No transport offer; independent alert explains the suspension prevents broader regional fallback. |
+| Equally specific conflicting routes | No transport offer; independent alert explains that the merchant must resolve ambiguous routes. |
+| Non-Greek delivery country | No transport offer; delivery-step alert says service is in Greece only. |
+| Invalid but nonzero address ID | No transport offer; delivery-step alert says the address could not be loaded. |
+| No delivery address chosen | No transport offer and no route-specific warning while the buyer is still entering an address. |
+
+All reasons derive from the existing route matcher and `quoteResult()` and are mapped to copy once in the module. The quote, order charge, and delivery-option rejection paths are not forked to serve the UI. Existing installations register the new hook through the idempotent `upgrade-0.5.1.php`; clean installs register it during installation.
+
+**Acceptance evidence/limits:** A real PrestaShop 9.2.1 cart-quote integration check confirms matched-address silence and unmatched-address alert markup. The Hummingbird Chromium checkout test verifies the **visible** matched pickup notice, switches the selected Greek delivery address from priced Naxos (84300) to unmatched 99999, asserts a **visible styled alert in the Shipping Method step**, verifies the transport option is absent, and reloads the unmatched checkout to confirm the warning persists. This is actual DOM visibility/computed styling, not a hook-output-only test. Other shop themes, mobile layout, multishipping, and direct HTTP requests are not covered by this browser acceptance.
