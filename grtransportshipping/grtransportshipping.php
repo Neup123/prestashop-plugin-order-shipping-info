@@ -149,7 +149,21 @@ class Grtransportshipping extends CarrierModule
         $url = $this->context->link->getAdminLink('AdminModules', true, [], [
             'configure' => $this->name, 'module_name' => $this->name,
         ]);
-        $repairForm = '<form method="post" action="' . $this->escape($url) . '">'
+        // Regeneration overwrites persisted order history: confirm the
+        // consequence before submitting, including keyboard/Enter submits.
+        // Missing-snapshot repair creates a record and deliberately needs no
+        // extra confirmation. Both POSTs retain the existing token and writer.
+        $confirmRegeneration = '';
+        if ($info) {
+            $warning = sprintf(
+                $this->l('Regenerate pickup details for order #%d? This will overwrite the saved historical pickup snapshot with the original checkout quote. Continue?'),
+                $id
+            );
+            $confirmRegeneration = ' onsubmit="return confirm(' . $this->escape(json_encode(
+                $warning, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT
+            )) . ')"';
+        }
+        $repairForm = '<form method="post" action="' . $this->escape($url) . '"' . $confirmRegeneration . '>'
             . '<input type="hidden" name="token" value="' . $this->escape(Tools::getAdminTokenLite('AdminModules')) . '">'
             . '<button class="btn btn-warning" type="submit" name="grtrans_repair_order" value="' . $id . '">'
             . ($info ? 'Regenerate original pickup snapshot' : 'Repair missing pickup snapshot') . '</button></form>';

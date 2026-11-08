@@ -41,6 +41,16 @@ jobs:
           done
           [ "${EMPLOYEES:-0}" -gt 0 ]
           docker compose -f tests/compose.yml exec -T -u www-data prestashop php /tmp/admin-url.php > /tmp/grtrans-admin-url
+      - name: Create an actual pending-payment order for admin order-confirmation browser acceptance
+        run: |
+          set -euo pipefail
+          # Reuse the existing 9.2.1 native PaymentModule order/snapshot
+          # smoke, not a second fake Order or a duplicate cart fixture.
+          docker compose -f tests/compose.yml exec -T -u www-data prestashop php /tmp/prestashop-real-order-smoke.php
+          docker compose -f tests/compose.yml exec -T mysql mariadb -N -uroot -pci_demo_password prestashop \
+            -e "SELECT id_order FROM ps_grtrans_order ORDER BY id_order DESC LIMIT 1" \
+            | tr -d '\r' > /tmp/grtrans-browser-order-id
+          grep -Eq '^[1-9][0-9]*$' /tmp/grtrans-browser-order-id
       - name: Setup Playwright Chromium
         run: |
           npm install --no-save playwright@1.56.1
@@ -50,7 +60,7 @@ jobs:
           TEST_ADMIN_EMAIL: ci@example.invalid
           TEST_ADMIN_PASSWORD: OnlyForEphemeralCI123!
         run: |
-          ADMIN_URL="$(cat /tmp/grtrans-admin-url)" node tests/browser-admin.mjs
+          ADMIN_URL="$(cat /tmp/grtrans-admin-url)" TEST_ORDER_ID="$(cat /tmp/grtrans-browser-order-id)" node tests/browser-admin.mjs
       - name: Prepare disposable Greek checkout
         env:
           TEST_CUSTOMER_PASSWORD: BrowserOnlyCiPassword123
