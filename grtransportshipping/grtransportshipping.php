@@ -23,13 +23,28 @@ class Grtransportshipping extends CarrierModule
         'mode' => 'Mode: ',
     ];
 
+    /**
+     * The same no-quote reason names are derived by QuoteEngine::resolve().
+     * A carrier with no offer is excluded from the delivery-option list, so
+     * these reasons render in the independent displayBeforeCarrier hook.
+     */
+    private const NO_QUOTE_TEXT = [
+        'missing_address' => 'Enter a delivery address to obtain a transport quote.',
+        'invalid_address' => 'The delivery address could not be loaded.',
+        'outside_greece' => 'Transport service is available in Greece only.',
+        'unmatched' => 'No priced transport route matches this destination.',
+        'draft_only' => 'The matching transport route is a draft and is not for sale.',
+        'suspended' => 'This destination is suspended; broader regional prices are not applied.',
+        'ambiguous' => 'Conflicting transport routes require an administrator to resolve them.',
+    ];
+
     private array $requestQuotes = [];
 
     public function __construct()
     {
         $this->name = 'grtransportshipping';
         $this->tab = 'shipping_logistics';
-        $this->version = '0.5.0';
+        $this->version = '0.5.1';
         $this->author = 'Neup123';
         $this->need_instance = 0;
         $this->bootstrap = true;
@@ -63,6 +78,7 @@ class Grtransportshipping extends CarrierModule
             return false;
         }
         return $this->registerHook('actionCarrierUpdate')
+            && $this->registerHook('displayBeforeCarrier')
             && $this->registerHook('displayCarrierExtraContent')
             && $this->registerHook('actionValidateOrder')
             && $this->registerHook('displayAdminOrder')
@@ -312,24 +328,39 @@ class Grtransportshipping extends CarrierModule
             : GrTransportOrderCharge::expectedShipping($resolved['quote']);
     }
 
+    /**
+     * PrestaShop 9 CheckoutDeliveryStep renders displayBeforeCarrier in the
+     * Shipping Method step independently of any priced carrier options.
+     * This is the visible no-quote surface when getOrderShippingCost is false.
+     * Read the exact checkout cart supplied by the hook; never infer it from
+     * the previous selected carrier or from a stale address.
+     */
+    public function hookDisplayBeforeCarrier($params)
+    {
+        $cart = $params['cart'] ?? null;
+        if (!$cart || !(int) ($cart->id_address_delivery ?? 0)
+            || GrTransportCarrierLifecycle::activeId($this) <= 0) {
+            return '';
+        }
+        $result = $this->quoteResult($cart);
+        if ($result['status'] === 'quoted') {
+            return ''; // The normal carrier-specific pickup notice owns this state.
+        }
+        $message = self::NO_QUOTE_TEXT[$result['status']]
+            ?? 'The transport quote is temporarily unavailable.';
+        return '<div class="alert alert-info grtransport-no-quote" role="status">'
+            . '<strong>' . $this->escape($this->l('Greek public transport shipping is unavailable for this address.'))
+            . '</strong> ' . $this->escape($this->l($message)) . '</div>';
+    }
+
     public function hookDisplayCarrierExtraContent($params)
     {
-        $resolved = $this->quoteResult($this->context->cart);
-        $quote = $resolved['quote'];
-        if (!$quote) {
-            $messages = [
-                'missing_address' => 'Enter a delivery address to obtain a transport quote.',
-                'invalid_address' => 'The delivery address could not be loaded.',
-                'outside_greece' => 'Transport service is available in Greece only.',
-                'unmatched' => 'No priced transport route matches this destination.',
-                'draft_only' => 'The matching transport route is a draft and is not for sale.',
-                'suspended' => 'This destination is suspended; broader regional prices are not applied.',
-                'ambiguous' => 'Conflicting transport routes require an administrator to resolve them.',
-            ];
-            $message = $messages[$resolved['status']] ?? 'The transport quote is temporarily unavailable.';
-            return '<p>' . $this->escape($this->l($message)) . '</p>';
-        }
-        return $this->renderNotice($quote, 'checkout');
+        // Extra content only exists for carriers present in delivery_options.
+        // Return nothing when this carrier is excluded; the independent
+        // displayBeforeCarrier hook explains why at the checkout step.
+        $result = $this->quoteResult($this->context->cart);
+        return $result['status'] === 'quoted'
+            ? $this->renderNotice($result['quote'], 'checkout') : '';
     }
 
     private function escape($value): string

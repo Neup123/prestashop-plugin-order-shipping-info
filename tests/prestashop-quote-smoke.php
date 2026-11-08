@@ -67,10 +67,15 @@ foreach ($cases as $case) {
     $cart->id_shop = (int) Context::getContext()->shop->id;
     // The shipping module reads the address directly; no persisted cart is needed for this quote check.
     $actual = $module->getOrderShippingCostExternal($cart);
+    $preCarrier = $module->hookDisplayBeforeCarrier(['cart' => $cart]);
     if ($case[2] === false) {
         testAssert($actual === false, 'Unexpected available quote for ' . $case[1]);
+        testAssert(str_contains($preCarrier, 'alert alert-info grtransport-no-quote')
+            && str_contains($preCarrier, 'No priced transport route matches this destination'),
+            'Unmatched Greek address must explain missing route using independent hook');
     } else {
         testAssert(is_numeric($actual) && abs((float) $actual - $case[2]) < 0.001, 'Wrong quote for ' . $case[1]);
+        testAssert($preCarrier === '', 'Matched Greek address must not show no-quote explanation');
     }
     $address->delete();
 }
