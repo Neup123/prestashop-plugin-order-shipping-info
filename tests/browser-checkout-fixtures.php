@@ -29,6 +29,18 @@ $address->id_country = (int) Country::getByIso('GR');
 if (!$address->add()) {
     throw new RuntimeException('Could not create disposable Greek address');
 }
+$unmatched = new Address();
+$unmatched->id_customer = (int) $customer->id;
+$unmatched->alias = 'CI unmatched Greek address';
+$unmatched->firstname = 'CI';
+$unmatched->lastname = 'Buyer';
+$unmatched->address1 = 'No route street 2';
+$unmatched->postcode = '99999';
+$unmatched->city = 'CI Unmatched';
+$unmatched->id_country = (int) Country::getByIso('GR');
+if (!$unmatched->add()) {
+    throw new RuntimeException('Could not create unmatched Greek shipping address');
+}
 $product = new Product();
 $product->name = [$idLang => 'CI physical parcel'];
 $product->link_rewrite = [$idLang => 'ci-physical-parcel'];
@@ -55,4 +67,6 @@ echo json_encode([
     'product_url' => $context->link->getProductLink($product),
     'login_url' => 'http://localhost:8080/index.php?controller=authentication',
     'checkout_url' => 'http://localhost:8080/index.php?controller=order',
+    'matched_address_id' => (int) $address->id,
+    'unmatched_address_id' => (int) $unmatched->id,
 ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
