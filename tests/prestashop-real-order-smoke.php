@@ -313,6 +313,59 @@ try {
         'Historical repair must preserve pinned base rate');
     echo 'PASS historical repair after handling settings changed' . PHP_EOL;
 
+    // #47 — Native-order acceptance over an expired persisted cart pin.
+    // Advance only the database timestamp (no sleeping/mock clock). Reuse
+    // the real physical cart, payment module and order validator fixture.
+    $ttlRoute = GrTransportRouteRepository::find((int) $routeId);
+    testAssert(is_array($ttlRoute) && (float) $ttlRoute['price'] === 29.0,
+        'Cannot find authoritative Naxos route for expiry order scenario');
+    try {
+        $ttlCart = makeCheckoutCart($customer, $address, $product,
+            $idCarrier, $idLang, $idGr, $context);
+        testAssert(abs((float)$ttlCart->getPackageShippingCost($idCarrier, false, $context->country) - 29.0) < 0.001,
+            'Initial checkout must pin EUR 29');
+        $ttlId = (int) $ttlCart->id;
+        $ttlRow = Db::getInstance()->getRow('SELECT * FROM ' . _DB_PREFIX_
+            . 'grtrans_cart_quote WHERE id_cart = ' . $ttlId);
+        $oldQuote = json_decode((string) ($ttlRow['quote_data'] ?? ''), true);
+        testAssert(is_array($oldQuote) && (float) $oldQuote['price'] === 29.0,
+            'Initial order cart must pin original EUR 29');
+        GrTransportRouteRepository::save(array_replace($ttlRoute, ['price'=>39.0]),
+            0, (int) $ttlRoute['id_route']);
+        testAssert(abs((float)(new Grtransportshipping())->getOrderShippingCostExternal($ttlCart) - 29.0) < 0.001,
+            'Unexpired pin must continue to hold original EUR 29');
+        $staleAt = gmdate('Y-m-d H:i:s', time() - GrTransportCartQuote::TTL_SECONDS - 60);
+        testAssert(Db::getInstance()->update('grtrans_cart_quote',
+            ['created_at' => $staleAt], 'id_cart = ' . $ttlId),
+            'Could not expire initial order cart quote');
+        testAssert(abs((float)(new Grtransportshipping())->getOrderShippingCostExternal($ttlCart) - 39.0) < 0.001,
+            'Expired pin must reflect current EUR 39 route, not historical EUR 29');
+        $newRow = Db::getInstance()->getRow('SELECT * FROM ' . _DB_PREFIX_
+            . 'grtrans_cart_quote WHERE id_cart = ' . $ttlId);
+        $newQuote = json_decode((string) ($newRow['quote_data'] ?? ''), true);
+        testAssert(is_array($newQuote) && (float) $newQuote['price'] === 39.0
+            && ($newRow['quote_status'] ?? '') === GrTransportCartQuote::PINNED
+            && ($newRow['created_at'] ?? '') > $staleAt,
+            'Expired quote must be re-pinned with current fare and fresh timestamp');
+        // Native PaymentModule and Cart keep request-local shipping totals.
+        // A 30-minute-later checkout is a NEW PHP request; validate the
+        // just-refreshed EUR 39 pin in a clean subprocess, using this SAME
+        // persisted cart, payment module and real PrestaShop order lifecycle.
+        $childOutput = [];
+        $childExit = 1;
+        exec('php /tmp/prestashop-ttl-order-validation.php ' . $ttlId . ' 2>&1',
+            $childOutput, $childExit);
+        $childResult = implode(PHP_EOL, $childOutput);
+        echo $childResult . PHP_EOL;
+        testAssert($childExit === 0
+            && str_contains($childResult, 'PASS #47 fresh-process native order'),
+            'Real post-expiry order validation in independent request failed: ' . $childResult);
+    } finally {
+        GrTransportRouteRepository::save($ttlRoute, 0, (int) $ttlRoute['id_route']);
+        Cache::clean('getPackageShippingCost_*');
+    }
+
+
     // CI-only invalid order totals: the actual validation hook must reject
     // unrelated differences and record a clear PrestaShop error log.
     $moduleGuard = Module::getInstanceByName('grtransportshipping');

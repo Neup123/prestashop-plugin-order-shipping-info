@@ -71,4 +71,26 @@ try {
 } catch (GrTransportRouteValidationException $e) {
     testAssert(isset($e->fieldErrors()['route_status']), 'Route state error must name its input field');
 }
+
+// #46: Same production normalizer accepts Greek decimal commas and dot
+// decimals, stores a number, and rejects malformed/empty/boundary inputs.
+foreach (['12,50', '12.50', '12,5', '12.5'] as $inputPrice) {
+    $normal = GrTransportRouteRepository::prepare(array_replace($sample[0], ['price'=>$inputPrice]));
+    testAssert((float)$normal['price'] === 12.5,
+        'Price must normalize to 12.50: ' . $inputPrice);
+}
+testAssert((float)GrTransportRouteRepository::prepare(
+    array_replace($sample[0], ['price'=>'100000'])
+)['price'] === 100000.0, 'Upper positive EUR price boundary must be accepted');
+foreach (['', '0', '-1', '100000.01', '100001', '12,5,0', '12.5.0', '12,5.0', 'invalid', '1,foo'] as $invalidPrice) {
+    $priceError = null;
+    try {
+        GrTransportRouteRepository::prepare(array_replace($sample[0], ['price'=>$invalidPrice]));
+    } catch (GrTransportRouteValidationException $e) {
+        $priceError = $e->fieldErrors()['price'] ?? null;
+    }
+    testAssert(is_string($priceError) && str_contains($priceError, 'Transport price EUR'),
+        'Bad fare must fail with named route-price error: ' . var_export($invalidPrice,true));
+}
+
 echo "Route field schema/form/validation contract passed\n";

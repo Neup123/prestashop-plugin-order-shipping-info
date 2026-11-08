@@ -88,6 +88,30 @@ try {
   await reloadedAlert.waitFor({state:'visible',timeout:25000});
   assert.match(await reloadedAlert.innerText(), /No priced transport route matches this destination/);
   console.log('LIVE UNMATCHED RELOAD: no-quote message persists in freshly rendered checkout');
+
+  // #45: Real Hummingbird customer checkout on a postcode that matches NO
+  // seeded prefix. Only a city-named route for stored "Νάξος" is available.
+  // Customer address "Ναξος" must restore the carrier and show station text.
+  await deliveryStep.locator('button.js-back[data-step="checkout-addresses-step"]').click();
+  await addressStep.waitFor({state:'visible',timeout:20000});
+  await addressStep.locator(
+    'input[name="id_address_delivery"][value="' + fixture.city_only_address_id + '"]'
+  ).check();
+  await addressStep.locator('button[name="confirm-addresses"]').click();
+  await page.waitForLoadState('domcontentloaded');
+  const cityOnlyCarrier = deliveryStep.locator('.delivery-option__item').filter({
+    hasText: 'Greek transport — station pickup',
+  });
+  await cityOnlyCarrier.waitFor({state:'visible',timeout:20000});
+  await cityOnlyCarrier.locator('input[type="radio"]').check();
+  await page.waitForTimeout(250);
+  assert.ok(await cityOnlyCarrier.getByText('CI Naxos city station').isVisible(),
+    'Unaccented Ναξος must select named city-only Νάξος route in customer checkout');
+  assert.match(await cityOnlyCarrier.innerText(), /12[.,]50/,
+    'Customer must see city-only EUR 12.50 quote');
+  assert.equal(await deliveryStep.locator('.grtransport-no-quote:visible').count(), 0);
+  console.log('LIVE GREEK CITY: stored Νάξος city-only route offered for customer Ναξος with 99997 postcode, EUR 12.50 visible');
+
 } catch (error) {
   console.error('Checkout browser acceptance failed:',error);
   console.error('Current URL path:',new URL(page.url()).pathname);

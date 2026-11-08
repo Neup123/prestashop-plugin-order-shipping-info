@@ -160,6 +160,42 @@ try {
     Context::getContext()->cart = $pinnedCart;
     testAssert(str_contains($newRequestModule->hookDisplayCarrierExtraContent([]), 'Naxos Port'),
         'Pinned checkout notice must show original station');
+
+    // #47 deterministic TTL: age the persisted pin in the database, never
+    // sleep or mock time. A separate module instance models the next HTTP
+    // request, when the request-local quote cache starts empty.
+    $quoteTable = 'grtrans_cart_quote';
+    $pinId = (int) $pinnedCart->id;
+    $oldCreatedAt = gmdate('Y-m-d H:i:s', time() - GrTransportCartQuote::TTL_SECONDS - 60);
+    testAssert($db->update($quoteTable, ['created_at' => $oldCreatedAt],
+        'id_cart = ' . $pinId), 'Cannot age original pinned quote for TTL test');
+    $historical = GrTransportCartQuote::forOrder($pinId, (int) $lockAddress->id);
+    testAssert(is_array($historical) && (float) $historical['price'] === 29.0,
+        'Historical order repair may still read original expired quote');
+    $fresh = new Grtransportshipping();
+    testAssert(abs((float) $fresh->getOrderShippingCostExternal($pinnedCart) - 99.0) < 0.001,
+        'Expired quote must use current route price 99, not stale pin 29');
+    $repinnedRow = $db->getRow('SELECT * FROM `' . _DB_PREFIX_ . 'grtrans_cart_quote` WHERE id_cart = ' . $pinId);
+    $repinned = json_decode((string) ($repinnedRow['quote_data'] ?? ''), true);
+    testAssert(is_array($repinned) && (float) $repinned['price'] === 99.0
+        && ($repinnedRow['quote_status'] ?? '') === GrTransportCartQuote::PINNED
+        && ($repinnedRow['created_at'] ?? '') > $oldCreatedAt,
+        'Expired quote must be RE-PINNED with current price and fresh creation time');
+
+    // A newer route SUSPENSION also must replace an expired quote with a
+    // genuine no-quote result; a previously pinned fare cannot bypass veto.
+    testAssert($db->update($quoteTable, ['created_at' => $oldCreatedAt],
+        'id_cart = ' . $pinId), 'Cannot age refreshed quote for suspension test');
+    GrTransportRouteRepository::save(array_replace($naxosRoute, [
+        'route_status' => GrTransportRouteState::SUSPENDED,
+    ]), 0, (int) $naxosRoute['id_route']);
+    $blocked = new Grtransportshipping();
+    testAssert($blocked->getOrderShippingCostExternal($pinnedCart) === false,
+        'Expired pin must not bypass newly suspended destination');
+    GrTransportRouteRepository::save(array_replace($naxosRoute, ['price' => 99]), 0,
+        (int) $naxosRoute['id_route']);
+    echo "PASS #47 TTL expiry: retained during hold, expired re-quote EUR 99 re-pinned, suspension after expiry blocked\n";
+
     $lockAddress->postcode = '84100';
     $lockAddress->city = 'Ερμούπολη';
     testAssert($lockAddress->update(), 'Could not change address on cart');
@@ -172,4 +208,62 @@ try {
     $pinnedCart->delete();
     $lockAddress->delete();
 }
+
+// #45: Real Greek Addresses + named route writer (not a fake matcher)
+// cover the city-only path with deliberately nonmatching postcode 99997.
+// These rows are temporary; persisted route spelling must stay untouched.
+$greekCityIds = [];
+$cityAddress = new Address();
+$cityAddress->id_customer = $idCustomer;
+$cityAddress->alias = 'CI city-only comparison';
+$cityAddress->firstname = 'CI';
+$cityAddress->lastname = 'Greek';
+$cityAddress->address1 = 'CI test street 1';
+$cityAddress->postcode = '99997';
+$cityAddress->city = 'Νάξος';
+$cityAddress->id_country = $idGr;
+try {
+    testAssert($cityAddress->add(), 'Cannot create real city-only Greek Address');
+    $cityCart = new Cart();
+    $cityCart->id_address_delivery = (int) $cityAddress->id;
+    $cityCart->id_carrier = $carrierId;
+    $cityCart->id_currency = (int) Configuration::get('PS_CURRENCY_DEFAULT');
+    foreach ([
+        ['route'=>'Νάξος', 'price'=>12.50, 'variants'=>['Νάξος','Ναξος','ΝΑΞΟΣ','Νάξοσ']],
+        ['route'=>'Χαϊδάρι', 'price'=>18.00, 'variants'=>['Χαϊδάρι','Χαιδαρι','ΧΑΪΔΑΡΙ']],
+        ['route'=>'Κως', 'price'=>22.00, 'variants'=>['Κως','Κωσ','ΚΩΣ']],
+    ] as $case) {
+        $cityId = GrTransportRouteRepository::save([
+            'mode'=>'bus', 'origin_name'=>'Athens',
+            'station_name'=>'CI city-only station', 'city'=>$case['route'],
+            'postal_prefix'=>'', 'price'=>$case['price'],
+            'pickup_only'=>1, 'route_status'=>GrTransportRouteState::AVAILABLE,
+            'demo'=>1, 'notice'=>'CI Greek city match',
+        ]);
+        $greekCityIds[] = $cityId;
+        testAssert(GrTransportRouteRepository::find($cityId)['city'] === $case['route'],
+            'City comparison must not alter stored route spelling');
+        foreach ($case['variants'] as $typedCity) {
+            $cityAddress->city = $typedCity;
+            testAssert($cityAddress->update(), 'Cannot persist Greek customer city variant: ' . $typedCity);
+            $freshCityModule = new Grtransportshipping();
+            $quote = $freshCityModule->getOrderShippingCostExternal($cityCart);
+            testAssert(is_numeric($quote) && abs((float)$quote - (float)$case['price']) < 0.001,
+                'Real Greek delivery Address did not quote city-only ' . $typedCity);
+        }
+    }
+    $cityAddress->city = 'Λάρισα';
+    testAssert($cityAddress->update(), 'Cannot persist genuinely unknown city');
+    testAssert((new Grtransportshipping())->getOrderShippingCostExternal($cityCart) === false,
+        'Real Greek Address for unrelated city must fail closed');
+    echo "PASS #45 actual Greek Addresses: accented, unaccented, all-caps and final-sigma city-only routes, unrelated city denied\n";
+} finally {
+    foreach ($greekCityIds as $cityId) {
+        GrTransportRouteRepository::delete($cityId);
+    }
+    if ((int)$cityAddress->id > 0) {
+        $cityAddress->delete();
+    }
+}
+
 echo "Real PrestaShop cart, Greek address, carrier visibility and quote smoke checks passed\n";

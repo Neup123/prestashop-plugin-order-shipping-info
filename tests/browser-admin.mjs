@@ -105,13 +105,26 @@ try {
     'Patras KTEL station', 'Failed validation must not update existing route');
   console.log('LIVE FAILED EDIT: preserved station blank, prefix 12A, origin and fare; two named errors and in-view alert');
 
-  // Correct and save the original route with the normal editor.
+  // #46: On the actual PrestaShop BO editor a malformed comma amount
+  // must show a field-named error, while a genuine decimal comma is saved
+  // to the same numeric EUR field (no browser-side conversion shortcut).
   await form.locator('input[name="station_name"]').fill('Patras KTEL station');
   await form.locator('input[name="postal_prefix"]').fill('262');
-  await form.locator('input[name="price"]').fill('16.25');
+  await form.locator('input[name="price"]').fill('12,5,0');
+  await form.locator('button[name="grtrans_save"]').click();
+  await page.getByText('Route not saved.', {exact:false}).first().waitFor({timeout:20000});
+  form = page.locator('form').filter({has:page.locator('button[name="grtrans_save"]')}).first();
+  assert.match(await page.locator('#grtrans-form-errors').innerText(), /Transport price EUR/);
+  assert.equal(await form.locator('input[name="price"]').inputValue(), '12,5,0');
+  assert.equal(await form.locator('input[name="price"]').getAttribute('aria-invalid'), 'true');
+  console.log('LIVE PRICE INVALID: double-comma fare rejected with named field and typed value retained');
+
+  // Correct and save the original route using the European decimal comma.
+  await form.locator('input[name="price"]').fill('16,25');
   await form.locator('button[name="grtrans_save"]').click();
   await page.getByText('Route dataset updated', {exact:false}).first().waitFor({timeout:20000});
   assert.match((await grid.locator('tbody tr').first().innerText()), /16\.25/);
+  console.log('LIVE PRICE COMMA: admin saved 16,25 as numeric 16.25 on real route');
   assert.equal((await grid.locator('tbody tr').first().locator('td').nth(9).innerText()).trim(),
     'Unverified estimate', 'Editing a demo fare must not mark it operator-confirmed');
 
