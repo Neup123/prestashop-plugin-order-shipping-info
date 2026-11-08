@@ -67,7 +67,7 @@ class Grtransportshipping extends CarrierModule
             `postal_prefix` VARCHAR(5) NOT NULL,
             `price` DECIMAL(12,2) NOT NULL,
             `pickup_only` TINYINT(1) NOT NULL DEFAULT 1,
-            `route_status` VARCHAR(12) NOT NULL DEFAULT 'draft',
+            `route_status` VARCHAR(12) NOT NULL DEFAULT \'draft\',
             `demo` TINYINT(1) NOT NULL DEFAULT 0,
             `verified_at` DATETIME NULL,
             `verified_by_employee` INT NULL,
@@ -382,8 +382,7 @@ class Grtransportshipping extends CarrierModule
             $out .= '<div class="alert alert-warning">Suspended route #' . (int) $warning['suspended']
                 . ' shadows available regional route #' . (int) $warning['fallback'] . '; no fallback price will be offered.</div>';
         }
-        $out .= 
-            . '<table class="table"><thead><tr><th>ID</th><th>Mode</th><th>From</th><th>Pickup station</th><th>City</th><th>Postcode prefix</th><th>EUR</th><th>Pickup only</th><th>Active</th><th>Demo</th><th>Actions</th></tr></thead><tbody>';
+        $out .= '<table class="table"><thead><tr><th>ID</th><th>Mode</th><th>From</th><th>Pickup station</th><th>City</th><th>Postcode prefix</th><th>EUR</th><th>Pickup only</th><th>State</th><th>Demo</th><th>Actions</th></tr></thead><tbody>';
         foreach ($rows as $r) {
             $out .= '<tr>';
             foreach (['id_route','mode','origin_name','station_name','city','postal_prefix','price','pickup_only','route_status','demo'] as $key) {
