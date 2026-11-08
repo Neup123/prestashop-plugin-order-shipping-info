@@ -347,7 +347,21 @@ try {
             && ($newRow['quote_status'] ?? '') === GrTransportCartQuote::PINNED
             && ($newRow['created_at'] ?? '') > $staleAt,
             'Expired quote must be re-pinned with current fare and fresh timestamp');
+        // This CLI smoke advanced time within one PHP process. A real
+        // 30-minute-later checkout has a new HTTP request, new Cart object
+        // and empty request-local module/cart shipping caches. Reproduce
+        // those request boundaries before invoking native order validation.
+        $ttlCart = new Cart($ttlId);
+        testAssert(Validate::isLoadedObject($ttlCart), 'Cannot reload post-expiry checkout Cart');
+        $context->cart = $ttlCart;
+        $context->customer = $customer;
+        $context->country = new Country($idGr);
+        $context->currency = new Currency((int)$ttlCart->id_currency);
+        $context->language = new Language($idLang);
+        Module::getInstanceByName('grtransportshipping')->clearQuoteCache();
         Cache::clean('getPackageShippingCost_*');
+        testAssert(abs((float)$ttlCart->getPackageShippingCost($idCarrier, false, $context->country) - 39.0) < 0.001,
+            'Fresh checkout request must compute current EUR 39 shipping after expiry');
         $ttlOrder = $placeAdjusted($ttlCart, 'expired quote with current route');
         $ttlSnapshot = GrTransportOrderSnapshot::find((int)$ttlOrder->id);
         echo 'CI #47 native order details: order_id=' . (int)$ttlOrder->id
