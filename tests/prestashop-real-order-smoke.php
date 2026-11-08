@@ -243,7 +243,19 @@ try {
     $rule->active = 1;
     testAssert($rule->add(), 'Cannot create core free-shipping cart rule');
     testAssert($voucherCart->addCartRule((int) $rule->id), 'Cannot apply core free-shipping cart rule');
+    $ruleContextRows = $voucherCart->getCartRules(CartRule::FILTER_ACTION_ALL, false);
+    echo 'CI voucher cart diagnostics: ids='
+        . json_encode(array_map(static function ($r) {
+            return ['id' => $r['id_cart_rule'] ?? null, 'free' => $r['free_shipping'] ?? null];
+        }, $ruleContextRows ?: []))
+        . ', shipping=' . $voucherCart->getOrderTotal(false, Cart::ONLY_SHIPPING)
+        . ', discounts=' . $voucherCart->getOrderTotal(false, Cart::ONLY_DISCOUNTS)
+        . ', validity=' . var_export($rule->checkValidity($context, true, false), true) . PHP_EOL;
     $voucherOrder = $placeAdjusted($voucherCart, 'free voucher');
+    echo 'CI voucher order diagnostics: order_rules='
+        . json_encode($voucherOrder->getCartRules() ?: [])
+        . ', shipping=' . $voucherOrder->total_shipping_tax_excl
+        . ', discounts=' . $voucherOrder->total_discounts_tax_excl . PHP_EOL;
     testAssert(GrTransportOrderCharge::hasAppliedFreeShipping((int) $voucherOrder->id),
         'Voucher was not actually applied to PrestaShop order');
     $voucherCharged = (float) $voucherOrder->total_shipping_tax_excl;
