@@ -55,7 +55,11 @@ try {
   // delivery address changes to a Greek postcode with no matching route.
   // Assertions target visible DOM nodes, not raw hook HTML or a stub.
   const addressStep = page.locator('#checkout-addresses-step');
-  await addressStep.locator('.js-step-title').click();
+  // Hummingbird renders previous steps as collapsed/hidden panels. Use its
+  // actual "Back to Addresses" navigation button rather than trying to click
+  // a hidden step header.
+  await deliveryStep.locator('button.js-back[data-step="checkout-addresses-step"]').click();
+  await addressStep.waitFor({state:'visible',timeout:20000});
   const unmatchedRadio = addressStep.locator(
     'input[name="id_address_delivery"][value="' + fixture.unmatched_address_id + '"]'
   );
