@@ -134,8 +134,13 @@ try {
     orderCheck(GrTransportOrderSnapshot::status($idOrder) === GrTransportOrderSnapshot::STORED,
         'Second validation must retain the original snapshot');
     $db = Db::getInstance();
-    $routeId = (int) $db->getValue('SELECT id_route FROM `' . _DB_PREFIX_
-        . 'grtrans_route` WHERE station_name = "Naxos Port" LIMIT 1');
+    $routeId = 0;
+    foreach ($db->executeS('SELECT id_route, station_name FROM `' . _DB_PREFIX_ . 'grtrans_route`') ?: [] as $routeRow) {
+        if ((string) $routeRow['station_name'] === 'Naxos Port') {
+            $routeId = (int) $routeRow['id_route'];
+            break;
+        }
+    }
     orderCheck($routeId > 0, 'Could not locate demo Naxos route for repair exercise');
     orderCheck($db->update('grtrans_route', ['price' => 99], 'id_route = ' . $routeId),
         'Could not simulate later merchant tariff edit');
