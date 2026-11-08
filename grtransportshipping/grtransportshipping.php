@@ -4,6 +4,7 @@ if (!defined('_PS_VERSION_')) {
 }
 require_once __DIR__ . '/classes/QuoteEngine.php';
 require_once __DIR__ . '/classes/CartQuote.php';
+require_once __DIR__ . '/classes/OrderSnapshot.php';
 
 /**
  * Athens-origin public transport parcel quotes. Prices in EUR.
@@ -121,15 +122,10 @@ class Grtransportshipping extends CarrierModule
             && abs((float) $charged - (float) $quote['price']) > 0.02) {
             throw new RuntimeException('Order shipping amount differs from the pinned checkout quote');
         }
-        Db::getInstance()->insert('grtrans_order', [
-            'id_order' => (int) $order->id,
-            'mode' => pSQL($quote['mode']),
-            'station_name' => pSQL($quote['station_name']),
-            'price' => (float) $quote['price'],
-            'pickup_only' => (int) $quote['pickup_only'],
-            'notice' => pSQL((string) $quote['notice']),
-            'demo' => (int) $quote['demo'],
-        ]);
+        // One checked, idempotent writer. Any failed persistence raises an
+        // exception and a PrestaShop error log rather than silently losing
+        // historical pickup details.
+        GrTransportOrderSnapshot::capture((int) $order->id, $quote);
         GrTransportCartQuote::consume((int) ($cart->id ?? 0));
     }
 
