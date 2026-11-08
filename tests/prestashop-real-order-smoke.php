@@ -7,6 +7,12 @@
 require_once __DIR__ . '/bootstrap.php';
 bootPrestaShop(true);
 
+// Establish an independent disposable-shop baseline. A fresh PrestaShop
+// installation can enable handling fees by default; this smoke expects the
+// bare EUR 29 route before its explicit handling-fee scenario below.
+testAssert(Configuration::updateValue('PS_SHIPPING_HANDLING', 0),
+    'Could not establish zero-fee real-order CI baseline');
+
 
 $idLang = (int) Configuration::get('PS_LANG_DEFAULT');
 $idCarrier = (int) Configuration::get('GRTRANS_CARRIER');
