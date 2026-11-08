@@ -383,37 +383,25 @@ class Grtransportshipping extends CarrierModule
             }
         }
         $out .= '</tbody></table><h4>' . ($editing ? 'Edit route #' . $editId : 'Add route') . '</h4><form method="post" action="' . $action . '"><input type="hidden" name="token" value="' . $csrf . '">';
-        $fields = [
-            'id_route' => 'Route ID (0 to add)', 'mode' => 'Mode: bus / ferry / flight',
-            'origin_name' => 'Origin terminal', 'station_name' => 'Destination pickup station',
-            'city' => 'City (optional)', 'postal_prefix' => 'Postal prefix (optional)',
-            'price' => 'Transport price EUR', 'pickup_only' => 'Station pickup only (1 / 0)',
-            'route_status' => 'Route state (Draft ignores fallback; Suspended blocks broader fares)',
-            'demo' => 'Unverified demo estimate (1) / operator-confirmed price (0)',
-            'notice' => 'Customer notice',
-        ];
-        foreach ($fields as $field => $label) {
-            $default = (string) ($editing[$field] ?? (['id_route'=>'0', 'mode'=>'bus', 'origin_name'=>'Athens', 'price'=>'0.00', 'pickup_only'=>'1', 'route_status'=>'draft', 'demo'=>'1'][$field] ?? ''));
-            $out .= '<label style="display:block;margin:8px 0">' . $this->escape($label);
-            if ($field === 'mode' || $field === 'route_status' || $field === 'pickup_only' || $field === 'demo') {
-                $values = $field === 'mode'
-                    ? ['bus' => 'KTEL bus', 'ferry' => 'Ferry', 'flight' => 'Domestic flight']
-                    : ($field === 'route_status'
-                        ? GrTransportRouteState::STATE_LABELS
-                        : ['1' => 'Yes', '0' => 'No']);
+        foreach (GrTransportRouteFields::formFields() as $field => $spec) {
+            $value = (string) ($editing[$field] ?? $spec['default']);
+            $out .= '<label style="display:block;margin:8px 0">' . $this->escape($spec['label']);
+            if ($spec['kind'] === 'select') {
                 $out .= '<select class="form-control" style="max-width:600px" name="' . $field . '">';
-                foreach ($values as $value => $name) {
-                    $out .= '<option value="' . $this->escape($value) . '"'
-                        . ($default === (string) $value ? ' selected' : '') . '>' . $this->escape($name) . '</option>';
+                foreach (GrTransportRouteFields::choices($field) as $option => $label) {
+                    $out .= '<option value="' . $this->escape($option) . '"'
+                        . ($value === (string) $option ? ' selected' : '') . '>'
+                        . $this->escape($label) . '</option>';
                 }
                 $out .= '</select>';
-            } elseif ($field === 'notice') {
-                $out .= '<textarea class="form-control" rows="3" style="max-width:600px"'
-                    . ' name="notice" maxlength="2000">' . $this->escape($default) . '</textarea>';
+            } elseif ($spec['kind'] === 'textarea') {
+                $out .= '<textarea class="form-control" rows="3" style="max-width:600px" name="'
+                    . $field . '" maxlength="' . GrTransportRouteFields::limit($field)
+                    . '">' . $this->escape($value) . '</textarea>';
             } else {
-                $lengths = ['id_route'=>10, 'origin_name'=>190, 'station_name'=>190, 'city'=>128, 'postal_prefix'=>5, 'price'=>16];
                 $out .= '<input class="form-control" style="max-width:600px" name="' . $field
-                    . '" value="' . $this->escape($default) . '" maxlength="' . $lengths[$field] . '">';
+                    . '" value="' . $this->escape($value) . '" maxlength="'
+                    . GrTransportRouteFields::limit($field) . '">';
             }
             $out .= '</label>';
         }
