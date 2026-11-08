@@ -330,7 +330,8 @@ class Grtransportshipping extends CarrierModule
     public function getContent()
     {
         $out = '';
-        if (Tools::isSubmit('grtrans_save') || Tools::isSubmit('grtrans_delete') || Tools::isSubmit('grtrans_repair_order')) {
+        if (Tools::isSubmit('grtrans_save') || Tools::isSubmit('grtrans_delete')
+            || Tools::isSubmit('grtrans_repair_order') || Tools::isSubmit('grtrans_repair_carrier')) {
             // PrestaShop 9 uses Symfony masked CSRF tokens: two valid tokens
             // need not have identical byte strings. Ask the core validator
             // rather than comparing against a newly generated token.
@@ -341,7 +342,12 @@ class Grtransportshipping extends CarrierModule
                 return $this->displayError($this->l('Invalid admin token.'));
             }
             try {
-                if (Tools::isSubmit('grtrans_repair_order')) {
+                if (Tools::isSubmit('grtrans_repair_carrier')) {
+                    if (!GrTransportCarrierLifecycle::ensure($this)) {
+                        throw new RuntimeException('Could not recover module carrier identity or delivery range');
+                    }
+                    $out .= $this->displayConfirmation($this->l('Transport carrier restored and assigned to this module.'));
+                } elseif (Tools::isSubmit('grtrans_repair_order')) {
                     $idOrder = (int) Tools::getValue('grtrans_repair_order');
                     GrTransportOrderSnapshot::repair($idOrder);
                     $out .= $this->displayConfirmation($this->l('Order pickup snapshot regenerated from its original cart quote.'));
@@ -366,6 +372,16 @@ class Grtransportshipping extends CarrierModule
         ]);
         $action = $this->escape($url);
         $csrf = $this->escape(Tools::getAdminTokenLite('AdminModules'));
+        $carrierState = GrTransportCarrierLifecycle::inspect();
+        if ($carrierState['state'] !== GrTransportCarrierLifecycle::READY) {
+            $out .= '<div class="alert alert-danger"><strong>Transport carrier unavailable: '
+                . $this->escape($carrierState['state']) . ' (configured ID ' . (int) $carrierState['id'] . ').</strong>'
+                . '<p>The carrier cannot quote until an administrator repairs it. A deleted or foreign carrier will not be reused.</p>'
+                . '<form method="post" action="' . $action . '"><input type="hidden" name="token" value="' . $csrf . '">'
+                . '<button name="grtrans_repair_carrier" value="1" class="btn btn-warning">Repair transport carrier</button></form></div>';
+        } else {
+            $out .= '<p>Transport carrier ready: #' . (int) $carrierState['id'] . '</p>';
+        }
         $rows = Db::getInstance()->executeS('SELECT * FROM `' . _DB_PREFIX_ . 'grtrans_route` ORDER BY id_route ASC') ?: [];
         $warnings = GrTransportQuoteEngine::shadowedSuspensions($rows);
         $out .= '<div class="panel"><h3>Greek public transport routes</h3><p>DEMO rows are assumptions, not verified freight charges. Replace before accepting orders.</p>';
