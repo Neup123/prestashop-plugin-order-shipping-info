@@ -48,15 +48,20 @@ final class GrTransportOrderCharge
         if ($orderId <= 0) {
             return false;
         }
-        // Applied vouchers are copied into order_cart_rule *before*
-        // actionValidateOrder in PaymentModule::validateOrder (PrestaShop 9.2).
-        // A cart rule merely present in an old cart does not prove that the
-        // customer's order was actually granted the discount.
-        return (bool) Db::getInstance()->getValue(
-            'SELECT id_order_cart_rule FROM `' . _DB_PREFIX_ . 'order_cart_rule`'
-            . ' WHERE id_order = ' . $orderId
-            . ' AND free_shipping = 1 AND deleted = 0 LIMIT 1'
-        );
+        // PrestaShop::Order::getCartRules() is the core-owned reader for
+        // this order's persisted, non-deleted order_cart_rule records. Do not
+        // infer usage from an unattached CartRule or a checkout request.
+        $order = new Order($orderId);
+        if (!Validate::isLoadedObject($order)) {
+            return false;
+        }
+        foreach ($order->getCartRules() ?: [] as $applied) {
+            if ((int) ($applied['free_shipping'] ?? 0) === 1
+                && (int) ($applied['deleted'] ?? 0) === 0) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
