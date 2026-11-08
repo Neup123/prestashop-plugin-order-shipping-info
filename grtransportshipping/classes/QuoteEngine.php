@@ -56,7 +56,10 @@ final class GrTransportQuoteEngine
             // Two equivalent destinations with different warnings or provenance
             // must NOT silently pick the earlier database row.
             foreach (['station_name', 'mode', 'price', 'pickup_only', 'demo', 'notice'] as $field) {
-                if ((string) ($candidate[$field] ?? '') !== (string) ($winner[$field] ?? '')) {
+                $equal = $field === 'price'
+                    ? round((float) ($candidate[$field] ?? 0), 2) === round((float) ($winner[$field] ?? 0), 2)
+                    : (string) ($candidate[$field] ?? '') === (string) ($winner[$field] ?? '');
+                if (!$equal) {
                     return self::result('ambiguous');
                 }
             }
