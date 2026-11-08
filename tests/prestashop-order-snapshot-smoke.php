@@ -50,11 +50,11 @@ try {
     testAssert(str_contains($module->hookDisplayAdminOrder(['id_order' => $idOrder]), 'STATION PICKUP ONLY'), 'Back office omits pickup');
     testAssert(str_contains($module->hookDisplayOrderConfirmation(['order' => $order]), 'NO HOME DELIVERY'), 'Confirmation implies home delivery');
 
-    testAssert(Db::getInstance()->update('grtrans_route', [
-        'station_name' => pSQL('Changed pickup location'),
+    GrTransportRouteRepository::save(array_replace($oldRow, [
+        'station_name' => 'Changed pickup location',
         'price' => 91.5,
-        'notice' => pSQL('Changed later'),
-    ], 'id_route = ' . $idRoute), 'Could not simulate route price change');
+        'notice' => 'Changed later',
+    ]), 0, $idRoute);
     $after = Db::getInstance()->getRow('SELECT * FROM `' . _DB_PREFIX_ . 'grtrans_order` WHERE id_order = ' . $idOrder);
     testAssert($after['station_name'] === $original['station_name']
         && $after['notice'] === $original['notice']
@@ -68,11 +68,7 @@ try {
     testAssert(!Db::getInstance()->getValue('SELECT id_order FROM `' . _DB_PREFIX_ . 'grtrans_order` WHERE id_order = ' . (int) $other->id), 'Unrelated order changed');
     echo "Order pickup snapshot, customer/admin render, and historical immutability passed\n";
 } finally {
-    Db::getInstance()->update('grtrans_route', [
-        'station_name' => pSQL($oldRow['station_name']),
-        'price' => (float) $oldRow['price'],
-        'notice' => pSQL((string) $oldRow['notice']),
-    ], 'id_route = ' . $idRoute);
+    GrTransportRouteRepository::save($oldRow, 0, $idRoute);
     Db::getInstance()->delete('grtrans_order', 'id_order = ' . $idOrder);
     $address->delete();
 }
