@@ -16,6 +16,11 @@ try {
   if (await page.locator('input[name="password"]').count() && (await page.locator('body').innerText()).includes('Authentication failed')) {
     throw new Error('Disposable customer authentication failed');
   }
+  // Either English fallback or shipped Greek may be active in this CI shop.
+  // Both languages must state pickup-only clearly; a dedicated PHP smoke
+  // independently asserts the Greek dictionary rather than allowing fallback.
+  const pickupWarning = /STATION PICKUP ONLY|ΠΑΡΑΛΑΒΗ ΜΟΝΟ ΑΠΟ ΣΤΑΘΜΟ/;
+  const noRouteReason = /No priced transport route matches this destination|Δεν υπάρχει διαδρομή με καθορισμένο κόστος/;
   await page.goto(fixture.product_url,{waitUntil:'domcontentloaded',timeout:45000});
   const buy = page.locator('button[data-button-action="add-to-cart"], button.add-to-cart').first();
   await buy.waitFor({timeout:20000});
@@ -24,7 +29,7 @@ try {
   await page.goto(fixture.checkout_url,{waitUntil:'domcontentloaded',timeout:45000});
   for (let step=0;step<4;step++) {
     const html = await page.content();
-    if (html.includes('Naxos Port') && html.includes('STATION PICKUP ONLY')) break;
+    if (html.includes('Naxos Port') && pickupWarning.test(html)) break;
     const next = page.locator('button[name="confirm-addresses"], button[name="confirmDeliveryOption"], button.continue').filter({visible:true}).first();
     if (!(await next.count())) break;
     await next.click();
@@ -32,7 +37,7 @@ try {
   }
   const source = await page.content();
   assert(source.includes('Naxos Port'), 'Checkout must name Naxos collection port');
-  assert(source.includes('STATION PICKUP ONLY'), 'Checkout must explicitly say station pickup only');
+  assert(pickupWarning.test(source), 'Checkout must explicitly say station pickup only');
   assert(!source.includes('Home delivery included'), 'Pickup is not home delivery');
   // Positive control: the real Hummingbird carrier option is present for
   // 84300 and its selected pickup note is visible in the rendered UI.
@@ -44,7 +49,7 @@ try {
   const carrierRadio = ferryRow.locator('input[type="radio"]');
   await carrierRadio.check();
   await page.waitForTimeout(350);
-  assert.ok(await ferryRow.getByText('STATION PICKUP ONLY — NO HOME DELIVERY').isVisible(),
+  assert.ok(await ferryRow.getByText(pickupWarning).isVisible(),
     'Selected station carrier must visibly disclose pickup-only shipping');
   assert.equal(await page.locator('.grtransport-no-quote:visible').count(), 0,
     'Quoted addresses must not receive a false unavailable warning');
@@ -69,8 +74,8 @@ try {
   await page.waitForLoadState('domcontentloaded');
   const noQuote = deliveryStep.locator('.grtransport-no-quote');
   await noQuote.waitFor({state:'visible',timeout:25000});
-  assert.match(await noQuote.innerText(), /Greek public transport shipping is unavailable for this address/);
-  assert.match(await noQuote.innerText(), /No priced transport route matches this destination/);
+  assert.match(await noQuote.innerText(), /Greek public transport shipping is unavailable for this address|Η μεταφορά με ελληνικά μέσα συγκοινωνίας δεν είναι διαθέσιμη για αυτή τη διεύθυνση/);
+  assert.match(await noQuote.innerText(), noRouteReason);
   assert.ok((await noQuote.getAttribute('class')).includes('alert-info'),
     'Unavailable explanation should share BOOTSTRAP alert presentation with pickup notices');
   const displayedBackground = await noQuote.evaluate(x=>getComputedStyle(x).backgroundColor);
@@ -86,7 +91,7 @@ try {
   await page.goto(fixture.checkout_url,{waitUntil:'domcontentloaded',timeout:45000});
   const reloadedAlert = page.locator('#checkout-delivery-step .grtransport-no-quote');
   await reloadedAlert.waitFor({state:'visible',timeout:25000});
-  assert.match(await reloadedAlert.innerText(), /No priced transport route matches this destination/);
+  assert.match(await reloadedAlert.innerText(), noRouteReason);
   console.log('LIVE UNMATCHED RELOAD: no-quote message persists in freshly rendered checkout');
 
   // #45: Real Hummingbird customer checkout on a postcode that matches NO
