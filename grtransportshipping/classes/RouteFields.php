@@ -78,10 +78,11 @@ final class GrTransportRouteFields
         $spec = self::spec();
         $data = [];
         foreach (['mode', 'origin_name', 'station_name', 'city', 'postal_prefix', 'notice'] as $field) {
-            if (!array_key_exists($field, $input) || !is_scalar($input[$field])) {
+            if (!array_key_exists($field, $input)
+                || (!is_scalar($input[$field]) && !($field === 'notice' && $input[$field] === null))) {
                 throw new InvalidArgumentException('Missing route field: ' . $field);
             }
-            $value = trim((string) $input[$field]);
+            $value = trim((string) ($input[$field] ?? ''));
             $size = function_exists('mb_strlen') ? mb_strlen($value, 'UTF-8') : strlen($value);
             if ($size > self::limit($field)) {
                 throw new InvalidArgumentException('Route field exceeds limit: ' . $field);
@@ -95,6 +96,7 @@ final class GrTransportRouteFields
             throw new InvalidArgumentException('Invalid route location, mode or postal prefix');
         }
         if (!isset($input['price']) || !is_numeric($input['price'])
+            || strlen((string) $input['price']) > self::limit('price')
             || (float) $input['price'] < 0 || (float) $input['price'] > $spec['price']['max_value']) {
             throw new InvalidArgumentException('Invalid route price');
         }
