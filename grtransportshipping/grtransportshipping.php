@@ -135,9 +135,23 @@ class Grtransportshipping extends CarrierModule
         if (!$id) {
             return '';
         }
-        $info = Db::getInstance()->getRow('SELECT * FROM `' . _DB_PREFIX_ . 'grtrans_order` WHERE id_order = ' . $id);
-        if (!$info) {
+        $info = GrTransportOrderSnapshot::find($id);
+        $order = new Order($id);
+        if (!$info && (!Validate::isLoadedObject($order)
+            || !GrTransportOrderSnapshot::belongsToCarrier((int) $order->id_carrier))) {
             return '';
+        }
+        $url = $this->context->link->getAdminLink('AdminModules', true, [], [
+            'configure' => $this->name, 'module_name' => $this->name,
+        ]);
+        $repairForm = '<form method="post" action="' . $this->escape($url) . '">'
+            . '<input type="hidden" name="token" value="' . $this->escape(Tools::getAdminTokenLite('AdminModules')) . '">'
+            . '<button class="btn btn-warning" type="submit" name="grtrans_repair_order" value="' . $id . '">'
+            . ($info ? 'Regenerate original pickup snapshot' : 'Repair missing pickup snapshot') . '</button></form>';
+        if (!$info) {
+            return '<div class="alert alert-danger"><strong>Transport pickup data are missing for this order.</strong>'
+                . '<p>Repair is possible only from the original stored cart quote; do not use a current route price.</p>'
+                . $repairForm . '</div>';
         }
         return '<section class="card"><div class="card-body"><h3>Public transport shipping</h3>'
             . '<p>Mode: ' . $this->escape($info['mode']) . '</p>'
@@ -145,7 +159,7 @@ class Grtransportshipping extends CarrierModule
             . ': ' . $this->escape($info['station_name']) . '</strong></p>'
             . '<p>' . $this->escape($info['notice']) . '</p>'
             . (!empty($info['demo']) ? '<strong>DEMO PRICE — NOT VERIFIED</strong>' : '')
-            . '</div></section>';
+            . $repairForm . '</div></section>';
     }
 
     public function hookDisplayOrderDetail($params)
