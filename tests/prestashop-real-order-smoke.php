@@ -135,8 +135,9 @@ try {
         }
     }
     testAssert($routeId > 0, 'Could not locate demo Naxos route for repair exercise');
-    testAssert($db->update('grtrans_route', ['price' => 99], 'id_route = ' . $routeId),
-        'Could not simulate later merchant tariff edit');
+    $originalRoute = GrTransportRouteRepository::find($routeId);
+    testAssert(is_array($originalRoute), 'Cannot load original route');
+    GrTransportRouteRepository::save(array_replace($originalRoute, ['price' => 99]), 0, $routeId);
     try {
         testAssert($db->delete('grtrans_order', 'id_order = ' . $idOrder),
             'Cannot simulate missing order snapshot');
@@ -166,7 +167,7 @@ try {
         }
         testAssert($failedClosed, 'Repair without authoritative original quote must fail closed');
     } finally {
-        $db->update('grtrans_route', ['price' => 29], 'id_route = ' . $routeId);
+        GrTransportRouteRepository::save($originalRoute, 0, $routeId);
     }
     echo 'Real pending-payment PrestaShop order created: ferry freight EUR 29.00 and Naxos station persisted' . PHP_EOL;
 } finally {
