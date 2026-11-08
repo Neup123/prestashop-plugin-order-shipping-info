@@ -3,17 +3,20 @@ if (!defined('_PS_VERSION_')) {
     exit;
 }
 require_once __DIR__ . '/classes/QuoteEngine.php';
+require_once __DIR__ . '/classes/CartQuote.php';
 
 /**
  * Athens-origin public transport parcel quotes. Prices in EUR.
  */
 class Grtransportshipping extends CarrierModule
 {
+    private array $requestQuotes = [];
+
     public function __construct()
     {
         $this->name = 'grtransportshipping';
         $this->tab = 'shipping_logistics';
-        $this->version = '0.3.0';
+        $this->version = '0.4.0';
         $this->author = 'Neup123';
         $this->need_instance = 0;
         $this->bootstrap = true;
@@ -64,12 +67,14 @@ class Grtransportshipping extends CarrierModule
             `postal_prefix` VARCHAR(5) NOT NULL,
             `price` DECIMAL(12,2) NOT NULL,
             `pickup_only` TINYINT(1) NOT NULL DEFAULT 1,
-            `active` TINYINT(1) NOT NULL DEFAULT 1,
+            `route_status` VARCHAR(12) NOT NULL DEFAULT 'draft',
             `demo` TINYINT(1) NOT NULL DEFAULT 0,
+            `verified_at` DATETIME NULL,
+            `verified_by_employee` INT NULL,
             `notice` TEXT NULL,
             INDEX `lookup_prefix` (`postal_prefix`)
         ) ENGINE=' . _MYSQL_ENGINE_ . ' DEFAULT CHARSET=utf8mb4';
-        return (bool) Db::getInstance()->execute($sql) && $this->installOrderSchema();
+        return (bool) Db::getInstance()->execute($sql) && $this->installOrderSchema() && $this->installCartQuoteSchema();
     }
 
     public function installOrderSchema(): bool
@@ -82,6 +87,17 @@ class Grtransportshipping extends CarrierModule
             `pickup_only` TINYINT(1) NOT NULL DEFAULT 1,
             `notice` TEXT NULL,
             `demo` TINYINT(1) NOT NULL DEFAULT 0
+        ) ENGINE=' . _MYSQL_ENGINE_ . ' DEFAULT CHARSET=utf8mb4');
+    }
+
+    public function installCartQuoteSchema(): bool
+    {
+        return (bool) Db::getInstance()->execute('CREATE TABLE IF NOT EXISTS `' . _DB_PREFIX_ . 'grtrans_cart_quote` (
+            `id_cart` INT UNSIGNED NOT NULL PRIMARY KEY,
+            `id_address` INT UNSIGNED NOT NULL,
+            `quote_data` TEXT NOT NULL,
+            `quote_status` VARCHAR(12) NOT NULL DEFAULT \'pinned\',
+            `created_at` DATETIME NOT NULL
         ) ENGINE=' . _MYSQL_ENGINE_ . ' DEFAULT CHARSET=utf8mb4');
     }
 
@@ -207,7 +223,7 @@ class Grtransportshipping extends CarrierModule
                 'mode' => pSQL($r[0]), 'origin_name' => pSQL($r[1]),
                 'station_name' => pSQL($r[2]), 'city' => pSQL($r[3]),
                 'postal_prefix' => pSQL($r[4]), 'price' => (float) $r[5],
-                'pickup_only' => (int) $r[6], 'active' => 1, 'demo' => 1,
+                'pickup_only' => (int) $r[6], 'route_status' => GrTransportRouteState::AVAILABLE, 'demo' => 1,
                 'notice' => pSQL($r[7]),
             ]);
         }
@@ -312,7 +328,7 @@ class Grtransportshipping extends CarrierModule
             . '<table class="table"><thead><tr><th>ID</th><th>Mode</th><th>From</th><th>Pickup station</th><th>City</th><th>Postcode prefix</th><th>EUR</th><th>Pickup only</th><th>Active</th><th>Demo</th><th>Actions</th></tr></thead><tbody>';
         foreach ($rows as $r) {
             $out .= '<tr>';
-            foreach (['id_route','mode','origin_name','station_name','city','postal_prefix','price','pickup_only','active','demo'] as $key) {
+            foreach (['id_route','mode','origin_name','station_name','city','postal_prefix','price','pickup_only','route_status','demo'] as $key) {
                 $out .= '<td>' . $this->escape($r[$key]) . '</td>';
             }
             $out .= '<td><a class="btn btn-default" href="' . $action . '&amp;grtrans_edit=' . (int) $r['id_route'] . '">Edit</a><form method="post" action="' . $action . '"><input type="hidden" name="id_route" value="' . (int) $r['id_route'] . '"><input type="hidden" name="token" value="' . $csrf . '"><button name="grtrans_delete" value="1" onclick="return confirm(\'Delete route?\')">Delete</button></form></td></tr>';
@@ -331,16 +347,20 @@ class Grtransportshipping extends CarrierModule
             'origin_name' => 'Origin terminal', 'station_name' => 'Destination pickup station',
             'city' => 'City (optional)', 'postal_prefix' => 'Postal prefix (optional)',
             'price' => 'Transport price EUR', 'pickup_only' => 'Station pickup only (1 / 0)',
-            'active' => 'Active (1 / 0)', 'demo' => 'Unverified demo estimate (1) / operator-confirmed price (0)',
+            'route_status' => 'Route state (Draft ignores fallback; Suspended blocks broader fares)',
+            'demo' => 'Unverified demo estimate (1) / operator-confirmed price (0)',
             'notice' => 'Customer notice',
         ];
         foreach ($fields as $field => $label) {
-            $default = (string) ($editing[$field] ?? (['id_route'=>'0', 'mode'=>'bus', 'origin_name'=>'Athens', 'price'=>'0.00', 'pickup_only'=>'1', 'active'=>'1', 'demo'=>'1'][$field] ?? ''));
+            $default = (string) ($editing[$field] ?? (['id_route'=>'0', 'mode'=>'bus', 'origin_name'=>'Athens', 'price'=>'0.00', 'pickup_only'=>'1', 'route_status'=>'draft', 'demo'=>'1'][$field] ?? ''));
             $out .= '<label style="display:block;margin:8px 0">' . $this->escape($label);
-            if ($field === 'mode' || $field === 'pickup_only' || $field === 'active' || $field === 'demo') {
+            if ($field === 'mode' || $field === 'route_status' || $field === 'pickup_only' || $field === 'demo') {
                 $values = $field === 'mode'
                     ? ['bus' => 'KTEL bus', 'ferry' => 'Ferry', 'flight' => 'Domestic flight']
-                    : ['1' => 'Yes', '0' => 'No'];
+                    : ($field === 'route_status'
+                        ? ['draft' => 'Draft — no quote, no veto', 'available' => 'Available — can be quoted',
+                           'suspended' => 'Suspended — blocks broader matching routes']
+                        : ['1' => 'Yes', '0' => 'No']);
                 $out .= '<select class="form-control" style="max-width:600px" name="' . $field . '">';
                 foreach ($values as $value => $name) {
                     $out .= '<option value="' . $this->escape($value) . '"'
