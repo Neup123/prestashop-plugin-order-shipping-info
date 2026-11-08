@@ -1,10 +1,16 @@
 <?php
 require_once __DIR__ . '/bootstrap.php';
+require_once __DIR__ . '/../grtransportshipping/classes/RouteRepository.php';
+
+// The pure fixture uses the same production field and state mapping as
+// admin saves and install seeding, not private positional array indexes.
 $rows = require __DIR__ . '/../grtransportshipping/demo/routes.php';
-if (count($rows) < 6) { throw new RuntimeException('Demo coverage insufficient'); }
+testAssert(count($rows) >= 6, 'Demo coverage insufficient');
 foreach ($rows as $row) {
-    if (count($row) !== 8 || !in_array($row[0], ['bus','ferry','flight'], true) || !is_numeric($row[5]) || $row[5] <= 0) {
-        throw new RuntimeException('Invalid demo row');
-    }
+    testAssert(count($row) === 10, 'Seed must have every named writable field');
+    $prepared = GrTransportRouteRepository::prepare($row);
+    testAssert($prepared['price'] > 0 && $prepared['demo'] === 1
+        && $prepared['route_status'] === GrTransportRouteState::AVAILABLE,
+        'Invalid demo route or unverified shipping state');
 }
 echo "Demo seed tests passed\n";
