@@ -28,3 +28,9 @@ New routes start as **Draft**; making them **Available** enables quotes. **Suspe
 ## Single-source route definitions
 
 Route SQL field widths, form limits, choices and validation are generated from `grtransportshipping/classes/RouteFields.php`. The one route writer (`classes/RouteRepository.php`) handles admin updates, named demo seed rows and fixtures. A single renderer produces consistent pickup/demo warnings in checkout and all order views. For a Greek delivery address with no priced route, PrestaShop hides the transport carrier; an independent Shipping Method hook now shows a clear unavailable-reason alert above the remaining carriers (including after an address change). Existing shops receive the hook on upgrade to 0.5.1. Route data is seeded only on first initialization, never again after merchants deliberately delete all rules. A failed deletion of a nonexistent route is reported as an error. The 0.5.0 upgrade adds a database notice-length constraint without truncating existing merchant text.
+
+## Quote retention and schema upgrades (0.5.2)
+
+New successfully resolved cart quotes opportunistically remove **at most 100** expired unconsumed pins per checkout pin operation. Expiry uses the same 30-minute hold as the quote resolver and an indexed `quote_status, created_at` lookup. Cleanup is incremental, not scheduled: if no new cart quotes are created, no cleanup runs until quoting resumes. **Consumed cart quotes are never pruned**; they remain the historical order-snapshot repair source.
+
+On upgrading a previously installed module to **0.5.2**, PrestaShop adds the historically missing `lookup_prefix` route index and the new quote-pruning index. Both operations are idempotent; a fresh installation creates the indexes directly. Simply replacing module files does not run the schema upgrade: run **Module Manager → Upgrade** (or the documented PrestaShop module upgrade command).
