@@ -16,6 +16,43 @@ $rowsBefore = Db::getInstance()->executeS('SELECT id_carrier FROM `' . _DB_PREFI
     . 'carrier` WHERE external_module_name = \'grtransportshipping\' AND deleted = 0') ?: [];
 testAssert(count($rowsBefore) === 1, 'Expected exactly one active module-owned carrier before retry');
 
+// #50: Upgrade older stock carrier copy, then prove merchant overrides
+// are not overwritten on subsequent upgrade/ensure retries.
+require_once '/var/www/html/modules/grtransportshipping/upgrade/upgrade-0.5.3.php';
+$originalCarrier = new Carrier($initial);
+$greekLanguageId = (int) Language::getIdByIso('el');
+$originalCarrier->name = GrTransportCarrierLifecycle::DEFAULT_NAME;
+if ($greekLanguageId > 0) {
+    $originalCarrier->delay[$greekLanguageId] = GrTransportCarrierLifecycle::DEFAULT_DELAY;
+}
+testAssert($originalCarrier->update(), 'Cannot simulate original stock carrier labels');
+testAssert(upgrade_module_0_5_3($module), 'Cannot migrate default carrier wording');
+$migratedCarrier = new Carrier($initial);
+testAssert($migratedCarrier->name === GrTransportCarrierLifecycle::BILINGUAL_NAME,
+    '0.5.3 upgrade failed to apply bilingual carrier display name');
+if ($greekLanguageId > 0) {
+    testAssert(str_contains((string)$migratedCarrier->delay[$greekLanguageId], 'Παραλαβή'),
+        'Greek delay must be localized via shipped module dictionary');
+}
+testAssert(upgrade_module_0_5_3($module), 'Repeat carrier translation upgrade must be safe');
+$migratedCarrier->name = 'Custom merchant carrier';
+if ($greekLanguageId > 0) {
+    $migratedCarrier->delay[$greekLanguageId] = 'Custom merchant Greek delay';
+}
+testAssert($migratedCarrier->update(), 'Could not create merchant-specific carrier wording');
+testAssert(upgrade_module_0_5_3($module), 'Carrier upgrade should allow merchant overrides');
+$customCarrier = new Carrier($initial);
+testAssert($customCarrier->name === 'Custom merchant carrier'
+    && ($greekLanguageId <= 0 || (string)$customCarrier->delay[$greekLanguageId] === 'Custom merchant Greek delay'),
+    'Upgrade must preserve merchant carrier text');
+$customCarrier->name = GrTransportCarrierLifecycle::BILINGUAL_NAME;
+if ($greekLanguageId > 0) {
+    $customCarrier->delay[$greekLanguageId] =
+        $module->l(GrTransportCarrierLifecycle::DEFAULT_DELAY, 'grtransportshipping', 'el-GR');
+}
+testAssert($customCarrier->update(), 'Could not restore test carrier default presentation');
+echo "PASS #50 carrier upgrade localization idempotent and merchant overrides preserved\n";
+
 // Module::install normally fails on an already installed module; the module
 // retry entrypoint must resume the partial state without parent::install().
 testAssert((bool) $module->install(), 'Idempotent module install retry failed');
@@ -32,7 +69,8 @@ $carrier->deleted = true;
 testAssert((bool) $carrier->save(), 'Could not simulate carrier deletion');
 testAssert(GrTransportCarrierLifecycle::inspect()['state'] === GrTransportCarrierLifecycle::DELETED,
     'Deleted carrier state was not recognized');
-testAssert(str_contains($module->getContent(), 'Repair transport carrier'),
+testAssert(str_contains($module->getContent(), 'Repair transport carrier')
+    || str_contains($module->getContent(), 'Αποκατάσταση μεταφορικής υπηρεσίας'),
     'Admin configuration must offer an explicit carrier repair action');
 testAssert(GrTransportCarrierLifecycle::activeId($module) === 0 && (int) $module->id_carrier === 0,
     'Deleted carrier still selected for customer quotes');

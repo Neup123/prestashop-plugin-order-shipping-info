@@ -47,8 +47,8 @@ try {
     testAssert(abs((float) $original['price'] - 29.0) < 0.001, 'Wrong saved freight estimate');
     testAssert((int) $original['pickup_only'] === 1, 'Pickup-only flag lost');
     testAssert(str_contains($module->hookDisplayOrderDetail(['order' => $order]), 'Naxos Port'), 'Customer detail omits pickup station');
-    testAssert(str_contains($module->hookDisplayAdminOrder(['id_order' => $idOrder]), 'STATION PICKUP ONLY'), 'Back office omits pickup');
-    testAssert(str_contains($module->hookDisplayOrderConfirmation(['order' => $order]), 'NO HOME DELIVERY'), 'Confirmation implies home delivery');
+    testAssert((str_contains($module->hookDisplayAdminOrder(['id_order' => $idOrder]), 'STATION PICKUP ONLY') || str_contains($module->hookDisplayAdminOrder(['id_order' => $idOrder]), 'ΠΑΡΑΛΑΒΗ ΜΟΝΟ ΑΠΟ ΣΤΑΘΜΟ')), 'Back office omits pickup');
+    testAssert((str_contains($module->hookDisplayOrderConfirmation(['order' => $order]), 'NO HOME DELIVERY') || str_contains($module->hookDisplayOrderConfirmation(['order' => $order]), 'ΟΧΙ ΠΑΡΑΔΟΣΗ ΣΤΟ ΣΠΙΤΙ')), 'Confirmation implies home delivery');
 
     GrTransportRouteRepository::save(array_replace($oldRow, [
         'station_name' => 'Changed pickup location',
