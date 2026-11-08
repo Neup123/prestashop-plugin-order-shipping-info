@@ -200,3 +200,90 @@ try {
 } finally {
     Configuration::updateValue('PS_MAIL_METHOD', $oldMailMode);
 }
+
+
+// #39: real PrestaShop adjusted orders. Reuse the existing fixture, including
+// its physical product, customer, address, carrier and cheque-payment module.
+// Coverage: a single address/package; no charged card or production gateway.
+$placeAdjusted = static function (Cart $c, string $label) use ($payment, $pendingState): Order {
+    $amount = (float) $c->getOrderTotal(true, Cart::BOTH);
+    testAssert($payment->validateOrder((int) $c->id, $pendingState, $amount,
+        'CI ' . $label, null, [], (int) $c->id_currency, false, (string) $c->secure_key),
+        'PrestaShop failed order: ' . $label);
+    $placed = new Order((int) $payment->currentOrder);
+    testAssert(Validate::isLoadedObject($placed)
+        && GrTransportOrderSnapshot::find((int) $placed->id) !== null,
+        'Missing order or pickup after ' . $label);
+    return $placed;
+};
+$previousHandling = (float) Configuration::get('PS_SHIPPING_HANDLING');
+$carrier = new Carrier($idCarrier);
+$previousCarrierHandling = (int) $carrier->shipping_handling;
+Configuration::updateValue('PS_MAIL_METHOD', Mail::METHOD_DISABLE);
+try {
+    $voucherCart = makeCheckoutCart($customer, $address, $product, $idCarrier, $idLang, $idGr, $context);
+    testAssert(abs((float) $voucherCart->getPackageShippingCost($idCarrier, false, $context->country) - 29) < 0.001,
+        'Voucher cart should begin with pinned EUR 29 freight');
+    $rule = new CartRule();
+    $rule->name = [$idLang => 'CI free shipping'];
+    $rule->code = 'CI_FREE_SHIPPING_39';
+    $rule->id_customer = (int) $customer->id;
+    $rule->date_from = date('Y-m-d H:i:s', time() - 3600);
+    $rule->date_to = date('Y-m-d H:i:s', time() + 86400);
+    $rule->quantity = 10;
+    $rule->quantity_per_user = 10;
+    $rule->priority = 1;
+    $rule->minimum_amount = 0;
+    $rule->minimum_amount_tax = 1;
+    $rule->minimum_amount_shipping = 0;
+    $rule->minimum_amount_currency = (int) $voucherCart->id_currency;
+    $rule->free_shipping = 1;
+    $rule->reduction_percent = 0;
+    $rule->reduction_amount = 0;
+    $rule->active = 1;
+    testAssert($rule->add(), 'Cannot create core free-shipping cart rule');
+    testAssert($voucherCart->addCartRule((int) $rule->id), 'Cannot apply core free-shipping cart rule');
+    $voucherOrder = $placeAdjusted($voucherCart, 'free voucher');
+    testAssert(GrTransportOrderCharge::hasAppliedFreeShipping((int) $voucherOrder->id),
+        'Voucher was not actually applied to PrestaShop order');
+    $voucherCharged = (float) $voucherOrder->total_shipping_tax_excl;
+    testAssert(abs($voucherCharged) <= 0.02
+        || (float) $voucherOrder->total_discounts_tax_excl >= 28.98,
+        'PrestaShop did not actually waive transport shipping');
+    echo 'PASS voucher order: shipping ' . $voucherCharged
+        . ', discount ' . $voucherOrder->total_discounts_tax_excl . PHP_EOL;
+
+    testAssert(Configuration::updateValue('PS_SHIPPING_HANDLING', 6.25), 'Cannot enable handling fee');
+    $carrier->shipping_handling = 1;
+    testAssert($carrier->update(), 'Cannot enable handling on test carrier');
+    Cache::clean('getPackageShippingCost_*');
+    $feeCart = makeCheckoutCart($customer, $address, $product, $idCarrier, $idLang, $idGr, $context);
+    testAssert(abs((float) $feeCart->getPackageShippingCost($idCarrier, false, $context->country) - 35.25) < 0.001,
+        'Expected EUR 29 route plus EUR 6.25 handling once');
+    $feePin = json_decode((string) Db::getInstance()->getValue('SELECT quote_data FROM `'
+        . _DB_PREFIX_ . 'grtrans_cart_quote` WHERE id_cart = ' . (int) $feeCart->id), true);
+    testAssert(is_array($feePin) && abs((float) ($feePin['handling_fee'] ?? 0) - 6.25) < 0.001,
+        'Handling fee must be pinned with route quote');
+    $feeOrder = $placeAdjusted($feeCart, 'handling');
+    testAssert(abs((float) $feeOrder->total_shipping_tax_excl - 35.25) < 0.001,
+        'Actual PrestaShop order did not include handling');
+    echo 'PASS handling order: shipping ' . $feeOrder->total_shipping_tax_excl . PHP_EOL;
+
+    // Original pinned fee must remain authoritative when the merchant
+    // later changes configuration before repairing an order snapshot.
+    $carrier->shipping_handling = $previousCarrierHandling;
+    testAssert($carrier->update(), 'Cannot restore carrier handling setting');
+    Configuration::updateValue('PS_SHIPPING_HANDLING', $previousHandling);
+    testAssert(Db::getInstance()->delete('grtrans_order', 'id_order = ' . (int) $feeOrder->id),
+        'Cannot simulate absent pickup snapshot');
+    $repaired = GrTransportOrderSnapshot::repair((int) $feeOrder->id);
+    testAssert(abs((float) $repaired['price'] - 29) < 0.001,
+        'Historical repair must preserve pinned base rate');
+    echo 'PASS historical repair after handling settings changed' . PHP_EOL;
+} finally {
+    $carrier = new Carrier($idCarrier);
+    $carrier->shipping_handling = $previousCarrierHandling;
+    $carrier->update();
+    Configuration::updateValue('PS_SHIPPING_HANDLING', $previousHandling);
+    Configuration::updateValue('PS_MAIL_METHOD', $oldMailMode);
+}
