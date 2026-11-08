@@ -24,3 +24,7 @@ A real PrestaShop 9.2.1 Docker instance now installs the module, exercises the n
 ## Route state and shipping consistency
 
 New routes start as **Draft**; making them **Available** enables quotes. **Suspended** deliberately blocks any broader matching rate and is visibly warned about in the admin editor. Confirmed tariffs record operator ID/time, rather than silently losing the demo marker. Each persisted cart receives a pinned quote (station, notice and amount together) for at most 30 minutes, re-quoted after delivery-address changes. Upgrade 0.4.0 migrates earlier inactive routes to the explicit Suspended state.
+
+## Single-source route definitions
+
+Route SQL field widths, form limits, choices and validation are generated from `grtransportshipping/classes/RouteFields.php`. The one route writer (`classes/RouteRepository.php`) handles admin updates, named demo seed rows and fixtures. A single renderer produces consistent pickup/demo warnings in checkout and all order views. Route data is seeded only on first initialization, never again after merchants deliberately delete all rules. A failed deletion of a nonexistent route is reported as an error. The 0.5.0 upgrade adds a database notice-length constraint without truncating existing merchant text.
