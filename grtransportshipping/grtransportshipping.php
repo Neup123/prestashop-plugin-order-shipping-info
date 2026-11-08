@@ -236,21 +236,52 @@ class Grtransportshipping extends CarrierModule
         }
     }
 
-    private function currentQuote($cart)
+    /** Request-level cache: no repeated route-table scans for one cart/address. */
+    public function clearQuoteCache(): void
+    {
+        $this->requestQuotes = [];
+    }
+
+    private function quoteResult($cart): array
     {
         if (!$cart || !(int) $cart->id_address_delivery) {
-            return null;
+            return ['status' => 'missing_address', 'quote' => null];
         }
-        $address = new Address((int) $cart->id_address_delivery);
+        $cartId = (int) ($cart->id ?? 0);
+        $addressId = (int) $cart->id_address_delivery;
+        $key = $cartId . ':' . $addressId . ':' . ($cartId ? '' : spl_object_id($cart));
+        if (isset($this->requestQuotes[$key])) {
+            return $this->requestQuotes[$key];
+        }
+        $pinned = GrTransportCartQuote::pinned($cartId, $addressId);
+        if ($pinned !== null) {
+            return $this->requestQuotes[$key] = ['status' => 'quoted', 'quote' => $pinned];
+        }
+        $address = new Address($addressId);
         if (!Validate::isLoadedObject($address)) {
-            return null;
+            return $this->requestQuotes[$key] = ['status' => 'invalid_address', 'quote' => null];
         }
         $country = new Country((int) $address->id_country);
         if ($country->iso_code !== 'GR') {
-            return null;
+            return $this->requestQuotes[$key] = ['status' => 'outside_greece', 'quote' => null];
         }
         $routes = Db::getInstance()->executeS('SELECT * FROM `' . _DB_PREFIX_ . 'grtrans_route`');
-        return GrTransportQuoteEngine::select($routes ?: [], (string) $address->postcode, (string) $address->city);
+        if (!is_array($routes)) {
+            throw new RuntimeException('Transport route lookup failed');
+        }
+        $result = GrTransportQuoteEngine::resolve($routes, (string) $address->postcode, (string) $address->city);
+        if ($result['status'] === 'quoted') {
+            $result['quote'] = GrTransportCartQuote::pin($cartId, $addressId, $result['quote']);
+        } elseif (in_array($result['status'], ['ambiguous', 'suspended'], true)) {
+            PrestaShopLogger::addLog('Transport route resolution: ' . $result['status']
+                . ' for delivery address #' . $addressId, 2, null, 'Address', $addressId);
+        }
+        return $this->requestQuotes[$key] = $result;
+    }
+
+    private function currentQuote($cart): ?array
+    {
+        return $this->quoteResult($cart)['quote'];
     }
 
     public function getOrderShippingCost($cart, $shipping_cost)
@@ -263,8 +294,8 @@ class Grtransportshipping extends CarrierModule
         if ((int) $this->id_carrier !== (int) Configuration::get('GRTRANS_CARRIER')) {
             return false;
         }
-        $quote = $this->currentQuote($cart);
-        return $quote === null ? false : (float) $quote['price'];
+        $resolved = $this->quoteResult($cart);
+        return $resolved['status'] !== 'quoted' ? false : (float) $resolved['quote']['price'];
     }
 
     public function hookDisplayCarrierExtraContent($params)
