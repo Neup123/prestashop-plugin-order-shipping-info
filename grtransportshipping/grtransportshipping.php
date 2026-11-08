@@ -410,8 +410,8 @@ class Grtransportshipping extends CarrierModule
         $out .= '<style>
             .grtrans-route-grid{max-width:100%;overflow-x:auto}
             .grtrans-route-grid th,.grtrans-route-grid td{vertical-align:middle!important;white-space:nowrap}
-            .grtrans-route-grid tr.grtrans-row-demo>td{background-color:#fff8e6}
-            .grtrans-route-grid tr.grtrans-row-suspended>td{background-color:#ffefed}
+            .grtrans-route-grid.table-responsive tr.grtrans-row-demo>td{background-color:#fff8e6!important}
+            .grtrans-route-grid.table-responsive tr.grtrans-row-suspended>td{background-color:#ffefed!important}
             .grtrans-pill{display:inline-block;border-radius:4px;padding:4px 8px;font-size:12px;font-weight:600;line-height:1.3}
             .grtrans-state-draft{background:#e5e7eb;color:#303845}
             .grtrans-state-available,.grtrans-verified{background:#d9f3e5;color:#14532d}
