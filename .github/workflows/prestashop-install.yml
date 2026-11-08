@@ -33,6 +33,8 @@ jobs:
           docker compose -f tests/compose.yml exec -T mysql mariadb -uroot -pci_demo_password prestashop -e "SELECT COUNT(*) AS routes FROM ps_grtrans_route; SELECT COUNT(*) AS carriers FROM ps_carrier WHERE external_module_name='grtransportshipping' AND deleted=0;"
       - name: Verify real Greek delivery addresses and shipping quotes
         run: docker compose -f tests/compose.yml exec -T -u www-data prestashop php /tmp/prestashop-quote-smoke.php
+      - name: Verify shipped Greek translations in actual PrestaShop
+        run: docker compose -f tests/compose.yml exec -T -u www-data prestashop php /tmp/prestashop-translations-smoke.php
       - name: Verify checkout shipping calculator and delivery options
         run: docker compose -f tests/compose.yml exec -T -u www-data prestashop php /tmp/prestashop-calculator-smoke.php
       - name: Verify saved order pickup snapshots and customer/admin notices
