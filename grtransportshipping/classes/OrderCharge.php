@@ -105,7 +105,7 @@ final class GrTransportOrderCharge
             'Transport order #%d shipping charge divergence: charged %.2f EUR, pinned quote plus eligible handling %.2f EUR; no applied free-shipping rule explains the difference',
             $orderId, $charged, $expected
         );
-        PrestaShopLogger::addLog($message, 3, null, 'Order', $orderId);
+        PrestaShopLogger::addLog($message, PrestaShopLogger::LOG_SEVERITY_LEVEL_MAJOR, null, 'Order', $orderId);
         throw new RuntimeException($message);
     }
 }
