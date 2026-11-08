@@ -103,4 +103,46 @@ testAssert((float) GrTransportQuoteEngine::select($routes, '26000', 'PATRA')['pr
 testAssert(GrTransportQuoteEngine::select($routes, '26000', 'OTHER') === null,
     'Unknown Latin city must fail closed');
 
+// #53: bounded operating envelope contract. This is a deterministic
+// functional test with 750 realistic route records; it is NOT a DB timing
+// benchmark and does not cover the unbounded SQL scan or browser rendering.
+$scaledRoutes = [];
+for ($i = 0; $i < 750; $i++) {
+    $scaledRoutes[] = [
+        'id_route' => 2000 + $i,
+        'route_status' => GrTransportRouteState::AVAILABLE,
+        'postal_prefix' => (string) (10000 + $i),
+        'city' => '',
+        'mode' => 'bus',
+        'station_name' => 'Test depot ' . $i,
+        'price' => 10,
+        'pickup_only' => 1,
+        'demo' => 1,
+        'notice' => '',
+    ];
+}
+$scaledRoutes[] = [
+    'id_route' => 3001, 'route_status' => GrTransportRouteState::AVAILABLE,
+    'postal_prefix' => '84', 'city' => '', 'mode' => 'ferry',
+    'station_name' => 'Regional port', 'price' => 20,
+    'pickup_only' => 1, 'demo' => 1, 'notice' => '',
+];
+$scaledRoutes[] = [
+    'id_route' => 3002, 'route_status' => GrTransportRouteState::SUSPENDED,
+    'postal_prefix' => '843', 'city' => '', 'mode' => 'ferry',
+    'station_name' => 'Naxos port', 'price' => 29,
+    'pickup_only' => 1, 'demo' => 1, 'notice' => '',
+];
+testAssert(GrTransportQuoteEngine::resolve($scaledRoutes, '84300', 'Νάξος')['status'] === 'suspended',
+    'Suspended specific route must still veto broader rate at 750+ routes');
+testAssert((float)GrTransportQuoteEngine::select($scaledRoutes, '84100', 'Ερμούπολη')['price'] === 20,
+    'Regional fallback must remain usable in scaled route dataset');
+testAssert(GrTransportQuoteEngine::resolve($scaledRoutes, '99999', 'Unserved')['status'] === 'unmatched',
+    'Unknown destination must still fail closed in scaled dataset');
+testAssert(count(GrTransportQuoteEngine::shadowedSuspensions($scaledRoutes)) === 1,
+    'Admin suspended route warning must still be correct at 750+ routes');
+$scaledRoutes[count($scaledRoutes) - 1]['route_status'] = GrTransportRouteState::AVAILABLE;
+testAssert((float)GrTransportQuoteEngine::select($scaledRoutes, '84300', 'Ναξος')['price'] === 29,
+    'Reactivated precise route must quote at 750+ routes');
+echo "Route count smoke: 752 synthetic route rules (pure PHP), matching, veto and admin shadow warnings passed\\n";
 echo "Quote tests passed\\n";
