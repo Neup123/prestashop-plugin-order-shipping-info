@@ -280,6 +280,37 @@ try {
     testAssert(abs((float) $repaired['price'] - 29) < 0.001,
         'Historical repair must preserve pinned base rate');
     echo 'PASS historical repair after handling settings changed' . PHP_EOL;
+
+    // CI-only invalid order totals: the actual validation hook must reject
+    // unrelated differences and record a clear PrestaShop error log.
+    $moduleGuard = Module::getInstanceByName('grtransportshipping');
+    $chargedBefore = (float) $feeOrder->total_shipping_tax_excl;
+    try {
+        foreach ([40.00, 0.00] as $incorrectAmount) {
+            testAssert(Db::getInstance()->update('orders',
+                ['total_shipping_tax_excl' => $incorrectAmount],
+                'id_order = ' . (int) $feeOrder->id), 'Could not set invalid CI shipping charge');
+            $rejected = false;
+            try {
+                $moduleGuard->hookActionValidateOrder([
+                    'order' => new Order((int) $feeOrder->id), 'cart' => $feeCart,
+                ]);
+            } catch (RuntimeException $e) {
+                $rejected = str_contains($e->getMessage(), 'shipping charge divergence');
+            }
+            testAssert($rejected, 'Unexplained charged amount was accepted: ' . $incorrectAmount);
+        }
+        $logged = (int) Db::getInstance()->getValue('SELECT COUNT(*) FROM `'
+            . _DB_PREFIX_ . 'log` WHERE id_object = ' . (int) $feeOrder->id
+            . ' AND message LIKE \\'%shipping charge divergence%\\'');
+        testAssert($logged >= 2, 'Invalid charges must leave a clear PrestaShop log entry');
+    } finally {
+        Db::getInstance()->update('orders',
+            ['total_shipping_tax_excl' => $chargedBefore],
+            'id_order = ' . (int) $feeOrder->id);
+    }
+    echo 'PASS genuine shipping charge divergence blocked and logged' . PHP_EOL;
+
 } finally {
     $carrier = new Carrier($idCarrier);
     $carrier->shipping_handling = $previousCarrierHandling;
