@@ -5,6 +5,11 @@
  */
 require_once __DIR__ . '/bootstrap.php';
 bootPrestaShop();
+// The disposable demo shop can ship with a nonzero default handling fee.
+// Explicitly establish a zero-fee baseline for existing route-price checks;
+// the real-order adjustment scenario separately enables and verifies a fee.
+testAssert(Configuration::updateValue('PS_SHIPPING_HANDLING', 0),
+    'Cannot set deterministic CI handling-fee baseline');
 
 
 $module = Module::getInstanceByName('grtransportshipping');
