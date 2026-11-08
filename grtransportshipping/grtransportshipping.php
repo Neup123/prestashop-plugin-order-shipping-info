@@ -13,6 +13,15 @@ require_once __DIR__ . '/classes/RouteRepository.php';
  */
 class Grtransportshipping extends CarrierModule
 {
+    /** One customer/admin text table for the same pickup, demo and station state. */
+    private const NOTICE_TEXT = [
+        'pickup' => 'STATION PICKUP ONLY — NO HOME DELIVERY',
+        'arrangement' => 'Delivery arrangement must be confirmed.',
+        'location' => 'Collection point: ',
+        'demo' => 'DEMO ESTIMATE — NOT A LIVE SHIPPING OFFER',
+        'mode' => 'Mode: ',
+    ];
+
     private array $requestQuotes = [];
 
     public function __construct()
@@ -153,12 +162,7 @@ class Grtransportshipping extends CarrierModule
                 . $repairForm . '</div>';
         }
         return '<section class="card"><div class="card-body"><h3>Public transport shipping</h3>'
-            . '<p>Mode: ' . $this->escape($info['mode']) . '</p>'
-            . '<p><strong>' . (!empty($info['pickup_only']) ? 'STATION PICKUP ONLY' : 'Delivery arrangement')
-            . ': ' . $this->escape($info['station_name']) . '</strong></p>'
-            . '<p>' . $this->escape($info['notice']) . '</p>'
-            . (!empty($info['demo']) ? '<strong>DEMO PRICE — NOT VERIFIED</strong>' : '')
-            . $repairForm . '</div></section>';
+            . $this->renderNotice($info, 'admin') . $repairForm . '</div></section>';
     }
 
     public function hookDisplayOrderDetail($params)
@@ -184,15 +188,34 @@ class Grtransportshipping extends CarrierModule
                 ? '<div class="alert alert-danger">Transport pickup details are temporarily unavailable. Please contact the merchant before collection.</div>'
                 : '';
         }
-        $title = !empty($info['pickup_only'])
-            ? $this->l('STATION PICKUP ONLY — NO HOME DELIVERY')
-            : $this->l('Transport destination information');
-        return '<div class="alert alert-info grtransport-pickup">'
-            . '<strong>' . $this->escape($title) . '</strong>'
-            . '<p>' . $this->escape($this->l('Collection location: ')) . $this->escape($info['station_name']) . '</p>'
-            . '<p>' . $this->escape($info['notice']) . '</p>'
-            . (!empty($info['demo']) ? '<strong>' . $this->escape($this->l('DEMO ESTIMATE — NOT VERIFIED')) . '</strong>' : '')
-            . '</div>';
+        return $this->renderNotice($info, 'order');
+    }
+
+    /**
+     * One renderer and one wording table for checkout, customer order and
+     * administrative order views. Context changes markup and optional mode,
+     * never the pickup, warning or collection-point text.
+     */
+    private function renderNotice(array $row, string $context): string
+    {
+        if (!in_array($context, ['checkout', 'order', 'admin'], true)) {
+            throw new InvalidArgumentException('Invalid transport notice context');
+        }
+        $heading = !empty($row['pickup_only']) ? self::NOTICE_TEXT['pickup'] : self::NOTICE_TEXT['arrangement'];
+        $body = '<strong>' . $this->escape($this->l($heading)) . '</strong>'
+            . ($context === 'admin'
+                ? '<p>' . $this->escape($this->l(self::NOTICE_TEXT['mode']))
+                    . $this->escape($row['mode'] ?? '') . '</p>'
+                : '')
+            . '<p>' . $this->escape($this->l(self::NOTICE_TEXT['location']))
+                . $this->escape($row['station_name'] ?? '') . '</p>'
+            . '<p>' . $this->escape($row['notice'] ?? '') . '</p>'
+            . (!empty($row['demo'])
+                ? '<strong>' . $this->escape($this->l(self::NOTICE_TEXT['demo'])) . '</strong>'
+                : '');
+        return $context === 'admin'
+            ? '<div class="grtransport-pickup">' . $body . '</div>'
+            : '<div class="alert alert-info grtransport-pickup">' . $body . '</div>';
     }
 
     private function createCarrier(): bool
@@ -288,16 +311,7 @@ class Grtransportshipping extends CarrierModule
             $message = $messages[$resolved['status']] ?? 'The transport quote is temporarily unavailable.';
             return '<p>' . $this->escape($this->l($message)) . '</p>';
         }
-        $station = $this->escape($quote['station_name']);
-        $notice = $this->escape($quote['notice']);
-        $message = !empty($quote['pickup_only'])
-            ? $this->l('STATION PICKUP ONLY — no home delivery.')
-            : $this->l('Delivery arrangement must be confirmed.');
-        return '<div class="alert alert-info"><strong>' . $this->escape($message)
-            . '</strong><p>' . $this->escape($this->l('Collection point: ')) . $station
-            . '</p><p>' . $notice . '</p>'
-            . (!empty($quote['demo']) ? '<strong>' . $this->escape($this->l('DEMO ESTIMATE — NOT A LIVE SHIPPING OFFER')) . '</strong>' : '')
-            . '</div>';
+        return $this->renderNotice($quote, 'checkout');
     }
 
     private function escape($value): string
