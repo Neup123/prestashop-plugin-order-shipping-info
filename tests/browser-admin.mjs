@@ -229,7 +229,23 @@ try {
   const orderId = Number(process.env.TEST_ORDER_ID);
   assert.ok(Number.isSafeInteger(orderId) && orderId > 0,
     'Browser acceptance requires a real persisted transport order ID');
-  const orderView = 'http://localhost:8080/admin-dev/index.php/sell/orders/' + orderId + '/view';
+  // Symfony protects AdminOrders with a controller-specific token. Follow
+  // the authenticated BO's real Orders link instead of guessing an untrusted
+  // direct URL (which PrestaShop redirects to /security/compromised).
+  const ordersIndex = await page.locator('a[href]').evaluateAll(anchors =>
+    anchors.map(a => a.href).find(h =>
+      h.includes('/sell/orders/') && /[?&](?:token|_token)=/.test(h)
+    ) ?? null);
+  assert.ok(ordersIndex, 'Authenticated PrestaShop BO did not expose a tokenized Orders link');
+  await page.goto(ordersIndex, {waitUntil:'domcontentloaded', timeout:45000});
+  const orderDetailLink = await page.locator('a[href]').evaluateAll((anchors, id) =>
+    anchors.map(a => a.href).find(h => h.includes('/sell/orders/' + id + '/view')) ?? null,
+    String(orderId));
+  const orderView = orderDetailLink ?? (() => {
+    const uri = new URL(ordersIndex);
+    uri.pathname = '/admin-dev/index.php/sell/orders/' + orderId + '/view';
+    return uri.toString();
+  })();
   await page.goto(orderView, {waitUntil:'domcontentloaded', timeout:45000});
   const regenerate = page.locator('button[name="grtrans_repair_order"]').first();
   await regenerate.waitFor({timeout:30000});
