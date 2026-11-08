@@ -15,14 +15,43 @@ final class GrTransportCartQuote
     public const CONSUMED = 'consumed';
     public const TTL_SECONDS = 1800;
 
-    public static function pinned(int $cartId, int $addressId, string $fingerprint): ?array
+    private static function row(int $cartId): ?array
     {
-        if ($cartId <= 0 || $addressId <= 0) {
+        if ($cartId <= 0) {
             return null;
         }
         $row = Db::getInstance()->getRow(
             'SELECT * FROM `' . _DB_PREFIX_ . 'grtrans_cart_quote` WHERE id_cart = ' . $cartId
         );
+        return is_array($row) ? $row : null;
+    }
+
+    private static function decode(array $row): ?array
+    {
+        $quote = json_decode((string) $row['quote_data'], true);
+        return is_array($quote) ? $quote : null;
+    }
+
+    /**
+     * Historical repair source, even when the customer has since edited
+     * their address or the 30-minute quote hold has expired. Only a quote
+     * actually pinned to this order's cart/address is trustworthy.
+     */
+    public static function forOrder(int $cartId, int $addressId): ?array
+    {
+        $row = self::row($cartId);
+        if (!$row || (int) $row['id_address'] !== $addressId) {
+            return null;
+        }
+        return self::decode($row);
+    }
+
+    public static function pinned(int $cartId, int $addressId, string $fingerprint): ?array
+    {
+        if ($cartId <= 0 || $addressId <= 0) {
+            return null;
+        }
+        $row = self::row($cartId);
         if (!$row || (int) $row['id_address'] !== $addressId
             || (string) $row['address_fingerprint'] !== $fingerprint) {
             return null;
@@ -32,8 +61,7 @@ final class GrTransportCartQuote
             && strtotime((string) $row['created_at'] . ' UTC') < time() - self::TTL_SECONDS) {
             return null;
         }
-        $quote = json_decode((string) $row['quote_data'], true);
-        return is_array($quote) ? $quote : null;
+        return self::decode($row);
     }
 
     public static function pin(int $cartId, int $addressId, string $fingerprint, array $quote): array
