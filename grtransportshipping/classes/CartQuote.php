@@ -15,7 +15,7 @@ final class GrTransportCartQuote
     public const CONSUMED = 'consumed';
     public const TTL_SECONDS = 1800;
 
-    public static function pinned(int $cartId, int $addressId): ?array
+    public static function pinned(int $cartId, int $addressId, string $fingerprint): ?array
     {
         if ($cartId <= 0 || $addressId <= 0) {
             return null;
@@ -23,7 +23,8 @@ final class GrTransportCartQuote
         $row = Db::getInstance()->getRow(
             'SELECT * FROM `' . _DB_PREFIX_ . 'grtrans_cart_quote` WHERE id_cart = ' . $cartId
         );
-        if (!$row || (int) $row['id_address'] !== $addressId) {
+        if (!$row || (int) $row['id_address'] !== $addressId
+            || (string) $row['address_fingerprint'] !== $fingerprint) {
             return null;
         }
         // Consumed quotes remain immutable for audit and duplicate callbacks.
@@ -35,13 +36,13 @@ final class GrTransportCartQuote
         return is_array($quote) ? $quote : null;
     }
 
-    public static function pin(int $cartId, int $addressId, array $quote): array
+    public static function pin(int $cartId, int $addressId, string $fingerprint, array $quote): array
     {
         if ($cartId <= 0 || $addressId <= 0) {
             return $quote;
         }
         $db = Db::getInstance();
-        $existing = self::pinned($cartId, $addressId);
+        $existing = self::pinned($cartId, $addressId, $fingerprint);
         if ($existing !== null) {
             return $existing; // First successfully pinned quote wins any race.
         }
@@ -56,13 +57,14 @@ final class GrTransportCartQuote
         if ($serialized === false || !$db->insert('grtrans_cart_quote', [
             'id_cart' => $cartId,
             'id_address' => $addressId,
+            'address_fingerprint' => $fingerprint,
             'quote_data' => pSQL($serialized, true),
             'quote_status' => self::PINNED,
             'created_at' => gmdate('Y-m-d H:i:s'),
         ], false, true, Db::INSERT_IGNORE)) {
             throw new RuntimeException('Cannot pin shipping quote before checkout');
         }
-        $pinned = self::pinned($cartId, $addressId);
+        $pinned = self::pinned($cartId, $addressId, $fingerprint);
         if ($pinned === null) {
             throw new RuntimeException('Pinned shipping quote is unreadable');
         }
