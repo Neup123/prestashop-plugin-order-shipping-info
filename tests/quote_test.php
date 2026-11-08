@@ -135,14 +135,14 @@ $scaledRoutes[] = [
 ];
 testAssert(GrTransportQuoteEngine::resolve($scaledRoutes, '84300', 'Νάξος')['status'] === 'suspended',
     'Suspended specific route must still veto broader rate at 750+ routes');
-testAssert((float)GrTransportQuoteEngine::select($scaledRoutes, '84100', 'Ερμούπολη')['price'] === 20,
+testAssert((float)GrTransportQuoteEngine::select($scaledRoutes, '84100', 'Ερμούπολη')['price'] === 20.0,
     'Regional fallback must remain usable in scaled route dataset');
 testAssert(GrTransportQuoteEngine::resolve($scaledRoutes, '99999', 'Unserved')['status'] === 'unmatched',
     'Unknown destination must still fail closed in scaled dataset');
 testAssert(count(GrTransportQuoteEngine::shadowedSuspensions($scaledRoutes)) === 1,
     'Admin suspended route warning must still be correct at 750+ routes');
 $scaledRoutes[count($scaledRoutes) - 1]['route_status'] = GrTransportRouteState::AVAILABLE;
-testAssert((float)GrTransportQuoteEngine::select($scaledRoutes, '84300', 'Ναξος')['price'] === 29,
+testAssert((float)GrTransportQuoteEngine::select($scaledRoutes, '84300', 'Ναξος')['price'] === 29.0,
     'Reactivated precise route must quote at 750+ routes');
 echo "Route count smoke: 752 synthetic route rules (pure PHP), matching, veto and admin shadow warnings passed\\n";
 echo "Quote tests passed\\n";
