@@ -159,6 +159,19 @@ try {
             'Repeat repair should be idempotent using the original cart quote');
         orderCheck(str_contains($module->hookDisplayOrderConfirmation(['order' => $order]), 'Naxos Port'),
             'Customer-facing order confirmation must recover after repair');
+        // Unrecoverable state must be explicit, not silently recalculated
+        // from the new tariff or falsely reported as repaired.
+        orderCheck($db->delete('grtrans_cart_quote', 'id_cart = ' . (int) $cart->id),
+            'Cannot simulate lost original cart quote');
+        orderCheck($db->delete('grtrans_order', 'id_order = ' . $idOrder),
+            'Cannot simulate a second missing snapshot');
+        $failedClosed = false;
+        try {
+            GrTransportOrderSnapshot::repair($idOrder);
+        } catch (RuntimeException $e) {
+            $failedClosed = str_contains($e->getMessage(), 'No historical cart quote');
+        }
+        orderCheck($failedClosed, 'Repair without authoritative original quote must fail closed');
     } finally {
         $db->update('grtrans_route', ['price' => 29], 'id_route = ' . $routeId);
     }
