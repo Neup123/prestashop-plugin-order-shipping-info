@@ -2,7 +2,7 @@
 
 ## Automated verification
 
-GitHub Actions runs PHP 8.2/8.4 lint and quote tests. A real PrestaShop 9.2 Docker job installs the module and checks carrier eligibility, Greek addresses, and the native Cart shipping calculator with physical goods. Browser CI logs into the real PrestaShop back office to edit a price, then logs in as a Greek buyer and verifies ferry-station pickup disclosure at checkout. A separate hook integration smoke test checks persisted order pickup snapshots and their stability after route edits; it does **not** place a paid order. The **Module ZIP** workflow packages a downloadable module ZIP with `grtransportshipping/` at its root.
+GitHub Actions runs PHP 8.2/8.4 lint and quote tests. A real PrestaShop 9.2 Docker job installs the module and checks carrier eligibility, Greek addresses, and the native Cart shipping calculator with physical goods. Browser CI logs into the real PrestaShop back office to edit a price, then logs in as a Greek buyer and verifies ferry-station pickup disclosure at checkout. A separate hook integration smoke test checks persisted order pickup snapshots and their stability after route edits. A real PrestaShop pending-cheque order test also validates order creation, customer/admin pickup text and historical quote-based repair; neither test charges a payment card. The **Module ZIP** workflow packages a downloadable module ZIP with `grtransportshipping/` at its root.
 
 ## Manual install
 
@@ -19,9 +19,9 @@ GitHub Actions runs PHP 8.2/8.4 lint and quote tests. A real PrestaShop 9.2 Dock
 
 Demo fares are arbitrary estimates. Public transport passenger tickets and departure routes do **not** validate parcel/cargo acceptance. Only enable live checkout after merchant replaces demo records with actual freight terms, verifies collection points, operating conditions, and confirms food shipping safety/handling requirements with transport operators.
 
-## Outstanding checks
+## Additional pre-production checks beyond core issue #1
 
-Automated browser coverage currently uses the CI shop's default front-end theme; Hummingbird-specific browser acceptance and a completed real test-payment order (including customer confirmation/account details) are still outstanding. Full add/delete UI regression and live merchant route/fare verification remain mandatory before production release. Never mistake assumed demo parcel prices for operator freight tariffs.
+Automated browser coverage currently uses the CI shop's default front-end theme; Hummingbird-specific browser acceptance and a completed real test-payment order (including customer confirmation/account details) are still outstanding. Admin route add/edit/delete and stale-ID rejection are covered by the Chromium browser suite; live merchant route/fare verification remains mandatory before production release. Never mistake assumed demo parcel prices for operator freight tariffs.
 
 ## Route lifecycle and quote price integrity (0.4.0)
 
