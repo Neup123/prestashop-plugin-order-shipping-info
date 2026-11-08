@@ -350,6 +350,10 @@ try {
         Cache::clean('getPackageShippingCost_*');
         $ttlOrder = $placeAdjusted($ttlCart, 'expired quote with current route');
         $ttlSnapshot = GrTransportOrderSnapshot::find((int)$ttlOrder->id);
+        echo 'CI #47 native order details: order_id=' . (int)$ttlOrder->id
+            . ', charged_shipping=' . (float)$ttlOrder->total_shipping_tax_excl
+            . ', saved_snapshot=' . json_encode($ttlSnapshot)
+            . ', shipping_incl=' . (float)$ttlOrder->total_shipping_tax_incl . PHP_EOL;
         testAssert(abs((float)$ttlOrder->total_shipping_tax_excl - 39.0) < 0.001
             && is_array($ttlSnapshot) && abs((float)$ttlSnapshot['price'] - 39.0) < 0.001,
             'Real PrestaShop charged amount and snapshot must both use new quote EUR 39');
