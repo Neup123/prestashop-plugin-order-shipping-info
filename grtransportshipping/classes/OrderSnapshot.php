@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/CartQuote.php';
+require_once __DIR__ . '/CarrierLifecycle.php';
 
 /**
  * Durable order pickup state machine (one write path):
@@ -37,9 +38,7 @@ final class GrTransportOrderSnapshot
         if ($carrierId <= 0) {
             return false;
         }
-        $carrier = new Carrier($carrierId);
-        return Validate::isLoadedObject($carrier)
-            && (string) $carrier->external_module_name === 'grtransportshipping';
+        return GrTransportCarrierLifecycle::isOwned($carrierId);
     }
 
     public static function capture(int $orderId, array $quote): array

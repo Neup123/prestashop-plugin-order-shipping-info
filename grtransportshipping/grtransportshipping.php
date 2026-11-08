@@ -5,6 +5,7 @@ if (!defined('_PS_VERSION_')) {
 require_once __DIR__ . '/classes/QuoteEngine.php';
 require_once __DIR__ . '/classes/CartQuote.php';
 require_once __DIR__ . '/classes/OrderSnapshot.php';
+require_once __DIR__ . '/classes/CarrierLifecycle.php';
 
 /**
  * Athens-origin public transport parcel quotes. Prices in EUR.
@@ -25,12 +26,23 @@ class Grtransportshipping extends CarrierModule
         $this->displayName = $this->l('Greek public transport shipping');
         $this->description = $this->l('Station-based parcel transport by KTEL bus, ferry and air.');
         $this->ps_versions_compliancy = ['min' => '9.0.0', 'max' => '9.99.99'];
-        $this->id_carrier = (int) Configuration::get('GRTRANS_CARRIER');
+        GrTransportCarrierLifecycle::activeId($this);
     }
 
     public function install()
     {
-        if (!parent::install() || !$this->installSchema() || !$this->createCarrier()) {
+        // PrestaShop's parent::install() rejects an already inserted module.
+        // A failed late hook registration leaves a partially installed module;
+        // resume that state instead of orphaning another carrier.
+        if (Module::isInstalled($this->name)) {
+            $this->id = (int) Module::getModuleIdByName($this->name);
+            if (!$this->id) {
+                return false;
+            }
+        } elseif (!parent::install()) {
+            return false;
+        }
+        if (!$this->installSchema() || !$this->createCarrier()) {
             return false;
         }
         $this->seedDemo();
@@ -44,17 +56,9 @@ class Grtransportshipping extends CarrierModule
 
     public function uninstall()
     {
-        $id = (int) Configuration::get('GRTRANS_CARRIER');
-        if ($id) {
-            $carrier = new Carrier($id);
-            if (Validate::isLoadedObject($carrier)) {
-                $carrier->deleted = true;
-                $carrier->save();
-            }
-        }
-        Configuration::deleteByName('GRTRANS_CARRIER');
-        // Preserve route data on uninstall to avoid silent loss of merchant prices.
-        return parent::uninstall();
+        // Preserve historical order/route data, but retire the single
+        // canonical owned carrier and clear its identity through one writer.
+        return GrTransportCarrierLifecycle::retire($this) && parent::uninstall();
     }
 
     private function installSchema(): bool
@@ -107,7 +111,7 @@ class Grtransportshipping extends CarrierModule
     {
         $order = $params['order'] ?? null;
         $cart = $params['cart'] ?? null;
-        if (!$order || !$cart || (int) $order->id_carrier !== (int) Configuration::get('GRTRANS_CARRIER')) {
+        if (!$order || !$cart || (int) $order->id_carrier !== GrTransportCarrierLifecycle::activeId($this)) {
             return;
         }
         $quote = $this->currentQuote($cart);
@@ -198,42 +202,7 @@ class Grtransportshipping extends CarrierModule
 
     private function createCarrier(): bool
     {
-        $carrier = new Carrier();
-        $carrier->name = 'Greek transport — station pickup';
-        $carrier->active = true;
-        $carrier->deleted = false;
-        $carrier->shipping_external = true;
-        $carrier->external_module_name = $this->name;
-        $carrier->shipping_method = Carrier::SHIPPING_METHOD_WEIGHT;
-        $carrier->is_module = true;
-        $carrier->need_range = true;
-        $carrier->range_behavior = 0;
-        $carrier->grade = 0;
-        $carrier->delay = [];
-        foreach (Language::getLanguages(false) as $lang) {
-            $carrier->delay[(int) $lang['id_lang']] = 'Collection from the named transport station (not home delivery)';
-        }
-        if (!$carrier->add()) {
-            return false;
-        }
-        Configuration::updateValue('GRTRANS_CARRIER', (int) $carrier->id);
-        $range = new RangeWeight();
-        $range->id_carrier = (int) $carrier->id;
-        $range->delimiter1 = 0;
-        $range->delimiter2 = 100000;
-        if (!$range->add()) {
-            return false;
-        }
-        $gr = Country::getByIso('GR');
-        if ($gr) {
-            $country = new Country((int) $gr);
-            $carrier->addZone((int) $country->id_zone);
-        }
-        $groupIds = [];
-        foreach (Group::getGroups((int) Configuration::get('PS_LANG_DEFAULT')) as $group) {
-            $groupIds[] = (int) $group['id_group'];
-        }
-        return $carrier->setGroups($groupIds);
+        return GrTransportCarrierLifecycle::ensure($this);
     }
 
     private function seedDemo(): void
@@ -255,9 +224,9 @@ class Grtransportshipping extends CarrierModule
 
     public function hookActionCarrierUpdate($params)
     {
-        if ((int) ($params['id_carrier'] ?? 0) === (int) Configuration::get('GRTRANS_CARRIER')) {
-            Configuration::updateValue('GRTRANS_CARRIER', (int) $params['carrier']->id);
-        }
+        GrTransportCarrierLifecycle::onCarrierUpdate(
+            $this, (int) ($params['id_carrier'] ?? 0), $params['carrier'] ?? null
+        );
     }
 
     /** Request-level cache: no repeated route-table scans for one cart/address. */
@@ -317,7 +286,7 @@ class Grtransportshipping extends CarrierModule
 
     public function getOrderShippingCostExternal($cart)
     {
-        if ((int) $this->id_carrier !== (int) Configuration::get('GRTRANS_CARRIER')) {
+        if (GrTransportCarrierLifecycle::activeId($this) <= 0) {
             return false;
         }
         $resolved = $this->quoteResult($cart);
@@ -361,7 +330,8 @@ class Grtransportshipping extends CarrierModule
     public function getContent()
     {
         $out = '';
-        if (Tools::isSubmit('grtrans_save') || Tools::isSubmit('grtrans_delete') || Tools::isSubmit('grtrans_repair_order')) {
+        if (Tools::isSubmit('grtrans_save') || Tools::isSubmit('grtrans_delete')
+            || Tools::isSubmit('grtrans_repair_order') || Tools::isSubmit('grtrans_repair_carrier')) {
             // PrestaShop 9 uses Symfony masked CSRF tokens: two valid tokens
             // need not have identical byte strings. Ask the core validator
             // rather than comparing against a newly generated token.
@@ -372,7 +342,12 @@ class Grtransportshipping extends CarrierModule
                 return $this->displayError($this->l('Invalid admin token.'));
             }
             try {
-                if (Tools::isSubmit('grtrans_repair_order')) {
+                if (Tools::isSubmit('grtrans_repair_carrier')) {
+                    if (!GrTransportCarrierLifecycle::ensure($this)) {
+                        throw new RuntimeException('Could not recover module carrier identity or delivery range');
+                    }
+                    $out .= $this->displayConfirmation($this->l('Transport carrier restored and assigned to this module.'));
+                } elseif (Tools::isSubmit('grtrans_repair_order')) {
                     $idOrder = (int) Tools::getValue('grtrans_repair_order');
                     GrTransportOrderSnapshot::repair($idOrder);
                     $out .= $this->displayConfirmation($this->l('Order pickup snapshot regenerated from its original cart quote.'));
@@ -397,6 +372,16 @@ class Grtransportshipping extends CarrierModule
         ]);
         $action = $this->escape($url);
         $csrf = $this->escape(Tools::getAdminTokenLite('AdminModules'));
+        $carrierState = GrTransportCarrierLifecycle::inspect();
+        if ($carrierState['state'] !== GrTransportCarrierLifecycle::READY) {
+            $out .= '<div class="alert alert-danger"><strong>Transport carrier unavailable: '
+                . $this->escape($carrierState['state']) . ' (configured ID ' . (int) $carrierState['id'] . ').</strong>'
+                . '<p>The carrier cannot quote until an administrator repairs it. A deleted or foreign carrier will not be reused.</p>'
+                . '<form method="post" action="' . $action . '"><input type="hidden" name="token" value="' . $csrf . '">'
+                . '<button name="grtrans_repair_carrier" value="1" class="btn btn-warning">Repair transport carrier</button></form></div>';
+        } else {
+            $out .= '<p>Transport carrier ready: #' . (int) $carrierState['id'] . '</p>';
+        }
         $rows = Db::getInstance()->executeS('SELECT * FROM `' . _DB_PREFIX_ . 'grtrans_route` ORDER BY id_route ASC') ?: [];
         $warnings = GrTransportQuoteEngine::shadowedSuspensions($rows);
         $out .= '<div class="panel"><h3>Greek public transport routes</h3><p>DEMO rows are assumptions, not verified freight charges. Replace before accepting orders.</p>';
