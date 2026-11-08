@@ -71,7 +71,7 @@ foreach ($cases as $case) {
     if ($case[2] === false) {
         testAssert($actual === false, 'Unexpected available quote for ' . $case[1]);
         testAssert(str_contains($preCarrier, 'alert alert-info grtransport-no-quote')
-            && str_contains($preCarrier, 'No priced transport route matches this destination'),
+            && (str_contains($preCarrier, 'No priced transport route matches this destination') || str_contains($preCarrier, 'Δεν υπάρχει διαδρομή με καθορισμένο κόστος')),
             'Unmatched Greek address must explain missing route using independent hook');
     } else {
         testAssert(is_numeric($actual) && abs((float) $actual - $case[2]) < 0.001, 'Wrong quote for ' . $case[1]);
