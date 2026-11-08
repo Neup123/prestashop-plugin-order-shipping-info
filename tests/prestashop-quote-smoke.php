@@ -208,4 +208,62 @@ try {
     $pinnedCart->delete();
     $lockAddress->delete();
 }
+
+// #45: Real Greek Addresses + named route writer (not a fake matcher)
+// cover the city-only path with deliberately nonmatching postcode 99997.
+// These rows are temporary; persisted route spelling must stay untouched.
+$greekCityIds = [];
+$cityAddress = new Address();
+$cityAddress->id_customer = $idCustomer;
+$cityAddress->alias = 'CI city-only comparison';
+$cityAddress->firstname = 'CI';
+$cityAddress->lastname = 'Greek';
+$cityAddress->address1 = 'CI test street 1';
+$cityAddress->postcode = '99997';
+$cityAddress->city = 'Νάξος';
+$cityAddress->id_country = $idGr;
+try {
+    testAssert($cityAddress->add(), 'Cannot create real city-only Greek Address');
+    $cityCart = new Cart();
+    $cityCart->id_address_delivery = (int) $cityAddress->id;
+    $cityCart->id_carrier = $carrierId;
+    $cityCart->id_currency = (int) Configuration::get('PS_CURRENCY_DEFAULT');
+    foreach ([
+        ['route'=>'Νάξος', 'price'=>12.50, 'variants'=>['Νάξος','Ναξος','ΝΑΞΟΣ','Νάξοσ']],
+        ['route'=>'Χαϊδάρι', 'price'=>18.00, 'variants'=>['Χαϊδάρι','Χαιδαρι','ΧΑΪΔΑΡΙ']],
+        ['route'=>'Κως', 'price'=>22.00, 'variants'=>['Κως','Κωσ','ΚΩΣ']],
+    ] as $case) {
+        $cityId = GrTransportRouteRepository::save([
+            'mode'=>'bus', 'origin_name'=>'Athens',
+            'station_name'=>'CI city-only station', 'city'=>$case['route'],
+            'postal_prefix'=>'', 'price'=>$case['price'],
+            'pickup_only'=>1, 'route_status'=>GrTransportRouteState::AVAILABLE,
+            'demo'=>1, 'notice'=>'CI Greek city match',
+        ]);
+        $greekCityIds[] = $cityId;
+        testAssert(GrTransportRouteRepository::find($cityId)['city'] === $case['route'],
+            'City comparison must not alter stored route spelling');
+        foreach ($case['variants'] as $typedCity) {
+            $cityAddress->city = $typedCity;
+            testAssert($cityAddress->update(), 'Cannot persist Greek customer city variant: ' . $typedCity);
+            $freshCityModule = new Grtransportshipping();
+            $quote = $freshCityModule->getOrderShippingCostExternal($cityCart);
+            testAssert(is_numeric($quote) && abs((float)$quote - (float)$case['price']) < 0.001,
+                'Real Greek delivery Address did not quote city-only ' . $typedCity);
+        }
+    }
+    $cityAddress->city = 'Λάρισα';
+    testAssert($cityAddress->update(), 'Cannot persist genuinely unknown city');
+    testAssert((new Grtransportshipping())->getOrderShippingCostExternal($cityCart) === false,
+        'Real Greek Address for unrelated city must fail closed');
+    echo "PASS #45 actual Greek Addresses: accented, unaccented, all-caps and final-sigma city-only routes, unrelated city denied\n";
+} finally {
+    foreach ($greekCityIds as $cityId) {
+        GrTransportRouteRepository::delete($cityId);
+    }
+    if ((int)$cityAddress->id > 0) {
+        $cityAddress->delete();
+    }
+}
+
 echo "Real PrestaShop cart, Greek address, carrier visibility and quote smoke checks passed\n";
