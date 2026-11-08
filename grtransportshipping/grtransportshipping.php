@@ -6,19 +6,29 @@ require_once __DIR__ . '/classes/QuoteEngine.php';
 require_once __DIR__ . '/classes/CartQuote.php';
 require_once __DIR__ . '/classes/OrderSnapshot.php';
 require_once __DIR__ . '/classes/CarrierLifecycle.php';
+require_once __DIR__ . '/classes/RouteRepository.php';
 
 /**
  * Athens-origin public transport parcel quotes. Prices in EUR.
  */
 class Grtransportshipping extends CarrierModule
 {
+    /** One customer/admin text table for the same pickup, demo and station state. */
+    private const NOTICE_TEXT = [
+        'pickup' => 'STATION PICKUP ONLY — NO HOME DELIVERY',
+        'arrangement' => 'Delivery arrangement must be confirmed.',
+        'location' => 'Collection point: ',
+        'demo' => 'DEMO ESTIMATE — NOT A LIVE SHIPPING OFFER',
+        'mode' => 'Mode: ',
+    ];
+
     private array $requestQuotes = [];
 
     public function __construct()
     {
         $this->name = 'grtransportshipping';
         $this->tab = 'shipping_logistics';
-        $this->version = '0.4.0';
+        $this->version = '0.5.0';
         $this->author = 'Neup123';
         $this->need_instance = 0;
         $this->bootstrap = true;
@@ -45,7 +55,12 @@ class Grtransportshipping extends CarrierModule
         if (!$this->installSchema() || !$this->createCarrier()) {
             return false;
         }
-        $this->seedDemo();
+        try {
+            GrTransportRouteRepository::seedOnce();
+        } catch (Throwable $e) {
+            PrestaShopLogger::addLog('Transport demo seed failed: ' . $e->getMessage(), 3);
+            return false;
+        }
         return $this->registerHook('actionCarrierUpdate')
             && $this->registerHook('displayCarrierExtraContent')
             && $this->registerHook('actionValidateOrder')
@@ -63,23 +78,12 @@ class Grtransportshipping extends CarrierModule
 
     private function installSchema(): bool
     {
-        $sql = 'CREATE TABLE IF NOT EXISTS `' . _DB_PREFIX_ . 'grtrans_route` (
-            `id_route` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-            `mode` VARCHAR(16) NOT NULL,
-            `origin_name` VARCHAR(190) NOT NULL,
-            `station_name` VARCHAR(190) NOT NULL,
-            `city` VARCHAR(128) NOT NULL,
-            `postal_prefix` VARCHAR(5) NOT NULL,
-            `price` DECIMAL(12,2) NOT NULL,
-            `pickup_only` TINYINT(1) NOT NULL DEFAULT 1,
-            `route_status` VARCHAR(12) NOT NULL DEFAULT \'draft\',
-            `demo` TINYINT(1) NOT NULL DEFAULT 0,
-            `verified_at` DATETIME NULL,
-            `verified_by_employee` INT NULL,
-            `notice` TEXT NULL,
-            INDEX `lookup_prefix` (`postal_prefix`)
-        ) ENGINE=' . _MYSQL_ENGINE_ . ' DEFAULT CHARSET=utf8mb4';
-        return (bool) Db::getInstance()->execute($sql) && $this->installOrderSchema() && $this->installCartQuoteSchema();
+        // All SQL widths and the notice CHECK derive from RouteFields::spec().
+        $sql = 'CREATE TABLE IF NOT EXISTS `' . _DB_PREFIX_ . 'grtrans_route` ('
+            . GrTransportRouteFields::schemaColumns()
+            . ') ENGINE=' . _MYSQL_ENGINE_ . ' DEFAULT CHARSET=utf8mb4';
+        return (bool) Db::getInstance()->execute($sql)
+            && $this->installOrderSchema() && $this->installCartQuoteSchema();
     }
 
     public function installOrderSchema(): bool
@@ -158,12 +162,7 @@ class Grtransportshipping extends CarrierModule
                 . $repairForm . '</div>';
         }
         return '<section class="card"><div class="card-body"><h3>Public transport shipping</h3>'
-            . '<p>Mode: ' . $this->escape($info['mode']) . '</p>'
-            . '<p><strong>' . (!empty($info['pickup_only']) ? 'STATION PICKUP ONLY' : 'Delivery arrangement')
-            . ': ' . $this->escape($info['station_name']) . '</strong></p>'
-            . '<p>' . $this->escape($info['notice']) . '</p>'
-            . (!empty($info['demo']) ? '<strong>DEMO PRICE — NOT VERIFIED</strong>' : '')
-            . $repairForm . '</div></section>';
+            . $this->renderNotice($info, 'admin') . $repairForm . '</div></section>';
     }
 
     public function hookDisplayOrderDetail($params)
@@ -189,37 +188,39 @@ class Grtransportshipping extends CarrierModule
                 ? '<div class="alert alert-danger">Transport pickup details are temporarily unavailable. Please contact the merchant before collection.</div>'
                 : '';
         }
-        $title = !empty($info['pickup_only'])
-            ? $this->l('STATION PICKUP ONLY — NO HOME DELIVERY')
-            : $this->l('Transport destination information');
-        return '<div class="alert alert-info grtransport-pickup">'
-            . '<strong>' . $this->escape($title) . '</strong>'
-            . '<p>' . $this->escape($this->l('Collection location: ')) . $this->escape($info['station_name']) . '</p>'
-            . '<p>' . $this->escape($info['notice']) . '</p>'
-            . (!empty($info['demo']) ? '<strong>' . $this->escape($this->l('DEMO ESTIMATE — NOT VERIFIED')) . '</strong>' : '')
-            . '</div>';
+        return $this->renderNotice($info, 'order');
+    }
+
+    /**
+     * One renderer and one wording table for checkout, customer order and
+     * administrative order views. Context changes markup and optional mode,
+     * never the pickup, warning or collection-point text.
+     */
+    private function renderNotice(array $row, string $context): string
+    {
+        if (!in_array($context, ['checkout', 'order', 'admin'], true)) {
+            throw new InvalidArgumentException('Invalid transport notice context');
+        }
+        $heading = !empty($row['pickup_only']) ? self::NOTICE_TEXT['pickup'] : self::NOTICE_TEXT['arrangement'];
+        $body = '<strong>' . $this->escape($this->l($heading)) . '</strong>'
+            . ($context === 'admin'
+                ? '<p>' . $this->escape($this->l(self::NOTICE_TEXT['mode']))
+                    . $this->escape($row['mode'] ?? '') . '</p>'
+                : '')
+            . '<p>' . $this->escape($this->l(self::NOTICE_TEXT['location']))
+                . $this->escape($row['station_name'] ?? '') . '</p>'
+            . '<p>' . $this->escape($row['notice'] ?? '') . '</p>'
+            . (!empty($row['demo'])
+                ? '<strong>' . $this->escape($this->l(self::NOTICE_TEXT['demo'])) . '</strong>'
+                : '');
+        return $context === 'admin'
+            ? '<div class="grtransport-pickup">' . $body . '</div>'
+            : '<div class="alert alert-info grtransport-pickup">' . $body . '</div>';
     }
 
     private function createCarrier(): bool
     {
         return GrTransportCarrierLifecycle::ensure($this);
-    }
-
-    private function seedDemo(): void
-    {
-        $existing = (int) Db::getInstance()->getValue('SELECT COUNT(*) FROM `' . _DB_PREFIX_ . 'grtrans_route`');
-        if ($existing) {
-            return;
-        }
-        foreach (require __DIR__ . '/demo/routes.php' as $r) {
-            Db::getInstance()->insert('grtrans_route', [
-                'mode' => pSQL($r[0]), 'origin_name' => pSQL($r[1]),
-                'station_name' => pSQL($r[2]), 'city' => pSQL($r[3]),
-                'postal_prefix' => pSQL($r[4]), 'price' => (float) $r[5],
-                'pickup_only' => (int) $r[6], 'route_status' => GrTransportRouteState::AVAILABLE, 'demo' => 1,
-                'notice' => pSQL($r[7]),
-            ]);
-        }
     }
 
     public function hookActionCarrierUpdate($params)
@@ -310,16 +311,7 @@ class Grtransportshipping extends CarrierModule
             $message = $messages[$resolved['status']] ?? 'The transport quote is temporarily unavailable.';
             return '<p>' . $this->escape($this->l($message)) . '</p>';
         }
-        $station = $this->escape($quote['station_name']);
-        $notice = $this->escape($quote['notice']);
-        $message = !empty($quote['pickup_only'])
-            ? $this->l('STATION PICKUP ONLY — no home delivery.')
-            : $this->l('Delivery arrangement must be confirmed.');
-        return '<div class="alert alert-info"><strong>' . $this->escape($message)
-            . '</strong><p>' . $this->escape($this->l('Collection point: ')) . $station
-            . '</p><p>' . $notice . '</p>'
-            . (!empty($quote['demo']) ? '<strong>' . $this->escape($this->l('DEMO ESTIMATE — NOT A LIVE SHIPPING OFFER')) . '</strong>' : '')
-            . '</div>';
+        return $this->renderNotice($quote, 'checkout');
     }
 
     private function escape($value): string
@@ -356,10 +348,8 @@ class Grtransportshipping extends CarrierModule
                         $this->saveRule();
                     } else {
                         $id = (int) Tools::getValue('id_route');
-                        if ($id <= 0) {
-                            throw new Exception('Invalid route ID');
-                        }
-                        Db::getInstance()->delete('grtrans_route', 'id_route = ' . $id);
+                        GrTransportRouteRepository::delete($id);
+                        $this->clearQuoteCache();
                     }
                     $out .= $this->displayConfirmation($this->l('Route dataset updated.'));
                 }
@@ -407,37 +397,25 @@ class Grtransportshipping extends CarrierModule
             }
         }
         $out .= '</tbody></table><h4>' . ($editing ? 'Edit route #' . $editId : 'Add route') . '</h4><form method="post" action="' . $action . '"><input type="hidden" name="token" value="' . $csrf . '">';
-        $fields = [
-            'id_route' => 'Route ID (0 to add)', 'mode' => 'Mode: bus / ferry / flight',
-            'origin_name' => 'Origin terminal', 'station_name' => 'Destination pickup station',
-            'city' => 'City (optional)', 'postal_prefix' => 'Postal prefix (optional)',
-            'price' => 'Transport price EUR', 'pickup_only' => 'Station pickup only (1 / 0)',
-            'route_status' => 'Route state (Draft ignores fallback; Suspended blocks broader fares)',
-            'demo' => 'Unverified demo estimate (1) / operator-confirmed price (0)',
-            'notice' => 'Customer notice',
-        ];
-        foreach ($fields as $field => $label) {
-            $default = (string) ($editing[$field] ?? (['id_route'=>'0', 'mode'=>'bus', 'origin_name'=>'Athens', 'price'=>'0.00', 'pickup_only'=>'1', 'route_status'=>'draft', 'demo'=>'1'][$field] ?? ''));
-            $out .= '<label style="display:block;margin:8px 0">' . $this->escape($label);
-            if ($field === 'mode' || $field === 'route_status' || $field === 'pickup_only' || $field === 'demo') {
-                $values = $field === 'mode'
-                    ? ['bus' => 'KTEL bus', 'ferry' => 'Ferry', 'flight' => 'Domestic flight']
-                    : ($field === 'route_status'
-                        ? GrTransportRouteState::STATE_LABELS
-                        : ['1' => 'Yes', '0' => 'No']);
+        foreach (GrTransportRouteFields::formFields() as $field => $spec) {
+            $value = (string) ($editing[$field] ?? $spec['default']);
+            $out .= '<label style="display:block;margin:8px 0">' . $this->escape($spec['label']);
+            if ($spec['kind'] === 'select') {
                 $out .= '<select class="form-control" style="max-width:600px" name="' . $field . '">';
-                foreach ($values as $value => $name) {
-                    $out .= '<option value="' . $this->escape($value) . '"'
-                        . ($default === (string) $value ? ' selected' : '') . '>' . $this->escape($name) . '</option>';
+                foreach (GrTransportRouteFields::choices($field) as $option => $label) {
+                    $out .= '<option value="' . $this->escape($option) . '"'
+                        . ($value === (string) $option ? ' selected' : '') . '>'
+                        . $this->escape($label) . '</option>';
                 }
                 $out .= '</select>';
-            } elseif ($field === 'notice') {
-                $out .= '<textarea class="form-control" rows="3" style="max-width:600px"'
-                    . ' name="notice" maxlength="2000">' . $this->escape($default) . '</textarea>';
+            } elseif ($spec['kind'] === 'textarea') {
+                $out .= '<textarea class="form-control" rows="3" style="max-width:600px" name="'
+                    . $field . '" maxlength="' . GrTransportRouteFields::limit($field)
+                    . '">' . $this->escape($value) . '</textarea>';
             } else {
-                $lengths = ['id_route'=>10, 'origin_name'=>190, 'station_name'=>190, 'city'=>128, 'postal_prefix'=>5, 'price'=>16];
                 $out .= '<input class="form-control" style="max-width:600px" name="' . $field
-                    . '" value="' . $this->escape($default) . '" maxlength="' . $lengths[$field] . '">';
+                    . '" value="' . $this->escape($value) . '" maxlength="'
+                    . GrTransportRouteFields::limit($field) . '">';
             }
             $out .= '</label>';
         }
@@ -451,49 +429,15 @@ class Grtransportshipping extends CarrierModule
 
     private function saveRule(): void
     {
-        $id = (int) Tools::getValue('id_route', 0);
-        $mode = (string) Tools::getValue('mode');
-        $price = (string) Tools::getValue('price');
-        $prefix = trim((string) Tools::getValue('postal_prefix'));
-        $city = trim((string) Tools::getValue('city'));
-        $origin = trim((string) Tools::getValue('origin_name'));
-        $station = trim((string) Tools::getValue('station_name'));
-        $notice = trim((string) Tools::getValue('notice'));
-        if (!in_array($mode, ['bus', 'ferry', 'flight'], true)
-            || !preg_match('/^\\d{0,5}$/', $prefix)
-            || ($prefix === '' && $city === '')
-            || !is_numeric($price) || (float) $price < 0 || (float) $price > 999999
-            || $origin === '' || $station === ''
-            || mb_strlen($origin) > 190 || mb_strlen($station) > 190 || mb_strlen($city) > 128
-            || mb_strlen($notice) > 2000) {
-            throw new InvalidArgumentException('Invalid route data');
+        $values = [];
+        foreach (GrTransportRouteFields::formFields() as $field => $_spec) {
+            if ($field !== 'id_route') {
+                $values[$field] = Tools::getValue($field);
+            }
         }
-        $db = Db::getInstance();
-        $old = $id > 0 ? $db->getRow('SELECT * FROM `' . _DB_PREFIX_ . 'grtrans_route` WHERE id_route = ' . $id) : null;
-        if ($id > 0 && !$old) {
-            throw new InvalidArgumentException('Route not found');
-        }
-        $state = GrTransportRouteState::transition($old ?: null, [
-            'route_status' => (string) Tools::getValue('route_status'),
-            'pickup_only' => (string) Tools::getValue('pickup_only'),
-            'demo' => (string) Tools::getValue('demo'),
-        ], (int) ($this->context->employee->id ?? 0),
-            $old && round((float) $old['price'], 2) !== round((float) $price, 2));
-        $data = [
-            'mode' => pSQL($mode),
-            'origin_name' => pSQL($origin),
-            'station_name' => pSQL($station),
-            'city' => pSQL($city),
-            'postal_prefix' => pSQL($prefix),
-            'price' => round((float) $price, 2),
-            'notice' => pSQL($notice),
-        ] + $state;
-        $success = $id > 0
-            ? $db->update('grtrans_route', $data, 'id_route = ' . $id)
-            : $db->insert('grtrans_route', $data);
-        if (!$success) {
-            throw new RuntimeException('Route write failed');
-        }
+        GrTransportRouteRepository::save($values, (int) ($this->context->employee->id ?? 0),
+            (int) Tools::getValue('id_route', 0));
         $this->clearQuoteCache();
     }
+
 }

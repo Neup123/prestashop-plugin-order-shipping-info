@@ -39,6 +39,8 @@ jobs:
         run: docker compose -f tests/compose.yml exec -T -u www-data prestashop php /tmp/prestashop-order-snapshot-smoke.php
       - name: Validate actual pending-payment PrestaShop order and pickup persistence
         run: docker compose -f tests/compose.yml exec -T -u www-data prestashop php /tmp/prestashop-real-order-smoke.php
+      - name: Verify legacy route schema migration and one-time seed marker
+        run: docker compose -f tests/compose.yml exec -T -u www-data prestashop php /tmp/prestashop-route-schema-upgrade-smoke.php
       - name: Verify idempotent carrier install and deleted-carrier repair
         run: docker compose -f tests/compose.yml exec -T -u www-data prestashop php /tmp/prestashop-carrier-lifecycle-smoke.php
       - if: failure()

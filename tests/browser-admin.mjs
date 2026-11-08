@@ -48,12 +48,22 @@ try {
   assert.equal(await inserted.count(), 1, 'New route should appear in admin table');
   assert.equal((await inserted.locator('td').nth(3).innerText()).trim(), 'CI temporary port');
   assert.equal((await inserted.locator('td').nth(9).innerText()).trim(), '1', 'new route must remain demo');
+  const deletedId = (await inserted.locator('td').first().innerText()).trim();
   page.once('dialog', async dialog => await dialog.accept());
   await inserted.locator('button[name="grtrans_delete"]').click();
   await page.getByText('Route dataset updated', {exact:false}).first().waitFor({timeout:20000});
   assert.equal(await page.locator('table.table tbody tr').filter({hasText:'99998'}).count(), 0,
     'Deleted rule should not appear in admin route list');
-  console.log('Browser admin route create, edit, and delete passed');
+  // A stale, repeated delete must show an error, not a success toast.
+  const staleForm = page.locator('table.table tbody tr form').first();
+  await staleForm.locator('input[name="id_route"]').evaluate((input, id) => {
+    input.value = id;
+  }, deletedId);
+  page.once('dialog', async dialog => await dialog.accept());
+  await staleForm.locator('button[name="grtrans_delete"]').click();
+  await page.getByText('Route does not exist', {exact:false}).first().waitFor({timeout:20000});
+  assert.doesNotMatch(await page.locator('body').innerText(), /Route dataset updated\./);
+  console.log('Browser admin route create, edit, delete and stale delete rejection passed');
 } catch (error) {
   console.error('Browser acceptance failed:', error);
   console.error('Current path:', new URL(page.url()).pathname);

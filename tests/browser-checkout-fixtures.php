@@ -1,5 +1,6 @@
 <?php
-require_once '/var/www/html/config/config.inc.php';
+require_once __DIR__ . '/bootstrap.php';
+bootPrestaShop();
 $password = getenv('TEST_CUSTOMER_PASSWORD');
 if (!is_string($password) || strlen($password) < 12) {
     throw new RuntimeException('Missing disposable test customer password');
