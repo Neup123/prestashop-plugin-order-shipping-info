@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/bootstrap.php';
 require __DIR__ . '/../grtransportshipping/classes/QuoteEngine.php';
 $seed = require __DIR__ . '/../grtransportshipping/demo/routes.php';
 $routes = [];
