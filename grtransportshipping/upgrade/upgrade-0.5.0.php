@@ -18,7 +18,9 @@ function upgrade_module_0_5_0($module)
         . ' AND CONSTRAINT_NAME = \''
         . pSQL(GrTransportRouteFields::NOTICE_CHECK_NAME) . '\'';
     if ((int) $db->getValue($sql) > 0) {
-        return true;
+        // Every 0.4.x install already passed its initial seed stage; an
+        // empty table may be an intentional merchant action, not a fresh shop.
+        return Configuration::updateValue(GrTransportRouteFields::SEED_CONFIG, 1);
     }
     $tooLong = (int) $db->getValue('SELECT COUNT(*) FROM `'
         . bqSQL($table) . '` WHERE CHAR_LENGTH(`notice`) > '
@@ -29,5 +31,6 @@ function upgrade_module_0_5_0($module)
         return false;
     }
     return (bool) $db->execute('ALTER TABLE `' . bqSQL($table) . '` ADD '
-        . GrTransportRouteFields::noticeConstraintSql());
+        . GrTransportRouteFields::noticeConstraintSql())
+        && Configuration::updateValue(GrTransportRouteFields::SEED_CONFIG, 1);
 }
