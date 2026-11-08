@@ -77,4 +77,38 @@ testAssert(Db::getInstance()->update('grtrans_cart_quote',
 $history = GrTransportCartQuote::forOrder($cartId, (int)$address->id);
 testAssert(is_array($history) && (float)$history['price'] === 39.0,
     'Historical consumed order quote must survive TTL for repair');
+// #48: A real abandoned cart has an expired, non-consumed pin. Cleanup
+// removes it but retains and repairs the consumed native-order history.
+$abandoned = new Cart();
+$abandoned->id_customer = (int) $cart->id_customer;
+$abandoned->id_address_delivery = (int) $address->id;
+$abandoned->id_address_invoice = (int) $address->id;
+$abandoned->id_carrier = $carrierId;
+$abandoned->id_currency = (int) $cart->id_currency;
+$abandoned->id_lang = (int) $cart->id_lang;
+$abandoned->id_shop = (int) $cart->id_shop;
+$abandoned->secure_key = (string) $cart->secure_key;
+testAssert($abandoned->add(), 'Cannot create abandoned cart for quote retention test');
+try {
+    $fingerprint = hash('sha256', (int) $address->id_country . ':'
+        . trim((string) $address->postcode) . ':' . trim((string) $address->city));
+    GrTransportCartQuote::pin((int) $abandoned->id, (int) $address->id, $fingerprint, $history);
+    testAssert(Db::getInstance()->update('grtrans_cart_quote',
+        ['created_at' => $expiredAgain], 'id_cart = ' . (int) $abandoned->id),
+        'Cannot age abandoned quote for pruning test');
+    GrTransportCartQuote::pruneExpired();
+    testAssert(!Db::getInstance()->getRow('SELECT id_cart FROM `' . _DB_PREFIX_
+        . 'grtrans_cart_quote` WHERE id_cart = ' . (int) $abandoned->id),
+        'Expired abandoned quote must be pruned');
+    $consumedRow = Db::getInstance()->getRow('SELECT quote_status FROM `' . _DB_PREFIX_
+        . 'grtrans_cart_quote` WHERE id_cart = ' . $cartId);
+    testAssert(($consumedRow['quote_status'] ?? '') === GrTransportCartQuote::CONSUMED,
+        'Pruning must never delete consumed historical quotes');
+    $repaired = GrTransportOrderSnapshot::repair((int) $order->id);
+    testAssert(abs((float) $repaired['price'] - 39.0) < 0.001,
+        'Historical order snapshot must still repair after pruning');
+    echo 'PASS #48: expired abandoned pin removed; consumed original remains repairable' . PHP_EOL;
+} finally {
+    $abandoned->delete();
+}
 echo 'PASS #47 fresh-process native order: expired EUR 29 re-quoted EUR 39, charged/snapshotted/consumed EUR 39, immutable history' . PHP_EOL;

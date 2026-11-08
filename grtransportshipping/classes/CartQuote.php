@@ -14,6 +14,29 @@ final class GrTransportCartQuote
     public const PINNED = 'pinned';
     public const CONSUMED = 'consumed';
     public const TTL_SECONDS = 1800;
+    // Each checkout-triggered cleanup is bounded and indexed.
+    public const PRUNE_BATCH_SIZE = 100;
+    public const PRUNE_INDEX = 'quote_prune_expired';
+
+    public static function pruneIndexSql(): string
+    {
+        return 'INDEX `' . self::PRUNE_INDEX . '` (`quote_status`, `created_at`)';
+    }
+
+    /**
+     * Retention: ONLY expired, unconsumed pins can be deleted. Consumed pins
+     * are permanent order-repair records and must survive regardless of age.
+     * A failing cleanup must not be silently ignored.
+     */
+    public static function pruneExpired(): void
+    {
+        $cutoff = gmdate('Y-m-d H:i:s', time() - self::TTL_SECONDS);
+        if (!Db::getInstance()->delete('grtrans_cart_quote',
+            "quote_status = '" . self::PINNED . "' AND created_at < '" . $cutoff . "'",
+            self::PRUNE_BATCH_SIZE, false)) {
+            throw new RuntimeException('Cannot prune expired unconsumed shipping quotes');
+        }
+    }
 
     private static function row(int $cartId): ?array
     {
@@ -70,6 +93,7 @@ final class GrTransportCartQuote
             return $quote;
         }
         $db = Db::getInstance();
+        self::pruneExpired();
         $existing = self::pinned($cartId, $addressId, $fingerprint);
         if ($existing !== null) {
             return $existing; // First successfully pinned quote wins any race.

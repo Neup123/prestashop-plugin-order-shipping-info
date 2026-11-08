@@ -44,7 +44,7 @@ class Grtransportshipping extends CarrierModule
     {
         $this->name = 'grtransportshipping';
         $this->tab = 'shipping_logistics';
-        $this->version = '0.5.1';
+        $this->version = '0.5.2';
         $this->author = 'Neup123';
         $this->need_instance = 0;
         $this->bootstrap = true;
@@ -124,7 +124,8 @@ class Grtransportshipping extends CarrierModule
             `address_fingerprint` CHAR(64) NOT NULL,
             `quote_data` TEXT NOT NULL,
             `quote_status` VARCHAR(12) NOT NULL DEFAULT \'pinned\',
-            `created_at` DATETIME NOT NULL
+            `created_at` DATETIME NOT NULL,
+            ' . GrTransportCartQuote::pruneIndexSql() . '
         ) ENGINE=' . _MYSQL_ENGINE_ . ' DEFAULT CHARSET=utf8mb4');
     }
 
