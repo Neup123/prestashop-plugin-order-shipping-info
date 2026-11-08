@@ -33,6 +33,7 @@ services:
       - ./prestashop-calculator-smoke.php:/tmp/prestashop-calculator-smoke.php:ro
       - ./prestashop-order-snapshot-smoke.php:/tmp/prestashop-order-snapshot-smoke.php:ro
       - ./prestashop-real-order-smoke.php:/tmp/prestashop-real-order-smoke.php:ro
+      - ./prestashop-carrier-lifecycle-smoke.php:/tmp/prestashop-carrier-lifecycle-smoke.php:ro
       - ./admin-url.php:/tmp/admin-url.php:ro
       - ./browser-checkout-fixtures.php:/tmp/browser-checkout-fixtures.php:ro
     ports:
