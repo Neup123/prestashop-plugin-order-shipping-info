@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/RouteState.php';
+require_once __DIR__ . '/RouteValidationException.php';
 
 /**
  * One route field contract for SQL schema, admin forms, validation and
@@ -14,16 +15,16 @@ final class GrTransportRouteFields
     public static function spec(): array
     {
         return [
-            'id_route' => ['sql' => 'INT UNSIGNED AUTO_INCREMENT PRIMARY KEY', 'label' => 'Route ID (0 to add)', 'kind' => 'input', 'max' => 10, 'default' => '0'],
+            'id_route' => ['sql' => 'INT UNSIGNED AUTO_INCREMENT PRIMARY KEY'],
             'mode' => ['normalize' => true, 'sql' => 'VARCHAR', 'max' => 16, 'label' => 'Mode', 'kind' => 'select', 'default' => 'bus', 'choices' => ['bus' => 'KTEL bus', 'ferry' => 'Ferry', 'flight' => 'Domestic flight']],
             'origin_name' => ['normalize' => true, 'sql' => 'VARCHAR', 'max' => 190, 'label' => 'Origin terminal', 'kind' => 'input', 'default' => 'Athens'],
             'station_name' => ['normalize' => true, 'sql' => 'VARCHAR', 'max' => 190, 'label' => 'Destination pickup station', 'kind' => 'input', 'default' => ''],
             'city' => ['normalize' => true, 'sql' => 'VARCHAR', 'max' => 128, 'label' => 'City (optional)', 'kind' => 'input', 'default' => ''],
             'postal_prefix' => ['normalize' => true, 'sql' => 'VARCHAR', 'max' => 5, 'label' => 'Postal prefix (optional)', 'kind' => 'input', 'default' => ''],
             'price' => ['sql' => 'DECIMAL(12,2) NOT NULL', 'max' => 16, 'max_value' => 999999, 'label' => 'Transport price EUR', 'kind' => 'input', 'default' => '0.00'],
-            'pickup_only' => ['sql' => 'TINYINT(1) NOT NULL DEFAULT 1', 'label' => 'Station pickup only', 'kind' => 'select', 'default' => '1', 'choices' => self::BOOL_CHOICES],
-            'route_status' => ['sql' => "VARCHAR(12) NOT NULL DEFAULT 'draft'", 'label' => 'Route state: Draft does not veto; Suspended blocks regional fallback', 'kind' => 'select', 'default' => GrTransportRouteState::DRAFT, 'choices' => GrTransportRouteState::STATE_LABELS],
-            'demo' => ['sql' => 'TINYINT(1) NOT NULL DEFAULT 0', 'label' => 'Unverified demo estimate (1) / operator-confirmed (0)', 'kind' => 'select', 'default' => '1', 'choices' => self::BOOL_CHOICES],
+            'pickup_only' => ['sql' => 'TINYINT(1) NOT NULL DEFAULT 1', 'label' => 'Station pickup only', 'help' => 'Yes requires collection from the named station; No requires arranging delivery separately.', 'kind' => 'select', 'default' => '1', 'choices' => self::BOOL_CHOICES],
+            'route_status' => ['sql' => "VARCHAR(12) NOT NULL DEFAULT 'draft'", 'label' => 'Route state', 'help' => 'Draft cannot be quoted. Available can be quoted. Suspended blocks broader matching routes.', 'kind' => 'select', 'default' => GrTransportRouteState::DRAFT, 'choices' => GrTransportRouteState::STATE_LABELS],
+            'demo' => ['sql' => 'TINYINT(1) NOT NULL DEFAULT 0', 'label' => 'Estimate verification', 'help' => 'Yes means the price is an unverified demo. No confirms the operator tariff and records who verified it.', 'kind' => 'select', 'default' => '1', 'choices' => self::BOOL_CHOICES],
             'verified_at' => ['sql' => 'DATETIME NULL'],
             'verified_by_employee' => ['sql' => 'INT NULL'],
             'notice' => ['normalize' => true, 'sql' => 'TEXT NULL', 'max' => 2000, 'label' => 'Customer notice', 'kind' => 'textarea', 'default' => ''],
@@ -79,33 +80,54 @@ final class GrTransportRouteFields
     {
         $spec = self::spec();
         $data = [];
+        $errors = [];
         foreach ($spec as $field => $definition) {
             if (empty($definition['normalize'])) {
                 continue;
             }
+            $label = $definition['label'];
             if (!array_key_exists($field, $input)
                 || (!is_scalar($input[$field]) && !($field === 'notice' && $input[$field] === null))) {
-                throw new InvalidArgumentException('Missing route field: ' . $field);
+                $errors[$field] = $label . ' is missing or invalid.';
+                continue;
             }
             $value = trim((string) ($input[$field] ?? ''));
             $size = function_exists('mb_strlen') ? mb_strlen($value, 'UTF-8') : strlen($value);
             if ($size > self::limit($field)) {
-                throw new InvalidArgumentException('Route field exceeds limit: ' . $field);
+                $errors[$field] = $label . ' must be at most ' . self::limit($field) . ' characters.';
             }
             $data[$field] = $value;
         }
-        if (!isset($spec['mode']['choices'][$data['mode']])
-            || $data['origin_name'] === '' || $data['station_name'] === ''
-            || ($data['city'] === '' && $data['postal_prefix'] === '')
-            || !preg_match('/^\\d{0,' . self::limit('postal_prefix') . '}$/', $data['postal_prefix'])) {
-            throw new InvalidArgumentException('Invalid route location, mode or postal prefix');
+        if (isset($data['mode']) && !isset($spec['mode']['choices'][$data['mode']])) {
+            $errors['mode'] = 'Choose a valid transport mode.';
         }
-        if (!isset($input['price']) || !is_numeric($input['price'])
+        foreach (['origin_name', 'station_name'] as $required) {
+            if (isset($data[$required]) && $data[$required] === '') {
+                $errors[$required] = $spec[$required]['label'] . ' cannot be empty.';
+            }
+        }
+        if (isset($data['city'], $data['postal_prefix'])
+            && $data['city'] === '' && $data['postal_prefix'] === '') {
+            $errors['city'] = 'Enter a city or a postal prefix.';
+            $errors['postal_prefix'] = 'Enter a postal prefix or a city.';
+        }
+        if (isset($data['postal_prefix'])
+            && !preg_match('/^\d{0,' . self::limit('postal_prefix') . '}$/', $data['postal_prefix'])) {
+            $errors['postal_prefix'] = 'Postal prefix must contain only digits (up to '
+                . self::limit('postal_prefix') . ').';
+        }
+        if (!isset($input['price']) || !is_scalar($input['price']) || !is_numeric($input['price'])
             || strlen((string) $input['price']) > self::limit('price')
+            || !is_finite((float) $input['price'])
             || (float) $input['price'] < 0 || (float) $input['price'] > $spec['price']['max_value']) {
-            throw new InvalidArgumentException('Invalid route price');
+            $errors['price'] = 'Transport price EUR must be a number between 0 and '
+                . $spec['price']['max_value'] . '.';
+        } else {
+            $data['price'] = round((float) $input['price'], 2);
         }
-        $data['price'] = round((float) $input['price'], 2);
+        if ($errors) {
+            throw new GrTransportRouteValidationException($errors);
+        }
         return $data;
     }
 }
