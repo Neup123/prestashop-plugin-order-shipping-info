@@ -64,7 +64,7 @@ $greekCity = [
 ];
 foreach (['Νάξος', 'Ναξος', 'ΝΑΞΟΣ', 'Νάξοσ', "Να\u{0301}ξος"] as $customerCity) {
     $result = GrTransportQuoteEngine::resolve([$greekCity], '00000', $customerCity);
-    testAssert($result['status'] === 'quoted' && (float)$result['quote']['price'] === 31,
+    testAssert($result['status'] === 'quoted' && (float)$result['quote']['price'] === 31.0,
         'City-only Naxos failed for: ' . $customerCity);
 }
 $chaidari = array_replace($greekCity, [
