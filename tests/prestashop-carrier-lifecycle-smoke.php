@@ -14,7 +14,7 @@ carrierCheck($initial > 0, 'Missing initial active carrier');
 carrierCheck(GrTransportCarrierLifecycle::inspect()['state'] === GrTransportCarrierLifecycle::READY,
     'Initial carrier not ready');
 $rowsBefore = Db::getInstance()->executeS('SELECT id_carrier FROM `' . _DB_PREFIX_
-    . 'carrier` WHERE external_module_name = "grtransportshipping" AND deleted = 0') ?: [];
+    . 'carrier` WHERE external_module_name = \'grtransportshipping\' AND deleted = 0') ?: [];
 carrierCheck(count($rowsBefore) === 1, 'Expected exactly one active module-owned carrier before retry');
 
 // Module::install normally fails on an already installed module; the module
@@ -23,7 +23,7 @@ carrierCheck((bool) $module->install(), 'Idempotent module install retry failed'
 carrierCheck(GrTransportCarrierLifecycle::activeId($module) === $initial, 'Retry created a second carrier');
 carrierCheck((bool) GrTransportCarrierLifecycle::ensure($module), 'Repeated carrier ensure failed');
 $rowsAfter = Db::getInstance()->executeS('SELECT id_carrier FROM `' . _DB_PREFIX_
-    . 'carrier` WHERE external_module_name = "grtransportshipping" AND deleted = 0') ?: [];
+    . 'carrier` WHERE external_module_name = \'grtransportshipping\' AND deleted = 0') ?: [];
 carrierCheck(count($rowsAfter) === 1, 'Reinstall orphaned an earlier module carrier');
 
 // A deliberately removed back-office carrier must deny quotes and require
@@ -58,6 +58,6 @@ carrierCheck((bool) GrTransportCarrierLifecycle::ensure($module)
     'Partial install recovery should re-adopt the existing carrier');
 
 $activeRows = Db::getInstance()->executeS('SELECT id_carrier FROM `' . _DB_PREFIX_
-    . 'carrier` WHERE external_module_name = "grtransportshipping" AND deleted = 0') ?: [];
+    . 'carrier` WHERE external_module_name = \'grtransportshipping\' AND deleted = 0') ?: [];
 carrierCheck(count($activeRows) === 1, 'Exactly one non-deleted module carrier must remain');
 echo "Carrier install retry, back-office deletion recovery and canonical identity smoke passed\n";
