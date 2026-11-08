@@ -6,6 +6,7 @@ require_once __DIR__ . '/classes/QuoteEngine.php';
 require_once __DIR__ . '/classes/CartQuote.php';
 require_once __DIR__ . '/classes/OrderSnapshot.php';
 require_once __DIR__ . '/classes/CarrierLifecycle.php';
+require_once __DIR__ . '/classes/RouteRepository.php';
 
 /**
  * Athens-origin public transport parcel quotes. Prices in EUR.
@@ -18,7 +19,7 @@ class Grtransportshipping extends CarrierModule
     {
         $this->name = 'grtransportshipping';
         $this->tab = 'shipping_logistics';
-        $this->version = '0.4.0';
+        $this->version = '0.5.0';
         $this->author = 'Neup123';
         $this->need_instance = 0;
         $this->bootstrap = true;
@@ -45,7 +46,12 @@ class Grtransportshipping extends CarrierModule
         if (!$this->installSchema() || !$this->createCarrier()) {
             return false;
         }
-        $this->seedDemo();
+        try {
+            GrTransportRouteRepository::seedOnce();
+        } catch (Throwable $e) {
+            PrestaShopLogger::addLog('Transport demo seed failed: ' . $e->getMessage(), 3);
+            return false;
+        }
         return $this->registerHook('actionCarrierUpdate')
             && $this->registerHook('displayCarrierExtraContent')
             && $this->registerHook('actionValidateOrder')
@@ -63,23 +69,12 @@ class Grtransportshipping extends CarrierModule
 
     private function installSchema(): bool
     {
-        $sql = 'CREATE TABLE IF NOT EXISTS `' . _DB_PREFIX_ . 'grtrans_route` (
-            `id_route` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-            `mode` VARCHAR(16) NOT NULL,
-            `origin_name` VARCHAR(190) NOT NULL,
-            `station_name` VARCHAR(190) NOT NULL,
-            `city` VARCHAR(128) NOT NULL,
-            `postal_prefix` VARCHAR(5) NOT NULL,
-            `price` DECIMAL(12,2) NOT NULL,
-            `pickup_only` TINYINT(1) NOT NULL DEFAULT 1,
-            `route_status` VARCHAR(12) NOT NULL DEFAULT \'draft\',
-            `demo` TINYINT(1) NOT NULL DEFAULT 0,
-            `verified_at` DATETIME NULL,
-            `verified_by_employee` INT NULL,
-            `notice` TEXT NULL,
-            INDEX `lookup_prefix` (`postal_prefix`)
-        ) ENGINE=' . _MYSQL_ENGINE_ . ' DEFAULT CHARSET=utf8mb4';
-        return (bool) Db::getInstance()->execute($sql) && $this->installOrderSchema() && $this->installCartQuoteSchema();
+        // All SQL widths and the notice CHECK derive from RouteFields::spec().
+        $sql = 'CREATE TABLE IF NOT EXISTS `' . _DB_PREFIX_ . 'grtrans_route` ('
+            . GrTransportRouteFields::schemaColumns()
+            . ') ENGINE=' . _MYSQL_ENGINE_ . ' DEFAULT CHARSET=utf8mb4';
+        return (bool) Db::getInstance()->execute($sql)
+            && $this->installOrderSchema() && $this->installCartQuoteSchema();
     }
 
     public function installOrderSchema(): bool
@@ -203,23 +198,6 @@ class Grtransportshipping extends CarrierModule
     private function createCarrier(): bool
     {
         return GrTransportCarrierLifecycle::ensure($this);
-    }
-
-    private function seedDemo(): void
-    {
-        $existing = (int) Db::getInstance()->getValue('SELECT COUNT(*) FROM `' . _DB_PREFIX_ . 'grtrans_route`');
-        if ($existing) {
-            return;
-        }
-        foreach (require __DIR__ . '/demo/routes.php' as $r) {
-            Db::getInstance()->insert('grtrans_route', [
-                'mode' => pSQL($r[0]), 'origin_name' => pSQL($r[1]),
-                'station_name' => pSQL($r[2]), 'city' => pSQL($r[3]),
-                'postal_prefix' => pSQL($r[4]), 'price' => (float) $r[5],
-                'pickup_only' => (int) $r[6], 'route_status' => GrTransportRouteState::AVAILABLE, 'demo' => 1,
-                'notice' => pSQL($r[7]),
-            ]);
-        }
     }
 
     public function hookActionCarrierUpdate($params)
@@ -356,10 +334,8 @@ class Grtransportshipping extends CarrierModule
                         $this->saveRule();
                     } else {
                         $id = (int) Tools::getValue('id_route');
-                        if ($id <= 0) {
-                            throw new Exception('Invalid route ID');
-                        }
-                        Db::getInstance()->delete('grtrans_route', 'id_route = ' . $id);
+                        GrTransportRouteRepository::delete($id);
+                        $this->clearQuoteCache();
                     }
                     $out .= $this->displayConfirmation($this->l('Route dataset updated.'));
                 }
@@ -451,49 +427,15 @@ class Grtransportshipping extends CarrierModule
 
     private function saveRule(): void
     {
-        $id = (int) Tools::getValue('id_route', 0);
-        $mode = (string) Tools::getValue('mode');
-        $price = (string) Tools::getValue('price');
-        $prefix = trim((string) Tools::getValue('postal_prefix'));
-        $city = trim((string) Tools::getValue('city'));
-        $origin = trim((string) Tools::getValue('origin_name'));
-        $station = trim((string) Tools::getValue('station_name'));
-        $notice = trim((string) Tools::getValue('notice'));
-        if (!in_array($mode, ['bus', 'ferry', 'flight'], true)
-            || !preg_match('/^\\d{0,5}$/', $prefix)
-            || ($prefix === '' && $city === '')
-            || !is_numeric($price) || (float) $price < 0 || (float) $price > 999999
-            || $origin === '' || $station === ''
-            || mb_strlen($origin) > 190 || mb_strlen($station) > 190 || mb_strlen($city) > 128
-            || mb_strlen($notice) > 2000) {
-            throw new InvalidArgumentException('Invalid route data');
+        $values = [];
+        foreach (GrTransportRouteFields::formFields() as $field => $_spec) {
+            if ($field !== 'id_route') {
+                $values[$field] = Tools::getValue($field);
+            }
         }
-        $db = Db::getInstance();
-        $old = $id > 0 ? $db->getRow('SELECT * FROM `' . _DB_PREFIX_ . 'grtrans_route` WHERE id_route = ' . $id) : null;
-        if ($id > 0 && !$old) {
-            throw new InvalidArgumentException('Route not found');
-        }
-        $state = GrTransportRouteState::transition($old ?: null, [
-            'route_status' => (string) Tools::getValue('route_status'),
-            'pickup_only' => (string) Tools::getValue('pickup_only'),
-            'demo' => (string) Tools::getValue('demo'),
-        ], (int) ($this->context->employee->id ?? 0),
-            $old && round((float) $old['price'], 2) !== round((float) $price, 2));
-        $data = [
-            'mode' => pSQL($mode),
-            'origin_name' => pSQL($origin),
-            'station_name' => pSQL($station),
-            'city' => pSQL($city),
-            'postal_prefix' => pSQL($prefix),
-            'price' => round((float) $price, 2),
-            'notice' => pSQL($notice),
-        ] + $state;
-        $success = $id > 0
-            ? $db->update('grtrans_route', $data, 'id_route = ' . $id)
-            : $db->insert('grtrans_route', $data);
-        if (!$success) {
-            throw new RuntimeException('Route write failed');
-        }
+        GrTransportRouteRepository::save($values, (int) ($this->context->employee->id ?? 0),
+            (int) Tools::getValue('id_route', 0));
         $this->clearQuoteCache();
     }
+
 }
