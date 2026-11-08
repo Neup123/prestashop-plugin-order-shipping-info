@@ -200,6 +200,11 @@ final class GrTransportCarrierLifecycle
                 }
             }
         }
+        $existingGroups = Db::getInstance()->executeS('SELECT id_group FROM `'
+            . _DB_PREFIX_ . 'carrier_group` WHERE id_carrier = ' . (int) $carrier->id) ?: [];
+        if ($existingGroups) {
+            return true; // Preserve deliberate merchant group restrictions.
+        }
         $groups = [];
         foreach (Group::getGroups((int) Configuration::get('PS_LANG_DEFAULT')) as $group) {
             $groups[] = (int) $group['id_group'];
