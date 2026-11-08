@@ -1,6 +1,10 @@
 <?php
 require_once __DIR__ . '/bootstrap.php';
 bootPrestaShop();
+// Checkout fixture runs in its own PHP process. Load the installed module
+// before using the same RouteRepository::save writer as the admin UI.
+$module = Module::getInstanceByName('grtransportshipping');
+testAssert($module instanceof Grtransportshipping, 'Transport module not loaded for city-only route fixture');
 $password = getenv('TEST_CUSTOMER_PASSWORD');
 if (!is_string($password) || strlen($password) < 12) {
     throw new RuntimeException('Missing disposable test customer password');
