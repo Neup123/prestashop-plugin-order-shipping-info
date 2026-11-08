@@ -74,19 +74,18 @@ $db = Db::getInstance();
 $naxosRoute = null;
 foreach ($db->executeS('SELECT id_route, postal_prefix, route_status FROM `' . _DB_PREFIX_ . 'grtrans_route`') ?: [] as $rule) {
     if ((string) $rule['postal_prefix'] === '843') {
-        $naxosRoute = $rule;
+        $naxosRoute = GrTransportRouteRepository::find((int) $rule['id_route']);
         break;
     }
 }
 testAssert(is_array($naxosRoute), 'Missing Naxos seed for disabled-route test');
-testAssert($db->insert('grtrans_route', [
-    'mode' => pSQL('ferry'), 'origin_name' => pSQL('Port of Piraeus'),
-    'station_name' => pSQL('Regional island port'), 'city' => pSQL(''),
-    'postal_prefix' => pSQL('84'), 'price' => 9.00,
-    'pickup_only' => 1, 'route_status' => GrTransportRouteState::AVAILABLE, 'demo' => 1,
-    'notice' => pSQL('CI regional fallback only'),
-]), 'Unable to create broad regional route');
-$regionalId = (int) $db->Insert_ID();
+$regionalId = GrTransportRouteRepository::save([
+    'mode' => 'ferry', 'origin_name' => 'Port of Piraeus',
+    'station_name' => 'Regional island port', 'city' => '',
+    'postal_prefix' => '84', 'price' => 9.00,
+    'pickup_only' => 1, 'route_status' => GrTransportRouteState::AVAILABLE,
+    'demo' => 1, 'notice' => 'CI regional fallback only',
+]);
 $address = new Address();
 $address->id_customer = $idCustomer;
 $address->alias = 'CI suspended Naxos';
@@ -101,19 +100,19 @@ try {
     $cart = new Cart();
     $cart->id_address_delivery = (int) $address->id;
     $cart->id_carrier = $carrierId;
-    testAssert($db->update('grtrans_route', ['route_status' => GrTransportRouteState::SUSPENDED], 'id_route = ' . (int) $naxosRoute['id_route']),
-        'Could not suspend Naxos');
+    GrTransportRouteRepository::save(array_replace($naxosRoute, [
+        'route_status' => GrTransportRouteState::SUSPENDED,
+    ]), 0, (int) $naxosRoute['id_route']);
     $module->clearQuoteCache();
     testAssert($module->getOrderShippingCostExternal($cart) === false,
         'Disabled Naxos must not inherit the generic region shipping price');
-    testAssert($db->update('grtrans_route', ['route_status' => GrTransportRouteState::AVAILABLE], 'id_route = ' . (int) $naxosRoute['id_route']),
-        'Could not reactivate Naxos');
+    GrTransportRouteRepository::save($naxosRoute, 0, (int) $naxosRoute['id_route']);
     $module->clearQuoteCache();
     testAssert(abs((float) $module->getOrderShippingCostExternal($cart) - 29.00) < 0.001,
         'Reactivated Naxos should quote its precise own price');
 } finally {
-    $db->update('grtrans_route', ['route_status' => $naxosRoute['route_status']], 'id_route = ' . (int) $naxosRoute['id_route']);
-    $db->delete('grtrans_route', 'id_route = ' . $regionalId);
+    GrTransportRouteRepository::save($naxosRoute, 0, (int) $naxosRoute['id_route']);
+    GrTransportRouteRepository::delete($regionalId);
     if ((int) $address->id) {
         $address->delete();
     }
@@ -142,8 +141,9 @@ testAssert($pinnedCart->add(), 'Could not persist quote test cart');
 try {
     testAssert(abs((float) $module->getOrderShippingCostExternal($pinnedCart) - 29.00) < 0.001,
         'Expected initial Naxos quote');
-    testAssert($db->update('grtrans_route', ['price' => 99], 'id_route = ' . (int) $naxosRoute['id_route']),
-        'Could not simulate subsequent merchant price change');
+    GrTransportRouteRepository::save(array_replace($naxosRoute, [
+        'price' => 99,
+    ]), 0, (int) $naxosRoute['id_route']);
     $newRequestModule = new Grtransportshipping();
     testAssert(abs((float) $newRequestModule->getOrderShippingCostExternal($pinnedCart) - 29.00) < 0.001,
         'Later request must charge original pinned quote, not edited rate');
@@ -157,7 +157,7 @@ try {
     testAssert(abs((float) $newRequestModule->getOrderShippingCostExternal($pinnedCart) - 24.00) < 0.001,
         'Changed delivery address must re-quote instead of using old pin');
 } finally {
-    $db->update('grtrans_route', ['price' => 29], 'id_route = ' . (int) $naxosRoute['id_route']);
+    GrTransportRouteRepository::save($naxosRoute, 0, (int) $naxosRoute['id_route']);
     $db->delete('grtrans_cart_quote', 'id_cart = ' . (int) $pinnedCart->id);
     $pinnedCart->delete();
     $lockAddress->delete();
