@@ -16,7 +16,7 @@ $messages = [
     'Transport carrier ready' => 'Η μεταφορική υπηρεσία είναι έτοιμη',
 ];
 foreach ($messages as $english => $expected) {
-    $actual = $module->l($english, 'grtransportshipping', 'el');
+    $actual = $module->l($english, 'grtransportshipping', 'el-GR');
     testAssert(str_contains($actual, $expected),
         'Actual PrestaShop Greek translation did not load: ' . $english . ' returned ' . $actual);
 }
