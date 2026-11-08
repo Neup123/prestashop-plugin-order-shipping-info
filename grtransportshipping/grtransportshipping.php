@@ -5,6 +5,7 @@ if (!defined('_PS_VERSION_')) {
 require_once __DIR__ . '/classes/QuoteEngine.php';
 require_once __DIR__ . '/classes/CartQuote.php';
 require_once __DIR__ . '/classes/OrderSnapshot.php';
+require_once __DIR__ . '/classes/OrderCharge.php';
 require_once __DIR__ . '/classes/CarrierLifecycle.php';
 require_once __DIR__ . '/classes/RouteRepository.php';
 
@@ -122,14 +123,10 @@ class Grtransportshipping extends CarrierModule
         if (!$quote) {
             throw new RuntimeException('Cannot confirm order: transport quote is unavailable');
         }
-        // Compare against the actual saved PrestaShop order, not a recomputed
-        // tariff. Synthetic hook fixtures have no persisted order row.
-        $charged = Db::getInstance()->getValue('SELECT total_shipping_tax_excl FROM `'
-            . _DB_PREFIX_ . 'orders` WHERE id_order = ' . (int) $order->id);
-        if ($charged !== false && $charged !== null
-            && abs((float) $charged - (float) $quote['price']) > 0.02) {
-            throw new RuntimeException('Order shipping amount differs from the pinned checkout quote');
-        }
+        // One invariant for both validation and subsequent snapshot repair:
+        // distinguish an actual applied free-shipping voucher or configured
+        // handling fee from a genuine unexplained price discrepancy.
+        GrTransportOrderCharge::checkOrder((int) $order->id, $quote);
         // One checked, idempotent writer. Any failed persistence raises an
         // exception and a PrestaShop error log rather than silently losing
         // historical pickup details.
@@ -267,6 +264,12 @@ class Grtransportshipping extends CarrierModule
         }
         $result = GrTransportQuoteEngine::resolve($routes, (string) $address->postcode, (string) $address->city);
         if ($result['status'] === 'quoted') {
+            // A CarrierModule overrides PrestaShop's precomputed shipping_cost;
+            // persist the eligible shop handling fee with the quote so charge,
+            // display and order snapshot all reuse the same adjustment.
+            $result['quote']['handling_fee'] = GrTransportOrderCharge::configuredHandlingFee(
+                GrTransportCarrierLifecycle::activeId($this), (int) ($cart->id_currency ?? 0)
+            );
             $result['quote'] = GrTransportCartQuote::pin($cartId, $addressId, $fingerprint, $result['quote']);
         } elseif (in_array($result['status'], ['ambiguous', 'suspended'], true)) {
             PrestaShopLogger::addLog('Transport route resolution: ' . $result['status']
@@ -291,7 +294,8 @@ class Grtransportshipping extends CarrierModule
             return false;
         }
         $resolved = $this->quoteResult($cart);
-        return $resolved['status'] !== 'quoted' ? false : (float) $resolved['quote']['price'];
+        return $resolved['status'] !== 'quoted' ? false
+            : GrTransportOrderCharge::expectedShipping($resolved['quote']);
     }
 
     public function hookDisplayCarrierExtraContent($params)
