@@ -302,7 +302,7 @@ try {
         }
         $logged = (int) Db::getInstance()->getValue('SELECT COUNT(*) FROM `'
             . _DB_PREFIX_ . 'log` WHERE id_object = ' . (int) $feeOrder->id
-            . ' AND message LIKE \\'%shipping charge divergence%\\'');
+            . " AND message LIKE '%shipping charge divergence%'");
         testAssert($logged >= 2, 'Invalid charges must leave a clear PrestaShop log entry');
     } finally {
         Db::getInstance()->update('orders',
