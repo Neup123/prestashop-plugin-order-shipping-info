@@ -28,4 +28,20 @@ testAssert($countCheck() === 1, 'Upgrade did not restore notice limit from field
 testAssert((int) Configuration::get(GrTransportRouteFields::SEED_CONFIG) === 1,
     'Upgrade did not mark historical seed state as terminal');
 testAssert(upgrade_module_0_5_0($module), 'Repeated route schema migration must be idempotent');
+// #44: Installed 0.5.0 shops do not call install() again. Verify that
+// the 0.5.1 upgrade subscribes the pre-carrier checkout surface, including
+// an idempotent retry, without changing routes or order records.
+require_once '/var/www/html/modules/grtransportshipping/upgrade/upgrade-0.5.1.php';
+testAssert($module->isRegisteredInHook('displayBeforeCarrier'),
+    'Fresh 0.5.1 install failed to subscribe the independent checkout hook');
+testAssert($module->unregisterHook('displayBeforeCarrier'),
+    'Could not simulate legacy install without checkout availability hook');
+testAssert(!$module->isRegisteredInHook('displayBeforeCarrier'),
+    'Legacy hook registration removal did not take effect');
+testAssert(upgrade_module_0_5_1($module)
+    && $module->isRegisteredInHook('displayBeforeCarrier'),
+    '0.5.1 upgrade did not subscribe before-carrier checkout explanation hook');
+testAssert(upgrade_module_0_5_1($module),
+    'Repeated 0.5.1 hook upgrade must remain idempotent');
+echo "0.5.1 independent checkout hook installation and upgrade registration passed\n";
 echo "0.5.0 route field schema migration and seed-marker initialization passed\n";
