@@ -416,14 +416,14 @@ class Grtransportshipping extends CarrierModule
                     $fieldErrors = $e->fieldErrors();
                     $saveError = $this->l('Route not saved. Correct the highlighted fields and try again.');
                 } else {
-                    $out .= $this->displayError($this->escape($e->getMessage()));
+                    $out .= $this->displayError($this->escape($this->l($e->getMessage())));
                 }
             } catch (Exception $e) {
                 if ($saveAttempt) {
                     $submitted ??= $this->routeInputValues();
                     $saveError = $this->l('Route not saved:') . ' ' . $e->getMessage();
                 } else {
-                    $out .= $this->displayError($this->escape($e->getMessage()));
+                    $out .= $this->displayError($this->escape($this->l($e->getMessage())));
                 }
             }
         }
@@ -495,12 +495,12 @@ class Grtransportshipping extends CarrierModule
                 ? 'grtrans-row-suspended' : ($isDemo ? 'grtrans-row-demo' : '');
             $out .= '<tr class="' . $rowClass . '"><td>' . $id . '</td>';
             $modeChoices = GrTransportRouteFields::choices('mode');
-            $out .= '<td>' . $this->escape($modeChoices[$r['mode']] ?? $r['mode']) . '</td>';
+            $out .= '<td>' . $this->escape($this->l($modeChoices[$r['mode']] ?? $r['mode'])) . '</td>';
             foreach (['origin_name', 'station_name', 'city', 'postal_prefix', 'price'] as $field) {
                 $out .= '<td>' . $this->escape($r[$field]) . '</td>';
             }
             $pickupChoices = GrTransportRouteFields::choices('pickup_only');
-            $out .= '<td>' . $this->escape($pickupChoices[(string) $r['pickup_only']] ?? 'Unknown') . '</td>'
+            $out .= '<td>' . $this->escape($this->l($pickupChoices[(string) $r['pickup_only']] ?? 'Unknown')) . '</td>'
                 . '<td><span class="grtrans-pill grtrans-state-' . $this->escape($status) . '">'
                 . $this->escape($this->l(GrTransportRouteState::STATE_LABELS[$status])) . '</span></td>'
                 . '<td><span class="grtrans-pill ' . ($isDemo ? 'grtrans-demo' : 'grtrans-verified') . '">'
