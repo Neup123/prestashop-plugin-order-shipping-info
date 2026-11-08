@@ -21,7 +21,7 @@ final class GrTransportRouteFields
             'station_name' => ['normalize' => true, 'sql' => 'VARCHAR', 'max' => 190, 'label' => 'Destination pickup station', 'kind' => 'input', 'default' => ''],
             'city' => ['normalize' => true, 'sql' => 'VARCHAR', 'max' => 128, 'label' => 'City (optional)', 'kind' => 'input', 'default' => ''],
             'postal_prefix' => ['normalize' => true, 'sql' => 'VARCHAR', 'max' => 5, 'label' => 'Postal prefix (optional)', 'kind' => 'input', 'default' => ''],
-            'price' => ['sql' => 'DECIMAL(12,2) NOT NULL', 'max' => 16, 'max_value' => 999999, 'label' => 'Transport price EUR', 'kind' => 'input', 'default' => '0.00'],
+            'price' => ['sql' => 'DECIMAL(12,2) NOT NULL', 'max' => 16, 'max_value' => 100000, 'label' => 'Transport price EUR', 'kind' => 'input', 'default' => '0.00'],
             'pickup_only' => ['sql' => 'TINYINT(1) NOT NULL DEFAULT 1', 'label' => 'Station pickup only', 'help' => 'Yes requires collection from the named station; No requires arranging delivery separately.', 'kind' => 'select', 'default' => '1', 'choices' => self::BOOL_CHOICES],
             'route_status' => ['sql' => "VARCHAR(12) NOT NULL DEFAULT 'draft'", 'label' => 'Route state', 'help' => 'Draft cannot be quoted. Available can be quoted. Suspended blocks broader matching routes.', 'kind' => 'select', 'default' => GrTransportRouteState::DRAFT, 'choices' => GrTransportRouteState::STATE_LABELS],
             'demo' => ['sql' => 'TINYINT(1) NOT NULL DEFAULT 0', 'label' => 'Estimate verification', 'help' => 'Yes means the price is an unverified demo. No confirms the operator tariff and records who verified it.', 'kind' => 'select', 'default' => '1', 'choices' => self::BOOL_CHOICES],
@@ -116,14 +116,20 @@ final class GrTransportRouteFields
             $errors['postal_prefix'] = 'Postal prefix must contain only digits (up to '
                 . self::limit('postal_prefix') . ').';
         }
-        if (!isset($input['price']) || !is_scalar($input['price']) || !is_numeric($input['price'])
-            || strlen((string) $input['price']) > self::limit('price')
-            || !is_finite((float) $input['price'])
-            || (float) $input['price'] < 0 || (float) $input['price'] > $spec['price']['max_value']) {
-            $errors['price'] = 'Transport price EUR must be a number between 0 and '
+        // Accept the European decimal comma from the admin text field,
+        // while preserving the single price validator and database format.
+        // Multiple separators, nonnumeric text and empty inputs still fail.
+        $priceInput = isset($input['price']) && is_scalar($input['price'])
+            ? trim((string) $input['price']) : '';
+        $priceNumber = str_replace(',', '.', $priceInput);
+        if ($priceInput === '' || strlen($priceInput) > self::limit('price')
+            || !is_numeric($priceNumber) || !is_finite((float) $priceNumber)
+            || round((float) $priceNumber, 2) <= 0
+            || (float) $priceNumber > $spec['price']['max_value']) {
+            $errors['price'] = 'Transport price EUR must be a number greater than 0 and at most '
                 . $spec['price']['max_value'] . '.';
         } else {
-            $data['price'] = round((float) $input['price'], 2);
+            $data['price'] = round((float) $priceNumber, 2);
         }
         if ($errors) {
             throw new GrTransportRouteValidationException($errors);
