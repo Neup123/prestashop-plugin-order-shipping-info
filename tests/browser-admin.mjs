@@ -37,7 +37,8 @@ try {
   assert.ok((await firstRow.locator('button[name="grtrans_delete"]').getAttribute('class')).includes('btn-danger'),
     'Delete needs distinct PrestaShop destructive button styling');
   const firstDemoColor = await firstRow.locator('td').first().evaluate(td => getComputedStyle(td).backgroundColor);
-  assert.notEqual(firstDemoColor, 'rgba(0, 0, 0, 0)', 'Demo must have visible background treatment');
+  assert.ok(!['rgba(0, 0, 0, 0)', 'rgb(255, 255, 255)'].includes(firstDemoColor),
+    'Demo must have a real, non-white computed cell background in PrestaShop BO');
   const gridWidth = await grid.evaluate(el => {
     const panel = el.closest('.panel');
     return {
