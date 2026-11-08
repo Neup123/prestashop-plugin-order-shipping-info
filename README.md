@@ -20,3 +20,7 @@ Admin mutations use PrestaShop employee token verification, strict validated inp
 ## Acceptance still required
 
 A real PrestaShop 9.2.1 Docker instance now installs the module, exercises the native Cart price/zone path, and completes Chromium admin editing plus a Greek customer's ferry checkout pickup-notice flow. The order pickup snapshot is verified in an integration hook test. Still needed: final paid-order confirmation/account acceptance, Hummingbird 2 coverage, full add/delete regression, and real transport contracts/fares. See issue #1.
+
+## Route state and shipping consistency
+
+New routes start as **Draft**; making them **Available** enables quotes. **Suspended** deliberately blocks any broader matching rate and is visibly warned about in the admin editor. Confirmed tariffs record operator ID/time, rather than silently losing the demo marker. Each persisted cart receives a pinned quote (station, notice and amount together) for at most 30 minutes, re-quoted after delivery-address changes. Upgrade 0.4.0 migrates earlier inactive routes to the explicit Suspended state.
