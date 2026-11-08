@@ -15,7 +15,8 @@ function upgrade_module_0_5_0($module)
         . ' WHERE CONSTRAINT_SCHEMA = DATABASE()'
         . ' AND TABLE_NAME = \''
         . pSQL($table) . '\''
-        . ' AND CONSTRAINT_NAME = \'chk_grtrans_notice_length\'';
+        . ' AND CONSTRAINT_NAME = \''
+        . pSQL(GrTransportRouteFields::NOTICE_CHECK_NAME) . '\'';
     if ((int) $db->getValue($sql) > 0) {
         return true;
     }
