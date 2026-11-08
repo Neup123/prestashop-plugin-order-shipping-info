@@ -120,6 +120,21 @@ try {
         'Order confirmation omitted no-home-delivery warning');
     testAssert(str_contains($module->hookDisplayAdminOrder(['id_order' => $idOrder]), 'STATION PICKUP ONLY'),
         'Admin order omitted pickup notice');
+    // All three order and checkout surfaces must use the same human-readable
+    // wording, including the demo warning; no separate admin-only copy.
+    Context::getContext()->cart = $cart;
+    foreach ([
+        'checkout' => $module->hookDisplayCarrierExtraContent([]),
+        'customer_order' => $module->hookDisplayOrderDetail(['order' => $order]),
+        'confirmation' => $module->hookDisplayOrderConfirmation(['order' => $order]),
+        'admin_order' => $module->hookDisplayAdminOrder(['id_order' => $idOrder]),
+    ] as $surface => $html) {
+        testAssert(str_contains($html, 'STATION PICKUP ONLY — NO HOME DELIVERY')
+            && str_contains($html, 'DEMO ESTIMATE — NOT A LIVE SHIPPING OFFER')
+            && str_contains($html, 'Collection point: ')
+            && str_contains($html, 'Naxos Port'),
+            'Wording diverged across shared pickup renderer: ' . $surface);
+    }
     // Verify repeat hooks are idempotent rather than attempting a second
     // primary-key INSERT, and reconstruct a missing record from the pinned
     // cart quote, never from a newly edited carrier route.
