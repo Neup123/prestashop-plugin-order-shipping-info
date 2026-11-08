@@ -34,7 +34,56 @@ try {
   assert(source.includes('Naxos Port'), 'Checkout must name Naxos collection port');
   assert(source.includes('STATION PICKUP ONLY'), 'Checkout must explicitly say station pickup only');
   assert(!source.includes('Home delivery included'), 'Pickup is not home delivery');
-  console.log('Greek ferry checkout pickup notice present in real browser');
+  // Positive control: the real Hummingbird carrier option is present for
+  // 84300 and its selected pickup note is visible in the rendered UI.
+  const deliveryStep = page.locator('#checkout-delivery-step');
+  const ferryRow = deliveryStep.locator('.delivery-option__item').filter({
+    hasText: 'Greek transport — station pickup',
+  });
+  assert.equal(await ferryRow.count(), 1, 'Matched Greek address must offer the station carrier');
+  const carrierRadio = ferryRow.locator('input[type="radio"]');
+  await carrierRadio.check();
+  await page.waitForTimeout(350);
+  assert.ok(await ferryRow.getByText('STATION PICKUP ONLY — NO HOME DELIVERY').isVisible(),
+    'Selected station carrier must visibly disclose pickup-only shipping');
+  assert.equal(await page.locator('.grtransport-no-quote:visible').count(), 0,
+    'Quoted addresses must not receive a false unavailable warning');
+  console.log('LIVE MATCHED SHIPPING: transport option selectable; pickup warning visible; no no-quote alert');
+
+  // Hummingbird lets customers return to the address selector during
+  // checkout. The previously selected carrier must disappear when the
+  // delivery address changes to a Greek postcode with no matching route.
+  // Assertions target visible DOM nodes, not raw hook HTML or a stub.
+  const addressStep = page.locator('#checkout-addresses-step');
+  await addressStep.locator('.js-step-title').click();
+  const unmatchedRadio = addressStep.locator(
+    'input[name="id_address_delivery"][value="' + fixture.unmatched_address_id + '"]'
+  );
+  await unmatchedRadio.waitFor({state:'visible',timeout:20000});
+  await unmatchedRadio.check();
+  await addressStep.locator('button[name="confirm-addresses"]').click();
+  await page.waitForLoadState('domcontentloaded');
+  const noQuote = deliveryStep.locator('.grtransport-no-quote');
+  await noQuote.waitFor({state:'visible',timeout:25000});
+  assert.match(await noQuote.innerText(), /Greek public transport shipping is unavailable for this address/);
+  assert.match(await noQuote.innerText(), /No priced transport route matches this destination/);
+  assert.ok((await noQuote.getAttribute('class')).includes('alert-info'),
+    'Unavailable explanation should share BOOTSTRAP alert presentation with pickup notices');
+  const displayedBackground = await noQuote.evaluate(x=>getComputedStyle(x).backgroundColor);
+  assert.ok(displayedBackground !== 'rgba(0, 0, 0, 0)' && displayedBackground !== 'rgb(255, 255, 255)',
+    'Customer should see the no-quote message styled as an alert, not a bare paragraph');
+  assert.equal(await deliveryStep.locator('.delivery-option__item').filter({
+    hasText: 'Greek transport — station pickup',
+  }).count(), 0, 'Carrier must disappear when quote becomes unavailable');
+  console.log('LIVE UNMATCHED SHIPPING: 99999 Greek address shows visible alert with reason; other carriers remain; transport option absent; background=' + displayedBackground);
+
+  // A fresh checkout load with the already-unmatched Greek address must
+  // still show the explanation, not only in the immediate transition.
+  await page.goto(fixture.checkout_url,{waitUntil:'domcontentloaded',timeout:45000});
+  const reloadedAlert = page.locator('#checkout-delivery-step .grtransport-no-quote');
+  await reloadedAlert.waitFor({state:'visible',timeout:25000});
+  assert.match(await reloadedAlert.innerText(), /No priced transport route matches this destination/);
+  console.log('LIVE UNMATCHED RELOAD: no-quote message persists in freshly rendered checkout');
 } catch (error) {
   console.error('Checkout browser acceptance failed:',error);
   console.error('Current URL path:',new URL(page.url()).pathname);
