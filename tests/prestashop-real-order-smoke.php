@@ -132,6 +132,17 @@ try {
         'Order confirmation omitted no-home-delivery warning');
     testAssert(str_contains($module->hookDisplayAdminOrder(['id_order' => $idOrder]), 'STATION PICKUP ONLY'),
         'Admin order omitted pickup notice');
+    // Issue #43: the real stored snapshot renders a destructive-regeneration
+    // confirmation on the form itself (covers button and Enter-key submit).
+    // This checks server markup, not JavaScript dialog handling; Chromium
+    // independently tests cancel/confirm in the disposable admin order page.
+    $storedAdmin = $module->hookDisplayAdminOrder(['id_order' => $idOrder]);
+    testAssert(str_contains($storedAdmin, 'Regenerate original pickup snapshot')
+        && str_contains($storedAdmin, 'onsubmit="return confirm(')
+        && str_contains($storedAdmin, 'overwrite the saved historical pickup snapshot')
+        && str_contains($storedAdmin, 'grtrans_repair_order')
+        && str_contains($storedAdmin, 'name="token"'),
+        'Existing historical order snapshot must warn and confirm before regeneration');
     // All three order and checkout surfaces must use the same human-readable
     // wording, including the demo warning; no separate admin-only copy.
     Context::getContext()->cart = $cart;
@@ -170,8 +181,11 @@ try {
             'Cannot simulate missing order snapshot');
         testAssert(str_contains($module->hookDisplayOrderDetail(['order' => $order]), 'temporarily unavailable'),
             'Missing pickup snapshot must be visible to customer');
-        testAssert(str_contains($module->hookDisplayAdminOrder(['id_order' => $idOrder]), 'Repair missing pickup snapshot'),
-            'Missing pickup snapshot must be visible to administrator');
+        $missingAdmin = $module->hookDisplayAdminOrder(['id_order' => $idOrder]);
+        testAssert(str_contains($missingAdmin, 'Repair missing pickup snapshot')
+            && str_contains($missingAdmin, 'grtrans_repair_order')
+            && !str_contains($missingAdmin, 'onsubmit="return confirm('),
+            'Missing snapshot should offer one-click creation without destructive overwrite confirmation');
         $repaired = GrTransportOrderSnapshot::repair($idOrder);
         testAssert((float) $repaired['price'] === 29.0 && $repaired['station_name'] === 'Naxos Port',
             'Repair must restore original checkout pickup and price, not later tariff');
