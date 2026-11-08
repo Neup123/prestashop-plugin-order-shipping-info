@@ -177,9 +177,13 @@ class Grtransportshipping extends CarrierModule
         if (!$order || !(int) $order->id) {
             return '';
         }
-        $info = Db::getInstance()->getRow('SELECT * FROM `' . _DB_PREFIX_ . 'grtrans_order` WHERE id_order = ' . (int) $order->id);
+        $info = GrTransportOrderSnapshot::find((int) $order->id);
         if (!$info) {
-            return '';
+            // Never make a missing snapshot look like an ordinary carrier:
+            // customers must be warned to contact the merchant before travel.
+            return GrTransportOrderSnapshot::belongsToCarrier((int) ($order->id_carrier ?? 0))
+                ? '<div class="alert alert-danger">Transport pickup details are temporarily unavailable. Please contact the merchant before collection.</div>'
+                : '';
         }
         $title = !empty($info['pickup_only'])
             ? $this->l('STATION PICKUP ONLY — NO HOME DELIVERY')
@@ -357,7 +361,7 @@ class Grtransportshipping extends CarrierModule
     public function getContent()
     {
         $out = '';
-        if (Tools::isSubmit('grtrans_save') || Tools::isSubmit('grtrans_delete')) {
+        if (Tools::isSubmit('grtrans_save') || Tools::isSubmit('grtrans_delete') || Tools::isSubmit('grtrans_repair_order')) {
             // PrestaShop 9 uses Symfony masked CSRF tokens: two valid tokens
             // need not have identical byte strings. Ask the core validator
             // rather than comparing against a newly generated token.
@@ -368,16 +372,22 @@ class Grtransportshipping extends CarrierModule
                 return $this->displayError($this->l('Invalid admin token.'));
             }
             try {
-                if (Tools::isSubmit('grtrans_save')) {
-                    $this->saveRule();
+                if (Tools::isSubmit('grtrans_repair_order')) {
+                    $idOrder = (int) Tools::getValue('grtrans_repair_order');
+                    GrTransportOrderSnapshot::repair($idOrder);
+                    $out .= $this->displayConfirmation($this->l('Order pickup snapshot regenerated from its original cart quote.'));
                 } else {
-                    $id = (int) Tools::getValue('id_route');
-                    if ($id <= 0) {
-                        throw new Exception('Invalid route ID');
+                    if (Tools::isSubmit('grtrans_save')) {
+                        $this->saveRule();
+                    } else {
+                        $id = (int) Tools::getValue('id_route');
+                        if ($id <= 0) {
+                            throw new Exception('Invalid route ID');
+                        }
+                        Db::getInstance()->delete('grtrans_route', 'id_route = ' . $id);
                     }
-                    Db::getInstance()->delete('grtrans_route', 'id_route = ' . $id);
+                    $out .= $this->displayConfirmation($this->l('Route dataset updated.'));
                 }
-                $out .= $this->displayConfirmation($this->l('Route dataset updated.'));
             } catch (Exception $e) {
                 $out .= $this->displayError($this->escape($e->getMessage()));
             }
