@@ -17,9 +17,9 @@ Work-in-progress module for Athens-origin parcel movement by KTEL, ferry and dom
 
 Admin mutations use PrestaShop employee token verification, strict validated input and escaping; client-side prices are never trusted. Unknown destination => no quote. No credentials or external network access.
 
-## Acceptance still required
+## Automated core acceptance and additional production readiness
 
-A real PrestaShop 9.2.1 Docker instance now installs the module, exercises the native Cart price/zone path, and completes Chromium admin editing plus a Greek customer's ferry checkout pickup-notice flow. The order pickup snapshot is verified in an integration hook test. Still needed: final paid-order confirmation/account acceptance, Hummingbird 2 coverage, full add/delete regression, and real transport contracts/fares. See issue #1.
+A real PrestaShop 9.2.1 Docker instance now installs the module, exercises the native Cart price/zone path, and completes Chromium admin editing plus a Greek customer's ferry checkout pickup-notice flow. The order pickup snapshot is verified in an integration hook test. The disposable PrestaShop integration also validates a genuine pending-payment order, pickup snapshot and historical repair, while browser acceptance covers route add/edit/delete. Additional checks before production use: a completed live test-payment and customer account/confirmation review, Hummingbird 2 theme coverage, and the merchant's real transport contracts/fares.
 
 ## Route state and shipping consistency
 
