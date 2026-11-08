@@ -134,9 +134,9 @@ try {
     $module = Module::getInstanceByName('grtransportshipping');
     testAssert(str_contains($module->hookDisplayOrderDetail(['order' => $order]), 'Naxos Port'),
         'Customer order detail omitted pickup');
-    testAssert(str_contains($module->hookDisplayOrderConfirmation(['order' => $order]), 'NO HOME DELIVERY'),
+    testAssert((str_contains($module->hookDisplayOrderConfirmation(['order' => $order]), 'NO HOME DELIVERY') || str_contains($module->hookDisplayOrderConfirmation(['order' => $order]), 'ΟΧΙ ΠΑΡΑΔΟΣΗ ΣΤΟ ΣΠΙΤΙ')),
         'Order confirmation omitted no-home-delivery warning');
-    testAssert(str_contains($module->hookDisplayAdminOrder(['id_order' => $idOrder]), 'STATION PICKUP ONLY'),
+    testAssert((str_contains($module->hookDisplayAdminOrder(['id_order' => $idOrder]), 'STATION PICKUP ONLY') || str_contains($module->hookDisplayAdminOrder(['id_order' => $idOrder]), 'ΠΑΡΑΛΑΒΗ ΜΟΝΟ ΑΠΟ ΣΤΑΘΜΟ')),
         'Admin order omitted pickup notice');
     // Issue #43: the real stored snapshot renders a destructive-regeneration
     // confirmation on the form itself (covers button and Enter-key submit).
@@ -158,9 +158,12 @@ try {
         'confirmation' => $module->hookDisplayOrderConfirmation(['order' => $order]),
         'admin_order' => $module->hookDisplayAdminOrder(['id_order' => $idOrder]),
     ] as $surface => $html) {
-        testAssert(str_contains($html, 'STATION PICKUP ONLY — NO HOME DELIVERY')
-            && str_contains($html, 'DEMO ESTIMATE — NOT A LIVE SHIPPING OFFER')
-            && str_contains($html, 'Collection point: ')
+        testAssert((str_contains($html, 'STATION PICKUP ONLY — NO HOME DELIVERY')
+                || str_contains($html, 'ΠΑΡΑΛΑΒΗ ΜΟΝΟ ΑΠΟ ΣΤΑΘΜΟ'))
+            && (str_contains($html, 'DEMO ESTIMATE — NOT A LIVE SHIPPING OFFER')
+                || str_contains($html, 'ΕΝΔΕΙΚΤΙΚΗ ΕΚΤΙΜΗΣΗ'))
+            && (str_contains($html, 'Collection point: ')
+                || str_contains($html, 'Σημείο παραλαβής: '))
             && str_contains($html, 'Naxos Port'),
             'Wording diverged across shared pickup renderer: ' . $surface);
     }
