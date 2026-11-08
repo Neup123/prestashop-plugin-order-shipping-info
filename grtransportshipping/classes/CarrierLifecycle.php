@@ -25,6 +25,11 @@ final class GrTransportCarrierLifecycle
     public const DISABLED = 'disabled';
     public const ORPHANED = 'orphaned';
     public const READY = 'ready';
+    public const DEFAULT_NAME = 'Greek transport — station pickup';
+    // PrestaShop carrier.name is not language-specific; show both languages
+    // to customers without overwriting a merchant-customized carrier name.
+    public const BILINGUAL_NAME = 'Greek transport — station pickup / Παραλαβή από σταθμό';
+    public const DEFAULT_DELAY = 'Collection from the named transport station (not home delivery)';
 
     public static function isOwned(int $carrierId): bool
     {
@@ -82,7 +87,8 @@ final class GrTransportCarrierLifecycle
         $state = self::inspect();
         if ($state['state'] === self::READY) {
             $carrier = new Carrier((int) $state['id']);
-            return self::complete($carrier) && self::adopt($module, (int) $carrier->id);
+            return self::complete($carrier) && self::adopt($module, (int) $carrier->id)
+                && self::localizeDefaults($module);
         }
         $candidateId = self::findReusable();
         if ($candidateId > 0) {
@@ -93,7 +99,8 @@ final class GrTransportCarrierLifecycle
                     return false;
                 }
             }
-            return self::complete($carrier) && self::adopt($module, $candidateId);
+            return self::complete($carrier) && self::adopt($module, $candidateId)
+                && self::localizeDefaults($module);
         }
         return self::create($module);
     }
@@ -117,6 +124,41 @@ final class GrTransportCarrierLifecycle
         if (!self::adopt($module, (int) $newCarrier->id)) {
             throw new RuntimeException('Carrier replacement identity was not persisted');
         }
+    }
+
+    /**
+     * Upgrade/repair localization of only original stock carrier text. The
+     * carrier name is global in PrestaShop; the bilingual default is explicit
+     * rather than pretending that it changes by customer locale. Delay is a
+     * native per-language field. Never replace merchant-edited values.
+     */
+    public static function localizeDefaults($module): bool
+    {
+        $state = self::inspect();
+        $id = (int) $state['id'];
+        if (!self::isOwned($id)) {
+            return true; // No carrier to localize; repair is a separate action.
+        }
+        $carrier = new Carrier($id);
+        $changed = false;
+        if ((string) $carrier->name === self::DEFAULT_NAME) {
+            $carrier->name = self::BILINGUAL_NAME;
+            $changed = true;
+        }
+        foreach (Language::getLanguages(false) as $language) {
+            $langId = (int) $language['id_lang'];
+            $iso = strtolower((string) $language['iso_code']);
+            if ($iso !== 'el' || !isset($carrier->delay[$langId])
+                || (string) $carrier->delay[$langId] !== self::DEFAULT_DELAY) {
+                continue;
+            }
+            $translated = $module->l(self::DEFAULT_DELAY, self::MODULE, $iso);
+            if ($translated !== self::DEFAULT_DELAY) {
+                $carrier->delay[$langId] = $translated;
+                $changed = true;
+            }
+        }
+        return !$changed || $carrier->update();
     }
 
     public static function retire($module): bool
@@ -215,7 +257,7 @@ final class GrTransportCarrierLifecycle
     private static function create($module): bool
     {
         $carrier = new Carrier();
-        $carrier->name = 'Greek transport — station pickup';
+        $carrier->name = self::BILINGUAL_NAME;
         $carrier->active = true;
         $carrier->deleted = false;
         $carrier->shipping_external = true;
@@ -228,7 +270,7 @@ final class GrTransportCarrierLifecycle
         $carrier->delay = [];
         foreach (Language::getLanguages(false) as $language) {
             $carrier->delay[(int) $language['id_lang']] =
-                'Collection from the named transport station (not home delivery)';
+                $module->l(self::DEFAULT_DELAY, self::MODULE, (string) $language['iso_code']);
         }
         if (!$carrier->add()) {
             return false;
