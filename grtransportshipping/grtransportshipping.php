@@ -400,28 +400,32 @@ class Grtransportshipping extends CarrierModule
             || mb_strlen($notice) > 2000) {
             throw new InvalidArgumentException('Invalid route data');
         }
-        $pickup = (string) Tools::getValue('pickup_only');
-        $active = (string) Tools::getValue('active');
-        $demo = (string) Tools::getValue('demo');
-        if (!in_array($pickup, ['0','1'], true) || !in_array($active, ['0','1'], true)
-            || !in_array($demo, ['0','1'], true)) {
-            throw new InvalidArgumentException('Invalid flags');
-        }
-        $data = [
-            'mode'=> pSQL($mode), 'origin_name'=>pSQL($origin),
-            'station_name'=>pSQL($station), 'city'=>pSQL($city),
-            'postal_prefix'=>pSQL($prefix), 'price'=>round((float) $price, 2),
-            'pickup_only'=>(int) $pickup, 'active'=>(int) $active,
-            'notice'=>pSQL($notice), 'demo'=>(int) $demo,
-        ];
         $db = Db::getInstance();
-        if ($id > 0) {
-            $exists = (int) $db->getValue('SELECT COUNT(*) FROM `' . _DB_PREFIX_ . 'grtrans_route` WHERE id_route = ' . $id);
-            if (!$exists || !$db->update('grtrans_route', $data, 'id_route = ' . $id)) {
-                throw new RuntimeException('Route update failed');
-            }
-        } elseif (!$db->insert('grtrans_route', $data)) {
-            throw new RuntimeException('Route creation failed');
+        $old = $id > 0 ? $db->getRow('SELECT * FROM `' . _DB_PREFIX_ . 'grtrans_route` WHERE id_route = ' . $id) : null;
+        if ($id > 0 && !$old) {
+            throw new InvalidArgumentException('Route not found');
         }
+        $state = GrTransportRouteState::transition($old ?: null, [
+            'route_status' => (string) Tools::getValue('route_status'),
+            'pickup_only' => (string) Tools::getValue('pickup_only'),
+            'demo' => (string) Tools::getValue('demo'),
+        ], (int) ($this->context->employee->id ?? 0),
+            $old && round((float) $old['price'], 2) !== round((float) $price, 2));
+        $data = [
+            'mode' => pSQL($mode),
+            'origin_name' => pSQL($origin),
+            'station_name' => pSQL($station),
+            'city' => pSQL($city),
+            'postal_prefix' => pSQL($prefix),
+            'price' => round((float) $price, 2),
+            'notice' => pSQL($notice),
+        ] + $state;
+        $success = $id > 0
+            ? $db->update('grtrans_route', $data, 'id_route = ' . $id)
+            : $db->insert('grtrans_route', $data);
+        if (!$success) {
+            throw new RuntimeException('Route write failed');
+        }
+        $this->clearQuoteCache();
     }
 }
