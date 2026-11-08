@@ -95,6 +95,7 @@ class Grtransportshipping extends CarrierModule
         return (bool) Db::getInstance()->execute('CREATE TABLE IF NOT EXISTS `' . _DB_PREFIX_ . 'grtrans_cart_quote` (
             `id_cart` INT UNSIGNED NOT NULL PRIMARY KEY,
             `id_address` INT UNSIGNED NOT NULL,
+            `address_fingerprint` CHAR(64) NOT NULL,
             `quote_data` TEXT NOT NULL,
             `quote_status` VARCHAR(12) NOT NULL DEFAULT \'pinned\',
             `created_at` DATETIME NOT NULL
@@ -258,17 +259,19 @@ class Grtransportshipping extends CarrierModule
         }
         $cartId = (int) ($cart->id ?? 0);
         $addressId = (int) $cart->id_address_delivery;
-        $key = $cartId . ':' . $addressId . ':' . ($cartId ? '' : spl_object_id($cart));
+        $address = new Address($addressId);
+        if (!Validate::isLoadedObject($address)) {
+            return ['status' => 'invalid_address', 'quote' => null];
+        }
+        $fingerprint = hash('sha256', (int) $address->id_country . ':'
+            . trim((string) $address->postcode) . ':' . trim((string) $address->city));
+        $key = $cartId . ':' . $addressId . ':' . $fingerprint . ':' . ($cartId ? '' : spl_object_id($cart));
         if (isset($this->requestQuotes[$key])) {
             return $this->requestQuotes[$key];
         }
-        $pinned = GrTransportCartQuote::pinned($cartId, $addressId);
+        $pinned = GrTransportCartQuote::pinned($cartId, $addressId, $fingerprint);
         if ($pinned !== null) {
             return $this->requestQuotes[$key] = ['status' => 'quoted', 'quote' => $pinned];
-        }
-        $address = new Address($addressId);
-        if (!Validate::isLoadedObject($address)) {
-            return $this->requestQuotes[$key] = ['status' => 'invalid_address', 'quote' => null];
         }
         $country = new Country((int) $address->id_country);
         if ($country->iso_code !== 'GR') {
@@ -280,7 +283,7 @@ class Grtransportshipping extends CarrierModule
         }
         $result = GrTransportQuoteEngine::resolve($routes, (string) $address->postcode, (string) $address->city);
         if ($result['status'] === 'quoted') {
-            $result['quote'] = GrTransportCartQuote::pin($cartId, $addressId, $result['quote']);
+            $result['quote'] = GrTransportCartQuote::pin($cartId, $addressId, $fingerprint, $result['quote']);
         } elseif (in_array($result['status'], ['ambiguous', 'suspended'], true)) {
             PrestaShopLogger::addLog('Transport route resolution: ' . $result['status']
                 . ' for delivery address #' . $addressId, 2, null, 'Address', $addressId);
