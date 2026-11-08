@@ -61,4 +61,18 @@ testAssert((bool) GrTransportCarrierLifecycle::ensure($module)
 $activeRows = Db::getInstance()->executeS('SELECT id_carrier FROM `' . _DB_PREFIX_
     . 'carrier` WHERE external_module_name = \'grtransportshipping\' AND deleted = 0') ?: [];
 testAssert(count($activeRows) === 1, 'Exactly one non-deleted module carrier must remain');
+// The initial demo seed is a terminal, explicit initialization state,
+// not inferred from COUNT(*) after a merchant removes every route.
+// This disposable test runs last; its deliberate route deletion is isolated.
+testAssert((int) Configuration::get(GrTransportRouteFields::SEED_CONFIG) === 1,
+    'Initial route seed must be marked complete');
+testAssert((int) Db::getInstance()->getValue('SELECT COUNT(*) FROM `' . _DB_PREFIX_ . 'grtrans_route`') > 0,
+    'Expected fixture routes before verifying terminal seed marker');
+testAssert(Db::getInstance()->delete('grtrans_route', '1=1'), 'Could not simulate merchant deleting all routes');
+GrTransportRouteRepository::seedOnce();
+testAssert((int) Db::getInstance()->getValue('SELECT COUNT(*) FROM `' . _DB_PREFIX_ . 'grtrans_route`') === 0,
+    'Deleted merchant routes must not be silently re-seeded');
+testAssert($module->install(), 'Partial install retry after empty dataset failed');
+testAssert((int) Db::getInstance()->getValue('SELECT COUNT(*) FROM `' . _DB_PREFIX_ . 'grtrans_route`') === 0,
+    'Idempotent reinstall must respect initialized-but-empty merchant dataset');
 echo "Carrier install retry, back-office deletion recovery and canonical identity smoke passed\n";
