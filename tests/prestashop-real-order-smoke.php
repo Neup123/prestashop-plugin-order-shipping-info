@@ -127,6 +127,36 @@ try {
         'Order confirmation omitted no-home-delivery warning');
     orderCheck(str_contains($module->hookDisplayAdminOrder(['id_order' => $idOrder]), 'STATION PICKUP ONLY'),
         'Admin order omitted pickup notice');
+    // Verify repeat hooks are idempotent rather than attempting a second
+    // primary-key INSERT, and reconstruct a missing record from the pinned
+    // cart quote, never from a newly edited carrier route.
+    $module->hookActionValidateOrder(['order' => $order, 'cart' => $cart]);
+    orderCheck(GrTransportOrderSnapshot::status($idOrder) === GrTransportOrderSnapshot::STORED,
+        'Second validation must retain the original snapshot');
+    $db = Db::getInstance();
+    $routeId = (int) $db->getValue('SELECT id_route FROM `' . _DB_PREFIX_
+        . 'grtrans_route` WHERE station_name = "Naxos Port" LIMIT 1');
+    orderCheck($routeId > 0, 'Could not locate demo Naxos route for repair exercise');
+    orderCheck($db->update('grtrans_route', ['price' => 99], 'id_route = ' . $routeId),
+        'Could not simulate later merchant tariff edit');
+    try {
+        orderCheck($db->delete('grtrans_order', 'id_order = ' . $idOrder),
+            'Cannot simulate missing order snapshot');
+        orderCheck(str_contains($module->hookDisplayOrderDetail(['order' => $order]), 'temporarily unavailable'),
+            'Missing pickup snapshot must be visible to customer');
+        orderCheck(str_contains($module->hookDisplayAdminOrder(['id_order' => $idOrder]), 'Repair missing pickup snapshot'),
+            'Missing pickup snapshot must be visible to administrator');
+        $repaired = GrTransportOrderSnapshot::repair($idOrder);
+        orderCheck((float) $repaired['price'] === 29.0 && $repaired['station_name'] === 'Naxos Port',
+            'Repair must restore original checkout pickup and price, not later tariff');
+        $repairedAgain = GrTransportOrderSnapshot::repair($idOrder);
+        orderCheck((float) $repairedAgain['price'] === 29.0,
+            'Repeat repair should be idempotent using the original cart quote');
+        orderCheck(str_contains($module->hookDisplayOrderConfirmation(['order' => $order]), 'Naxos Port'),
+            'Customer-facing order confirmation must recover after repair');
+    } finally {
+        $db->update('grtrans_route', ['price' => 29], 'id_route = ' . $routeId);
+    }
     echo 'Real pending-payment PrestaShop order created: ferry freight EUR 29.00 and Naxos station persisted' . PHP_EOL;
 } finally {
     Configuration::updateValue('PS_MAIL_METHOD', $oldMailMode);
