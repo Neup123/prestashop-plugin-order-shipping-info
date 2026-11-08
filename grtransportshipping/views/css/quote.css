@@ -1,0 +1,4 @@
+.grtransport-quote form { margin-bottom: 1.5rem; }
+.grtransport-quote .form-control { max-width: 30rem; margin-bottom: .75rem; }
+#grtransport-map { height: 400px; max-height: 65vh; margin-bottom: 1rem; }
+.grtransport-quote [hidden] { display: none !important; }
