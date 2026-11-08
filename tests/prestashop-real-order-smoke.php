@@ -50,35 +50,47 @@ testAssert($product->updateCategories([(int) $product->id_category_default]), 'C
 StockAvailable::setQuantity((int) $product->id, 0, 100);
 testAssert($product->checkAccess((int) $customer->id), 'Customer cannot access physical parcel');
 
-$cart = new Cart();
-$cart->id_customer = (int) $customer->id;
-$cart->secure_key = (string) $customer->secure_key;
-$cart->id_address_delivery = (int) $address->id;
-$cart->id_address_invoice = (int) $address->id;
-$cart->id_currency = (int) Configuration::get('PS_CURRENCY_DEFAULT');
-$cart->id_lang = $idLang;
-$cart->id_carrier = $idCarrier;
-$cart->id_shop = (int) $context->shop->id;
-testAssert($cart->add(), 'Cannot create persisted cart');
-testAssert($cart->updateQty(1, (int) $product->id), 'Cannot put parcel in cart');
-$context->cart = $cart;
-$context->customer = $customer;
-$context->country = new Country($idGr);
-$context->currency = new Currency((int) $cart->id_currency);
-$context->language = new Language($idLang);
-$available = $cart->getDeliveryOptionList($context->country, true);
-$key = null;
-foreach ($available[(int) $address->id] ?? [] as $candidateKey => $entry) {
-    foreach ($entry['carrier_list'] ?? [] as $item) {
-        if ((int) ($item['instance']->id ?? 0) === $idCarrier) {
-            $key = $candidateKey;
-            break 2;
+/**
+ * One fixture path for baseline, voucher, and handling-fee orders. Uses the
+ * real Cart, delivery options and physical product. No mock carrier prices.
+ * Coverage: one Greek address/one physical package; not multi-shipment.
+ */
+function makeCheckoutCart(Customer $customer, Address $address, Product $product,
+    int $carrierId, int $langId, int $countryId, Context $context): Cart
+{
+    $cart = new Cart();
+    $cart->id_customer = (int) $customer->id;
+    $cart->secure_key = (string) $customer->secure_key;
+    $cart->id_address_delivery = (int) $address->id;
+    $cart->id_address_invoice = (int) $address->id;
+    $cart->id_currency = (int) Configuration::get('PS_CURRENCY_DEFAULT');
+    $cart->id_lang = $langId;
+    $cart->id_carrier = $carrierId;
+    $cart->id_shop = (int) $context->shop->id;
+    testAssert($cart->add(), 'Cannot create persisted cart');
+    testAssert($cart->updateQty(1, (int) $product->id), 'Cannot put parcel in cart');
+    $context->cart = $cart;
+    $context->customer = $customer;
+    $context->country = new Country($countryId);
+    $context->currency = new Currency((int) $cart->id_currency);
+    $context->language = new Language($langId);
+    $available = $cart->getDeliveryOptionList($context->country, true);
+    $key = null;
+    foreach ($available[(int) $address->id] ?? [] as $candidateKey => $entry) {
+        foreach ($entry['carrier_list'] ?? [] as $item) {
+            if ((int) ($item['instance']->id ?? 0) === $carrierId) {
+                $key = $candidateKey;
+                break 2;
+            }
         }
     }
+    testAssert(is_string($key), 'Our carrier is not a selectable checkout option');
+    $cart->setDeliveryOption([(int) $address->id => $key]);
+    testAssert($cart->update(), 'Cannot persist delivery selection');
+    return $cart;
 }
-testAssert(is_string($key), 'Our carrier is not a selectable checkout option');
-$cart->setDeliveryOption([(int) $address->id => $key]);
-testAssert($cart->update(), 'Cannot persist delivery selection');
+
+$cart = makeCheckoutCart($customer, $address, $product, $idCarrier, $idLang, $idGr, $context);
 $freight = $cart->getPackageShippingCost($idCarrier, false, $context->country);
 testAssert(is_numeric($freight) && abs((float) $freight - 29.0) < 0.001, 'Incorrect Naxos checkout shipping quote');
 
@@ -186,5 +198,135 @@ try {
     }
     echo 'Real pending-payment PrestaShop order created: ferry freight EUR 29.00 and Naxos station persisted' . PHP_EOL;
 } finally {
+    Configuration::updateValue('PS_MAIL_METHOD', $oldMailMode);
+}
+
+
+// #39: real PrestaShop adjusted orders. Reuse the existing fixture, including
+// its physical product, customer, address, carrier and cheque-payment module.
+// Coverage: a single address/package; no charged card or production gateway.
+$placeAdjusted = static function (Cart $c, string $label) use ($payment, $pendingState): Order {
+    $amount = (float) $c->getOrderTotal(true, Cart::BOTH);
+    testAssert($payment->validateOrder((int) $c->id, $pendingState, $amount,
+        'CI ' . $label, null, [], (int) $c->id_currency, false, (string) $c->secure_key),
+        'PrestaShop failed order: ' . $label);
+    $placed = new Order((int) $payment->currentOrder);
+    testAssert(Validate::isLoadedObject($placed)
+        && GrTransportOrderSnapshot::find((int) $placed->id) !== null,
+        'Missing order or pickup after ' . $label);
+    return $placed;
+};
+$previousHandling = (float) Configuration::get('PS_SHIPPING_HANDLING');
+$carrier = new Carrier($idCarrier);
+$previousCarrierHandling = (int) $carrier->shipping_handling;
+Configuration::updateValue('PS_MAIL_METHOD', Mail::METHOD_DISABLE);
+try {
+    $voucherCart = makeCheckoutCart($customer, $address, $product, $idCarrier, $idLang, $idGr, $context);
+    testAssert(abs((float) $voucherCart->getPackageShippingCost($idCarrier, false, $context->country) - 29) < 0.001,
+        'Voucher cart should begin with pinned EUR 29 freight');
+    $rule = new CartRule();
+    $rule->name = [$idLang => 'CI free shipping'];
+    $rule->code = 'CI_FREE_SHIPPING_39';
+    $rule->id_customer = (int) $customer->id;
+    $rule->date_from = date('Y-m-d H:i:s', time() - 3600);
+    $rule->date_to = date('Y-m-d H:i:s', time() + 86400);
+    $rule->quantity = 10;
+    $rule->quantity_per_user = 10;
+    $rule->priority = 1;
+    $rule->minimum_amount = 0;
+    $rule->minimum_amount_tax = 1;
+    $rule->minimum_amount_shipping = 0;
+    $rule->minimum_amount_currency = (int) $voucherCart->id_currency;
+    $rule->free_shipping = 1;
+    $rule->reduction_percent = 0;
+    $rule->reduction_amount = 0;
+    $rule->active = 1;
+    testAssert($rule->add(), 'Cannot create core free-shipping cart rule');
+    testAssert($voucherCart->addCartRule((int) $rule->id), 'Cannot apply core free-shipping cart rule');
+    $ruleContextRows = $voucherCart->getCartRules(CartRule::FILTER_ACTION_ALL, false);
+    echo 'CI voucher cart diagnostics: ids='
+        . json_encode(array_map(static function ($r) {
+            return ['id' => $r['id_cart_rule'] ?? null, 'free' => $r['free_shipping'] ?? null];
+        }, $ruleContextRows ?: []))
+        . ', shipping=' . $voucherCart->getOrderTotal(false, Cart::ONLY_SHIPPING)
+        . ', discounts=' . $voucherCart->getOrderTotal(false, Cart::ONLY_DISCOUNTS)
+        . ', validity=' . var_export($rule->checkValidity($context, true, false), true) . PHP_EOL;
+    $voucherOrder = $placeAdjusted($voucherCart, 'free voucher');
+    echo 'CI voucher order diagnostics: order_rules='
+        . json_encode($voucherOrder->getCartRules() ?: [])
+        . ', shipping=' . $voucherOrder->total_shipping_tax_excl
+        . ', discounts=' . $voucherOrder->total_discounts_tax_excl . PHP_EOL;
+    testAssert(GrTransportOrderCharge::hasAppliedFreeShipping((int) $voucherOrder->id),
+        'Voucher was not actually applied to PrestaShop order');
+    $voucherCharged = (float) $voucherOrder->total_shipping_tax_excl;
+    testAssert(abs($voucherCharged) <= 0.02
+        || (float) $voucherOrder->total_discounts_tax_excl >= 28.98,
+        'PrestaShop did not actually waive transport shipping');
+    echo 'PASS voucher order: shipping ' . $voucherCharged
+        . ', discount ' . $voucherOrder->total_discounts_tax_excl . PHP_EOL;
+
+    testAssert(Configuration::updateValue('PS_SHIPPING_HANDLING', 6.25), 'Cannot enable handling fee');
+    $carrier->shipping_handling = 1;
+    testAssert($carrier->update(), 'Cannot enable handling on test carrier');
+    Cache::clean('getPackageShippingCost_*');
+    $feeCart = makeCheckoutCart($customer, $address, $product, $idCarrier, $idLang, $idGr, $context);
+    testAssert(abs((float) $feeCart->getPackageShippingCost($idCarrier, false, $context->country) - 35.25) < 0.001,
+        'Expected EUR 29 route plus EUR 6.25 handling once');
+    $feePin = json_decode((string) Db::getInstance()->getValue('SELECT quote_data FROM `'
+        . _DB_PREFIX_ . 'grtrans_cart_quote` WHERE id_cart = ' . (int) $feeCart->id), true);
+    testAssert(is_array($feePin) && abs((float) ($feePin['handling_fee'] ?? 0) - 6.25) < 0.001,
+        'Handling fee must be pinned with route quote');
+    $feeOrder = $placeAdjusted($feeCart, 'handling');
+    testAssert(abs((float) $feeOrder->total_shipping_tax_excl - 35.25) < 0.001,
+        'Actual PrestaShop order did not include handling');
+    echo 'PASS handling order: shipping ' . $feeOrder->total_shipping_tax_excl . PHP_EOL;
+
+    // Original pinned fee must remain authoritative when the merchant
+    // later changes configuration before repairing an order snapshot.
+    $carrier->shipping_handling = $previousCarrierHandling;
+    testAssert($carrier->update(), 'Cannot restore carrier handling setting');
+    Configuration::updateValue('PS_SHIPPING_HANDLING', $previousHandling);
+    testAssert(Db::getInstance()->delete('grtrans_order', 'id_order = ' . (int) $feeOrder->id),
+        'Cannot simulate absent pickup snapshot');
+    $repaired = GrTransportOrderSnapshot::repair((int) $feeOrder->id);
+    testAssert(abs((float) $repaired['price'] - 29) < 0.001,
+        'Historical repair must preserve pinned base rate');
+    echo 'PASS historical repair after handling settings changed' . PHP_EOL;
+
+    // CI-only invalid order totals: the actual validation hook must reject
+    // unrelated differences and record a clear PrestaShop error log.
+    $moduleGuard = Module::getInstanceByName('grtransportshipping');
+    $chargedBefore = (float) $feeOrder->total_shipping_tax_excl;
+    try {
+        foreach ([40.00, 0.00] as $incorrectAmount) {
+            testAssert(Db::getInstance()->update('orders',
+                ['total_shipping_tax_excl' => $incorrectAmount],
+                'id_order = ' . (int) $feeOrder->id), 'Could not set invalid CI shipping charge');
+            $rejected = false;
+            try {
+                $moduleGuard->hookActionValidateOrder([
+                    'order' => new Order((int) $feeOrder->id), 'cart' => $feeCart,
+                ]);
+            } catch (RuntimeException $e) {
+                $rejected = str_contains($e->getMessage(), 'shipping charge divergence');
+            }
+            testAssert($rejected, 'Unexplained charged amount was accepted: ' . $incorrectAmount);
+        }
+        $logged = (int) Db::getInstance()->getValue('SELECT COUNT(*) FROM `'
+            . _DB_PREFIX_ . 'log` WHERE object_id = ' . (int) $feeOrder->id
+            . " AND message LIKE '%shipping charge divergence%'");
+        testAssert($logged >= 2, 'Invalid charges must leave a clear PrestaShop log entry');
+    } finally {
+        Db::getInstance()->update('orders',
+            ['total_shipping_tax_excl' => $chargedBefore],
+            'id_order = ' . (int) $feeOrder->id);
+    }
+    echo 'PASS genuine shipping charge divergence blocked and logged' . PHP_EOL;
+
+} finally {
+    $carrier = new Carrier($idCarrier);
+    $carrier->shipping_handling = $previousCarrierHandling;
+    $carrier->update();
+    Configuration::updateValue('PS_SHIPPING_HANDLING', $previousHandling);
     Configuration::updateValue('PS_MAIL_METHOD', $oldMailMode);
 }

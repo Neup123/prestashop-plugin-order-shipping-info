@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/CartQuote.php';
 require_once __DIR__ . '/CarrierLifecycle.php';
+require_once __DIR__ . '/OrderCharge.php';
 
 /**
  * Durable order pickup state machine (one write path):
@@ -61,9 +62,10 @@ final class GrTransportOrderSnapshot
         if (!$quote) {
             self::fail($orderId, 'No historical cart quote remains; manual investigation required');
         }
-        if (abs((float) $order->total_shipping_tax_excl - (float) ($quote['price'] ?? 0)) > 0.02) {
-            self::fail($orderId, 'Historical order charge differs from pinned quote; do not invent pickup data');
-        }
+        // Use the SAME charge invariant as actionValidateOrder, including
+        // historically pinned handling and only genuinely applied vouchers.
+        // Current shop handling settings may have changed since this order.
+        GrTransportOrderCharge::checkOrder($orderId, $quote);
         $saved = self::write($orderId, $quote, true);
         PrestaShopLogger::addLog('Transport pickup snapshot regenerated from original cart quote for order #'
             . $orderId, 1, null, 'Order', $orderId);
