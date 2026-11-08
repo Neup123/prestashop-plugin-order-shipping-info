@@ -326,6 +326,10 @@ class Grtransportshipping extends CarrierModule
     public function getContent()
     {
         $out = '';
+        $submitted = null;
+        $fieldErrors = [];
+        $saveError = '';
+        $saveAttempt = Tools::isSubmit('grtrans_save');
         if (Tools::isSubmit('grtrans_save') || Tools::isSubmit('grtrans_delete')
             || Tools::isSubmit('grtrans_repair_order') || Tools::isSubmit('grtrans_repair_carrier')) {
             // PrestaShop 9 uses Symfony masked CSRF tokens: two valid tokens
@@ -348,8 +352,11 @@ class Grtransportshipping extends CarrierModule
                     GrTransportOrderSnapshot::repair($idOrder);
                     $out .= $this->displayConfirmation($this->l('Order pickup snapshot regenerated from its original cart quote.'));
                 } else {
-                    if (Tools::isSubmit('grtrans_save')) {
-                        $this->saveRule();
+                    if ($saveAttempt) {
+                        // This same named-field collection feeds the one repository
+                        // validator and, on failure, the exact form re-render.
+                        $submitted = $this->routeInputValues();
+                        $this->saveRule($submitted);
                     } else {
                         $id = (int) Tools::getValue('id_route');
                         GrTransportRouteRepository::delete($id);
@@ -357,8 +364,21 @@ class Grtransportshipping extends CarrierModule
                     }
                     $out .= $this->displayConfirmation($this->l('Route dataset updated.'));
                 }
+            } catch (GrTransportRouteValidationException $e) {
+                if ($saveAttempt) {
+                    $submitted ??= $this->routeInputValues();
+                    $fieldErrors = $e->fieldErrors();
+                    $saveError = 'Route not saved. Correct the highlighted fields and try again.';
+                } else {
+                    $out .= $this->displayError($this->escape($e->getMessage()));
+                }
             } catch (Exception $e) {
-                $out .= $this->displayError($this->escape($e->getMessage()));
+                if ($saveAttempt) {
+                    $submitted ??= $this->routeInputValues();
+                    $saveError = 'Route not saved: ' . $e->getMessage();
+                } else {
+                    $out .= $this->displayError($this->escape($e->getMessage()));
+                }
             }
         }
         $url = $this->context->link->getAdminLink('AdminModules', true, [], [
@@ -374,7 +394,8 @@ class Grtransportshipping extends CarrierModule
                 . '<form method="post" action="' . $action . '"><input type="hidden" name="token" value="' . $csrf . '">'
                 . '<button name="grtrans_repair_carrier" value="1" class="btn btn-warning">Repair transport carrier</button></form></div>';
         } else {
-            $out .= '<p>Transport carrier ready: #' . (int) $carrierState['id'] . '</p>';
+            $out .= '<div class="alert alert-success" role="status"><strong>Transport carrier ready</strong>'
+                . ' — Carrier #' . (int) $carrierState['id'] . ' is available for matching routes.</div>';
         }
         $rows = Db::getInstance()->executeS('SELECT * FROM `' . _DB_PREFIX_ . 'grtrans_route` ORDER BY id_route ASC') ?: [];
         $warnings = GrTransportQuoteEngine::shadowedSuspensions($rows);
@@ -384,63 +405,192 @@ class Grtransportshipping extends CarrierModule
             $out .= '<div class="alert alert-warning">Suspended route #' . (int) $warning['suspended']
                 . ' shadows available regional route #' . (int) $warning['fallback'] . '; no fallback price will be offered.</div>';
         }
-        $out .= '<table class="table"><thead><tr><th>ID</th><th>Mode</th><th>From</th><th>Pickup station</th><th>City</th><th>Postcode prefix</th><th>EUR</th><th>Pickup only</th><th>State</th><th>Demo</th><th>Actions</th></tr></thead><tbody>';
+        // Bootstrap back-office conventions plus scoped, readable state colors.
+        // Colors reinforce explicit text: they are never the sole state signal.
+        $out .= '<style>
+            .grtrans-route-grid{max-width:100%;overflow-x:auto}
+            .grtrans-route-grid th,.grtrans-route-grid td{vertical-align:middle!important;white-space:nowrap}
+            .grtrans-route-grid.table-responsive tr.grtrans-row-demo>td{background-color:#fff8e6!important}
+            .grtrans-route-grid.table-responsive tr.grtrans-row-suspended>td{background-color:#ffefed!important}
+            .grtrans-pill{display:inline-block;border-radius:4px;padding:4px 8px;font-size:12px;font-weight:600;line-height:1.3}
+            .grtrans-state-draft{background:#e5e7eb;color:#303845}
+            .grtrans-state-available,.grtrans-verified{background:#d9f3e5;color:#14532d}
+            .grtrans-state-suspended{background:#ffe0de;color:#8c2222}
+            .grtrans-demo{background:#ffe7aa;color:#664500}
+            .grtrans-actions{display:flex;flex-wrap:wrap;align-items:center;gap:12px;min-width:142px}
+            .grtrans-actions form{margin:0}
+            .grtrans-editor{scroll-margin-top:90px}
+            .grtrans-editor.is-editing{border-left:5px solid #337ab7}
+            .grtrans-editor .form-group{max-width:640px}
+            .grtrans-editor .help-block{display:block;margin-top:5px}
+        </style>';
+        $out .= '<div class="grtrans-route-grid table-responsive"><table class="table table-hover">'
+            . '<thead><tr><th>ID</th><th>Mode</th><th>From</th><th>Pickup station</th><th>City</th>'
+            . '<th>Postcode prefix</th><th>EUR</th><th>Pickup only</th><th>State</th><th>Demo</th>'
+            . '<th>Actions</th></tr></thead><tbody>';
         foreach ($rows as $r) {
-            $out .= '<tr>';
-            foreach (['id_route','mode','origin_name','station_name','city','postal_prefix','price','pickup_only','route_status','demo'] as $key) {
-                $out .= '<td>' . $this->escape($r[$key]) . '</td>';
+            $id = (int) $r['id_route'];
+            $status = GrTransportRouteState::status($r);
+            $isDemo = (int) $r['demo'] === 1;
+            $rowClass = $status === GrTransportRouteState::SUSPENDED
+                ? 'grtrans-row-suspended' : ($isDemo ? 'grtrans-row-demo' : '');
+            $out .= '<tr class="' . $rowClass . '"><td>' . $id . '</td>';
+            $modeChoices = GrTransportRouteFields::choices('mode');
+            $out .= '<td>' . $this->escape($modeChoices[$r['mode']] ?? $r['mode']) . '</td>';
+            foreach (['origin_name', 'station_name', 'city', 'postal_prefix', 'price'] as $field) {
+                $out .= '<td>' . $this->escape($r[$field]) . '</td>';
             }
-            $out .= '<td><a class="btn btn-default" href="' . $action . '&amp;grtrans_edit=' . (int) $r['id_route'] . '">Edit</a><form method="post" action="' . $action . '"><input type="hidden" name="id_route" value="' . (int) $r['id_route'] . '"><input type="hidden" name="token" value="' . $csrf . '"><button name="grtrans_delete" value="1" onclick="return confirm(\'Delete route?\')">Delete</button></form></td></tr>';
+            $pickupChoices = GrTransportRouteFields::choices('pickup_only');
+            $out .= '<td>' . $this->escape($pickupChoices[(string) $r['pickup_only']] ?? 'Unknown') . '</td>'
+                . '<td><span class="grtrans-pill grtrans-state-' . $this->escape($status) . '">'
+                . $this->escape(GrTransportRouteState::STATE_LABELS[$status]) . '</span></td>'
+                . '<td><span class="grtrans-pill ' . ($isDemo ? 'grtrans-demo' : 'grtrans-verified') . '">'
+                . ($isDemo ? 'Unverified estimate' : 'Operator-confirmed') . '</span></td>';
+            $out .= '<td><div class="grtrans-actions">'
+                . '<a class="btn btn-default btn-sm" href="' . $action . '&amp;grtrans_edit=' . $id
+                . '#grtrans-route-editor">Edit</a>'
+                . '<form method="post" action="' . $action . '"><input type="hidden" name="id_route" value="'
+                . $id . '"><input type="hidden" name="token" value="' . $csrf . '">'
+                . '<button type="submit" class="btn btn-danger btn-sm" name="grtrans_delete" value="1"'
+                . ' onclick="return confirm(&quot;Delete route #' . $id
+                . '? This cannot be undone.&quot;)">Delete</button></form></div></td></tr>';
         }
+        $out .= '</tbody></table></div></div>';
+
+        // Edit intent comes only from the route the user opened, in the URL,
+        // and is cryptographically bound to the employee's form submission.
+        // No editable route primary-key field exists in either form.
+        $editId = isset($_GET['grtrans_edit']) && is_scalar($_GET['grtrans_edit'])
+            ? (int) $_GET['grtrans_edit'] : 0;
         $editing = null;
-        $editId = (int) Tools::getValue('grtrans_edit', 0);
         foreach ($rows as $item) {
-            if ((int) $item['id_route'] === $editId) {
+            if ($editId > 0 && (int) $item['id_route'] === $editId) {
                 $editing = $item;
                 break;
             }
         }
-        $out .= '</tbody></table><h4>' . ($editing ? 'Edit route #' . $editId : 'Add route') . '</h4><form method="post" action="' . $action . '"><input type="hidden" name="token" value="' . $csrf . '">';
+        $formAction = $action . ($editing ? '&amp;grtrans_edit=' . $editId : '') . '#grtrans-route-editor';
+        $out .= '<section id="grtrans-route-editor" aria-labelledby="grtrans-editor-title" class="panel grtrans-editor'
+            . ($editing ? ' is-editing' : '') . '">'
+            . '<h3 id="grtrans-editor-title">' . ($editing ? 'Editing route #' . $editId : 'Add route') . '</h3>';
+        if ($editing) {
+            $out .= '<div class="alert alert-info">Editing route #' . $editId
+                . '. Changes affect this route only. <a href="' . $action
+                . '#grtrans-route-editor">Cancel editing</a>.</div>';
+        }
+        if ($saveError !== '') {
+            $out .= '<div id="grtrans-form-errors" role="alert" class="alert alert-danger">'
+                . '<strong>' . $this->escape($saveError) . '</strong>';
+            if ($fieldErrors) {
+                $out .= '<ul>';
+                foreach ($fieldErrors as $field => $message) {
+                    $out .= '<li><a href="#grtrans-field-' . $this->escape($field) . '">'
+                        . $this->escape($message) . '</a></li>';
+                }
+                $out .= '</ul>';
+            }
+            $out .= '</div>';
+        }
+        $out .= '<form method="post" action="' . $formAction . '">'
+            . '<input type="hidden" name="token" value="' . $csrf . '">';
+        if ($editing) {
+            $out .= '<input type="hidden" name="grtrans_edit_proof" value="'
+                . $this->escape($this->routeEditProof($editId)) . '">';
+        }
         foreach (GrTransportRouteFields::formFields() as $field => $spec) {
-            $value = (string) ($editing[$field] ?? $spec['default']);
-            $out .= '<label style="display:block;margin:8px 0">' . $this->escape($spec['label']);
+            $value = $submitted !== null && array_key_exists($field, $submitted)
+                ? (string) $submitted[$field] : (string) ($editing[$field] ?? $spec['default']);
+            $hasError = isset($fieldErrors[$field]);
+            $fieldId = 'grtrans-field-' . $field;
+            $errorId = $fieldId . '-error';
+            $helpId = $fieldId . '-help';
+            $out .= '<div class="form-group' . ($hasError ? ' has-error' : '') . '">'
+                . '<label class="control-label" for="' . $fieldId . '">'
+                . $this->escape($this->l($spec['label'])) . '</label>';
+            $aria = $hasError ? ' aria-invalid="true" aria-describedby="' . $errorId . '"' : '';
             if ($spec['kind'] === 'select') {
-                $out .= '<select class="form-control" style="max-width:600px" name="' . $field . '">';
-                foreach (GrTransportRouteFields::choices($field) as $option => $label) {
+                $choices = GrTransportRouteFields::choices($field);
+                $out .= '<select class="form-control" id="' . $fieldId . '" name="' . $field . '"' . $aria . '>';
+                // Even an invalid submitted choice is not silently replaced
+                // with the first valid option after a failed save.
+                if (!array_key_exists($value, $choices)) {
+                    $out .= '<option value="' . $this->escape($value)
+                        . '" selected disabled>Invalid submitted selection</option>';
+                }
+                foreach ($choices as $option => $label) {
                     $out .= '<option value="' . $this->escape($option) . '"'
                         . ($value === (string) $option ? ' selected' : '') . '>'
-                        . $this->escape($label) . '</option>';
+                        . $this->escape($this->l($label)) . '</option>';
                 }
                 $out .= '</select>';
             } elseif ($spec['kind'] === 'textarea') {
-                $out .= '<textarea class="form-control" rows="3" style="max-width:600px" name="'
+                $out .= '<textarea class="form-control" rows="3" id="' . $fieldId . '" name="'
                     . $field . '" maxlength="' . GrTransportRouteFields::limit($field)
-                    . '">' . $this->escape($value) . '</textarea>';
+                    . '"' . $aria . '>' . $this->escape($value) . '</textarea>';
             } else {
-                $out .= '<input class="form-control" style="max-width:600px" name="' . $field
+                $out .= '<input class="form-control" id="' . $fieldId . '" name="' . $field
                     . '" value="' . $this->escape($value) . '" maxlength="'
-                    . GrTransportRouteFields::limit($field) . '">';
+                    . GrTransportRouteFields::limit($field) . '"' . $aria . '>';
             }
-            $out .= '</label>';
+            if (isset($spec['help'])) {
+                $out .= '<span class="help-block" id="' . $helpId . '">'
+                    . $this->escape($this->l($spec['help'])) . '</span>';
+            }
+            if ($hasError) {
+                $out .= '<span class="help-block text-danger" id="' . $errorId . '">'
+                    . $this->escape($fieldErrors[$field]) . '</span>';
+            }
+            $out .= '</div>';
         }
         if ($editing && empty($editing['demo']) && !empty($editing['verified_at'])) {
             $out .= '<p>Operator-confirmed: ' . $this->escape($editing['verified_at'])
                 . ' by employee #' . (int) $editing['verified_by_employee'] . '</p>';
         }
-        $out .= '<button type="submit" name="grtrans_save" value="1" class="btn btn-primary">Save route</button></form></div>';
+        $out .= '<button type="submit" name="grtrans_save" value="1" class="btn btn-primary">'
+            . ($editing ? 'Save route changes' : 'Add route') . '</button></form></section>';
         return $out;
     }
 
-    private function saveRule(): void
+    /** One named-field collection shared by saving and failed-save re-rendering. */
+    private function routeInputValues(): array
     {
         $values = [];
         foreach (GrTransportRouteFields::formFields() as $field => $_spec) {
-            if ($field !== 'id_route') {
-                $values[$field] = Tools::getValue($field);
-            }
+            $values[$field] = Tools::getValue($field);
         }
-        GrTransportRouteRepository::save($values, (int) ($this->context->employee->id ?? 0),
-            (int) Tools::getValue('id_route', 0));
+        return $values;
+    }
+
+    /** A stateless, employee-bound edit intent; it never grants edit permission. */
+    private function routeEditProof(int $id): string
+    {
+        return hash_hmac('sha256', 'grtrans-edit:' . $id . ':'
+            . (int) ($this->context->employee->id ?? 0), _COOKIE_KEY_);
+    }
+
+    private function saveRule(array $values): void
+    {
+        // The primary key cannot be supplied from the edit form. Only an
+        // explicitly opened route (GET + signed, employee-bound intent) can
+        // be edited; a submitted replacement ID cannot turn an edit into an
+        // update of a different route, or an unintended insertion.
+        if (array_key_exists('id_route', $_POST)) {
+            throw new InvalidArgumentException('Route ID cannot be changed in the form.');
+        }
+        $rawId = $_GET['grtrans_edit'] ?? null;
+        if ($rawId !== null && (!is_string($rawId) || !ctype_digit($rawId) || (int) $rawId <= 0)) {
+            throw new InvalidArgumentException('Invalid route edit target. Reopen the route from the grid.');
+        }
+        $id = $rawId === null ? 0 : (int) $rawId;
+        if ($id > 0) {
+            $received = $_POST['grtrans_edit_proof'] ?? '';
+            if (!is_string($received) || !hash_equals($this->routeEditProof($id), $received)) {
+                throw new InvalidArgumentException('Route edit target changed. Reopen the correct route from the grid.');
+            }
+        } elseif (isset($_POST['grtrans_edit_proof'])) {
+            throw new InvalidArgumentException('Route edit target missing. Reopen the route from the grid.');
+        }
+        GrTransportRouteRepository::save($values, (int) ($this->context->employee->id ?? 0), $id);
         $this->clearQuoteCache();
     }
 
