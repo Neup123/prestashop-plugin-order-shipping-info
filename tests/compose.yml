@@ -29,6 +29,7 @@ services:
       ADMIN_PASSWD: 'OnlyForEphemeralCI123!'
     volumes:
       - ../grtransportshipping:/var/www/html/modules/grtransportshipping
+      - ./bootstrap.php:/tmp/bootstrap.php:ro
       - ./prestashop-quote-smoke.php:/tmp/prestashop-quote-smoke.php:ro
       - ./prestashop-calculator-smoke.php:/tmp/prestashop-calculator-smoke.php:ro
       - ./prestashop-order-snapshot-smoke.php:/tmp/prestashop-order-snapshot-smoke.php:ro
