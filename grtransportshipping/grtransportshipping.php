@@ -445,7 +445,15 @@ class Grtransportshipping extends CarrierModule
         }
         $rows = Db::getInstance()->executeS('SELECT * FROM `' . _DB_PREFIX_ . 'grtrans_route` ORDER BY id_route ASC') ?: [];
         $warnings = GrTransportQuoteEngine::shadowedSuspensions($rows);
-        $out .= '<div class="panel"><h3>Greek public transport routes</h3><p>DEMO rows are assumptions, not verified freight charges. Replace before accepting orders.</p>';
+        $out .= '<div class="panel"><h3>Greek public transport routes</h3>'
+            . '<div class="alert alert-warning grtrans-demo-seed-warning" role="status">'
+            . '<strong>Seeded demo routes start Available and can immediately quote if this carrier is enabled.</strong> '
+            . 'These are invented estimates, not verified freight tariffs. Before accepting live orders, '
+            . 'mark demo routes Draft or replace them with verified rates.</div>'
+            . '<div class="alert alert-info grtrans-scope-info" role="note">'
+            . '<strong>Multistore: route records are shared by all shops.</strong> '
+            . 'Editing, suspending or deleting a route here changes destination matching in every shop. '
+            . 'Each shop must separately check its transport carrier, delivery zones and customer groups.</div>';
         $out .= '<p><strong>Draft:</strong> no quote and no block. <strong>Available:</strong> matching quotes can be sold. <strong>Suspended:</strong> a specific rule blocks broader regional quotes for that destination, including existing rules. Cart quotes already pinned may remain valid for 30 minutes.</p>';
         foreach ($warnings as $warning) {
             $out .= '<div class="alert alert-warning">Suspended route #' . (int) $warning['suspended']

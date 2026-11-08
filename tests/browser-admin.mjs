@@ -20,7 +20,16 @@ try {
   // Live PrestaShop 9.2.1 admin DOM/visual acceptance, not a synthetic
   // renderer fixture. Coverage: desktop 1440px, default BO theme, one admin.
   // Excludes mobile/touch, other BO themes and concurrent employee changes.
-  assert.match(await page.locator('body').innerText(), /DEMO rows are assumptions/);
+  // #51/#52: Real BO must make the global route scope and the risk of
+  // sellable Available demo rates visible where routes are managed.
+  const demoWarning = page.locator('.grtrans-demo-seed-warning');
+  assert.ok(await demoWarning.isVisible(), 'Sellable demo warning must be visible in BO');
+  assert.match(await demoWarning.innerText(), /Seeded demo routes start Available and can immediately quote/);
+  assert.match(await demoWarning.innerText(), /mark demo routes Draft or replace them/);
+  const multistoreNote = page.locator('.grtrans-scope-info');
+  assert.ok(await multistoreNote.isVisible(), 'Shared-shop scope must be visible in BO');
+  assert.match(await multistoreNote.innerText(), /route records are shared by all shops/);
+  console.log('LIVE ADMIN POLICY: Available demo rates clearly warned; global multistore route scope visible');
   assert.match(await page.getByRole('status').first().innerText(), /Transport carrier ready/);
   const grid = page.locator('.grtrans-route-grid');
   const firstRow = grid.locator('tbody tr').first();
