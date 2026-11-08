@@ -11,6 +11,11 @@
  */
 require_once __DIR__ . '/bootstrap.php';
 bootPrestaShop(true);
+// In a fresh CLI process, bootPrestaShop() loads the core, not our module
+// class files. Loading the actual installed module registers CartQuote and
+// OrderSnapshot exactly as real core hooks do before the native payment path.
+$transport = Module::getInstanceByName('grtransportshipping');
+testAssert($transport instanceof Grtransportshipping, 'Transport module missing in fresh-process order test');
 
 $cartId = (int) ($argv[1] ?? 0);
 testAssert($cartId > 0, 'Missing parent expired-cart ID');
