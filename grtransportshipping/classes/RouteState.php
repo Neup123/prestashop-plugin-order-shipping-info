@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/RouteValidationException.php';
 /**
  * The route lifecycle has a single persisted state: draft, available or suspended.
  *
@@ -24,9 +25,9 @@ final class GrTransportRouteState
     public const SUSPENDED = 'suspended';
     public const STATES = [self::DRAFT, self::AVAILABLE, self::SUSPENDED];
     public const STATE_LABELS = [
-        self::DRAFT => 'Draft — no quote, no veto',
-        self::AVAILABLE => 'Available — can be quoted',
-        self::SUSPENDED => 'Suspended — blocks broader matching routes',
+        self::DRAFT => 'Draft',
+        self::AVAILABLE => 'Available',
+        self::SUSPENDED => 'Suspended',
     ];
     public const TRANSITIONS = [
         self::DRAFT => self::STATES,
@@ -62,14 +63,16 @@ final class GrTransportRouteState
     {
         $status = (string) ($requested['route_status'] ?? '');
         if (!in_array($status, self::STATES, true)) {
-            throw new InvalidArgumentException('Select a valid draft, available or suspended state');
+            throw new GrTransportRouteValidationException(['route_status' => 'Route state must be Draft, Available or Suspended.']);
         }
         if ($old && !in_array($status, self::TRANSITIONS[self::status($old)], true)) {
-            throw new InvalidArgumentException('Disallowed route transition');
+            throw new GrTransportRouteValidationException(['route_status' => 'This route state change is not allowed.']);
         }
         foreach (['demo', 'pickup_only'] as $flag) {
             if (!isset($requested[$flag]) || !in_array((string) $requested[$flag], ['0', '1'], true)) {
-                throw new InvalidArgumentException('Invalid ' . $flag . ' flag');
+                throw new GrTransportRouteValidationException([$flag => $flag === 'demo'
+                    ? 'Choose whether this is an unverified estimate.'
+                    : 'Choose whether station pickup is required.']);
             }
         }
         $demo = (int) $requested['demo'];
@@ -81,7 +84,7 @@ final class GrTransportRouteState
             $verifiedBy = null;
         } elseif ($verificationChanged || !$verifiedAt || !$verifiedBy) {
             if ($employeeId <= 0) {
-                throw new InvalidArgumentException('Confirming a live tariff requires a logged-in employee');
+                throw new GrTransportRouteValidationException(['demo' => 'Confirming a live tariff requires a signed-in employee.']);
             }
             $verifiedAt = gmdate('Y-m-d H:i:s');
             $verifiedBy = $employeeId;
