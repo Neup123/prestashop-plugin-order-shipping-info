@@ -140,13 +140,15 @@ final class GrTransportNetworkResolution
         $weights=['yield'=>-1,'none'=>0,'override'=>1];
         $patches=self::patches($network);
         $paint=array_values($options);
-        usort($paint,static function ($a,$b) use ($patches,$weights) {
+        // Preserve #106's stable source order for equal-cost neutral patches.
+        $sourceOrder=array_flip(array_keys($options));
+        usort($paint,static function ($a,$b) use ($patches,$weights,$sourceOrder) {
             $wa=$weights[$patches[$a['patch_key']]['precedence'] ?? 'none'] ?? 0;
             $wb=$weights[$patches[$b['patch_key']]['precedence'] ?? 'none'] ?? 0;
             if ($wa!==$wb) return $wa <=> $wb;
             $price=$b['comparison_cost'] <=> $a['comparison_cost'];
             if ($price!==0) return $price;
-            return strcmp($a['patch_key'],$b['patch_key']);
+            return $sourceOrder[$a['patch_key']] <=> $sourceOrder[$b['patch_key']];
         });
         $order=array_column($paint,'patch_key');
         foreach (self::links($network) as $link) {
