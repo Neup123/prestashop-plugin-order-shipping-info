@@ -18,7 +18,7 @@ class GrtransportshippingNetworkModuleFrontController extends ModuleFrontControl
             $token=preg_match('/^Bearer ([a-f0-9]{64})$/D',$authorization,$match) ? $match[1] : '';
             $method=strtoupper((string)($_SERVER['REQUEST_METHOD'] ?? 'GET'));
             $query=[];
-            foreach (['entity','id','bulk','format'] as $field) {
+            foreach (['entity','id','bulk','format','confirm'] as $field) {
                 if (isset($_GET[$field]) && is_scalar($_GET[$field])) $query[$field]=(string)$_GET[$field];
             }
             $body=file_get_contents('php://input');
