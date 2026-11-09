@@ -57,6 +57,8 @@
     Number.isFinite(Number(record.lng)) &&
     (Number(record.radiusKm) > 0 || geoPaths(record) !== null);
   const patchPaths = record => {
+    // Internal precomputed union contours can be rendered as one island too.
+    if (Array.isArray(record.paths)) return record.paths;
     const geo = geoPaths(record);
     if (geo) return geo;
     if (!(Number(record.radiusKm) > 0)) return [];
