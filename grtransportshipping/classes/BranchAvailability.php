@@ -9,6 +9,27 @@
  */
 final class GrTransportBranchAvailability
 {
+    /** Stable non-personal cart composition fingerprint for rate/stock re-quoting. */
+    public static function cartFingerprint($cart): string
+    {
+        if (!is_object($cart) || !method_exists($cart,'getProducts')) return '';
+        $lines=$cart->getProducts();
+        if (!is_array($lines)) return '';
+        $parts=[];
+        foreach ($lines as $line) {
+            if (!is_array($line)) continue;
+            $parts[]=[
+                (int)($line['id_product'] ?? 0),
+                (int)($line['id_product_attribute'] ?? 0),
+                (int)($line['cart_quantity'] ?? $line['quantity'] ?? 0),
+                $line['weight'] ?? null,$line['width'] ?? null,
+                $line['height'] ?? null,$line['depth'] ?? null,
+            ];
+        }
+        usort($parts,static function ($a,$b) { return strcmp(json_encode($a),json_encode($b)); });
+        return hash('sha256',json_encode($parts,JSON_UNESCAPED_UNICODE));
+    }
+
     public static function eligible($cart,array $branches,array $stock): ?array
     {
         if (!$branches) return null;
