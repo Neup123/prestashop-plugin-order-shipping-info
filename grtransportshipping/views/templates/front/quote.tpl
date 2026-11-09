@@ -39,7 +39,7 @@
   <div id="grtransport-map-option" hidden>
     <button class="btn btn-secondary" type="button" id="grtransport-show-map">{l s='Choose destination on a map' mod='grtransportshipping'}</button>
     <div id="grtransport-map-panel" hidden>
-      <p>{l s='Click the map or drag the pin. The nearest listed destination station within 25 km is used; this does not mean home delivery. The line connects terminals and is not a travel itinerary.' mod='grtransportshipping'}</p>
+      <p>{l s='Click the map or drag the pin. The nearest listed destination station within the configured radius is used:' mod='grtransportshipping'} {$quote_pin_radius|escape:'htmlall':'UTF-8'} {l s='km (inclusive boundary). This does not mean home delivery. The line connects terminals and is not a travel itinerary.' mod='grtransportshipping'}</p>
       <div id="grtransport-map" role="region" aria-label="{l s='Transport destination map' mod='grtransportshipping'}" data-config="{$quote_map|escape:'htmlall':'UTF-8'}"></div>
       <form method="get" action="{$quote_action|escape:'htmlall':'UTF-8'}" id="grtransport-pin-form">
         <input type="hidden" name="fc" value="module">
