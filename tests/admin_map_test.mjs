@@ -22,17 +22,18 @@ function fixture(data, options = {}) {
     stations: [], legs: [], transfers: [], cost: {}, leafletImagePath: '/leaflet/',
     ...data
   })};
-  const calls = {circles: [], lines: [], markers: [], mapEvents: {}};
+  const calls = {circles: [], lines: [], polygons: [], markers: [], mapEvents: {}, fits: [], views: []};
   const layer = (type, entry) => {
     const value = {
-      events: {}, addTo() { return this; }, bindTooltip() { return this; },
+      events: {}, addTo() { this.removed = false; return this; }, bindTooltip() { return this; },
       on(event, fn) { this.events[event] = fn; }, setLatLng(p) { this.point = p; },
       getLatLng() { return this.point; }, remove() { this.removed = true; }
     };
     entry.layer = value; calls[type].push(entry); return value;
   };
   const map = {
-    setView() { return this; }, fitBounds() {}, on(type, fn) { calls.mapEvents[type] = fn; },
+    setView(...args) { calls.views.push(args); return this; },
+    fitBounds(...args) { calls.fits.push(args); }, on(type, fn) { calls.mapEvents[type] = fn; },
     removeLayer(item) { item.removed = true; }
   };
   class DefaultIcon { constructor(options = {}) { this.options = options; } }
@@ -41,7 +42,8 @@ function fixture(data, options = {}) {
     map() { return map; }, tileLayer() { return {addTo() {}}; },
     circle(point, options) { return layer('circles', {point, options}); },
     marker(point, options) { return layer('markers', {point, options}); },
-    polyline(points, options) { return layer('lines', {points, options}); }
+    polyline(points, options) { return layer('lines', {points, options}); },
+    polygon(points, options) { return layer('polygons', {points, options}); }
   };
   vm.runInNewContext(source, {
     window: {L}, L, Map,
@@ -73,7 +75,27 @@ assert.equal(elements['grtrans-zone-legend'].children.length, 3, 'Legend matches
 const labels = elements['grtrans-zone-legend'].children.map(item => item.children[1].textContent);
 assert.ok(labels.includes('<first>'), 'Merchant-supplied zone label is text, never HTML');
 assert.equal(calls.markers.length, 2, 'Existing station selection remains available');
-console.log('Admin coverage patches, distinct colours and zone legend passed');
+const single = fixture({stations:[{...station(1, 'One small patch', 38, 24), outer_radius_km:1}]});
+assert.equal(single.calls.fits.length, 1, 'One patch must fit immediately on load');
+const fitted = single.calls.fits[0][0];
+assert.equal(fitted.length, 2, 'Fit rectangle contains radius-derived opposite corners');
+assert.ok(fitted[0][0] < 38 && fitted[1][0] > 38, 'Radius extends past station latitude');
+assert.ok(fitted[0][1] < 24 && fitted[1][1] > 24, 'Radius extends past station longitude');
+assert.ok(single.calls.fits[0][1].maxZoom >= 12, 'Small radius gets working-scale zoom');
+const empty = fixture({});
+assert.equal(empty.calls.fits.length, 0, 'No coverage means full-Greece initial map remains');
+assert.equal(empty.calls.views[0][1], 6, 'Empty network preserves full-Greece zoom');
+const directOnly = fixture({legs:[{id_leg:7,from_station_id:1,to_station_id:null,
+  area_lat:37.9,area_lng:23.7,area_radius_km:2,area_name:'Area',price:2}]});
+// An orphan direct-area leg has no visible patch; a valid origin adds it below.
+assert.equal(directOnly.calls.fits.length, 0, 'Orphan legs do not create phantom coverage');
+const withArea = fixture({stations:[station(1,'Hub',38,24)],legs:[{
+  id_leg:7,from_station_id:1,to_station_id:null,area_lat:36,area_lng:25,
+  area_radius_km:3,area_name:'Area',price:3
+}]});
+assert.ok(withArea.calls.fits[0][0].some(p => p[0] < 36),
+  'Direct-area patch full radius is included in the initial frame');
+console.log('Admin coverage patches, radius-aware default framing and legend passed');
 
 
 const connected = fixture({
@@ -100,7 +122,24 @@ const disjoint = fixture({
     connection_type:'taxi',price:12}]
 });
 assert.ok(disjoint.calls.lines.length > 1, 'Disjoint connected rims get a schematic stitched gap');
-assert.ok(disjoint.calls.lines[0].layer, 'Schematic connector has a Leaflet layer');
+assert.equal(disjoint.calls.polygons.length, 2,
+  'Disjoint gap is a pair of broad coloured fabric polygons, not only a line');
+assert.notEqual(disjoint.calls.polygons[0].options.fillColor,
+  disjoint.calls.polygons[1].options.fillColor, 'The fabric uses both zone colours');
+assert.ok(disjoint.calls.polygons.every(p => p.options.fillOpacity > 0.4),
+  'Disjoint seam has visible fabric fill');
+assert.ok(disjoint.calls.lines.some(line => line.options.weight === 10),
+  'Wide edges distinguish fabric bridge from a thin routed path');
+assert.ok(disjoint.calls.lines.filter(line => line.options.weight === 2.5).length >= 8,
+  'Diagonal stitch marks cross the two-colour ribbon');
+assert.ok(disjoint.calls.polygons[0].points.length > 20,
+  'Ribbon has sampled curved geometry, not a taut two-point connector');
+const touching = fixture({stations:[
+  station(1,'A',38,23.7),station(2,'B',38.08,23.7)
+],legs:[{id_leg:1,from_station_id:1,to_station_id:2,mode:'bus',price:2}]});
+assert.equal(touching.calls.polygons.length,0,
+  'Overlapping circles keep their original shared-boundary stitching');
+
 console.log('Admin patch seam and disconnected-zone rendering contracts passed');
 
 const routeA = station(1, 'Road start', 38.0, 23.7);
@@ -125,6 +164,9 @@ const routing = fixture({
 assert.equal(routing.calls.markers[0].options.icon.options.className, 'grtrans-origin-marker',
   'Shipment origin shows a distinct admin-only pin style');
 routing.elements['grtrans-map-preview'].events.click();
+assert.ok(routing.calls.polygons.length > 0, 'Long ferry gap has schematic fabric layers');
+assert.ok(routing.calls.polygons.every(p => p.layer.removed),
+  'Schematic gap fabric is hidden in routed-preview mode');
 routing.calls.mapEvents.click({latlng:{lat:38,lng:23.7}});
 routing.calls.mapEvents.click({latlng:{lat:37.1,lng:25.37}});
 await new Promise(resolve => setImmediate(resolve));
@@ -135,6 +177,8 @@ assert.ok(routing.calls.lines.some(line => line.points.length === 3 &&
 assert.ok(routing.calls.lines.some(line => line.options.weight === 5 &&
   line.options.dashArray === '10 5'),'Ferry is a separate port-to-port segment');
 routing.elements['grtrans-map-preview-clear'].events.click();
+assert.ok(routing.calls.polygons.every(p => !p.layer.removed),
+  'Clearing preview restores the schematic fabric joins');
 assert.match(routing.elements['grtrans-preview-status'].textContent,/cleared/);
 const noRoute = fixture({stations:[routeA,routeC]});
 const previousSeams = noRoute.calls.lines.length;
