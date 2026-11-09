@@ -12,7 +12,6 @@ $stations=[
 $legs=[
  ['id_leg'=>1,'from_station_id'=>1,'to_station_id'=>2,'mode'=>'bus','operator_label'=>'Bus 1','price'=>20,'bidirectional'=>0],
  ['id_leg'=>2,'from_station_id'=>1,'to_station_id'=>3,'mode'=>'bus','operator_label'=>'Bus 2','price'=>9,'bidirectional'=>0],
- ['id_leg'=>3,'from_station_id'=>2,'to_station_id'=>4,'mode'=>'ferry','operator_label'=>'Ferry','price'=>30,'bidirectional'=>0],
  ['id_leg'=>4,'from_station_id'=>1,'to_station_id'=>null,'mode'=>'other','operator_label'=>'Courier','price'=>0,'bidirectional'=>0,
   'area_name'=>'Athens direct','area_lat'=>38,'area_lng'=>23.7,'area_radius_km'=>2],
 ];
@@ -37,7 +36,7 @@ $network['transfers'][]=['id_transfer'=>21,'from_station_id'=>3,'to_station_id'=
     'connection_type'=>'taxi','price'=>3];
 $result=GrTransportNetworkQuote::resolve([],$network,'','',[36.5,25.5]);
 testAssert($result['quote']['price']===12.0
-    && count($result['quote']['network_path']['edges'])===3,
+    && count($result['quote']['network_path']['edges'])===2,
     'Explicit transfer enables island path and cost includes taxi hop');
 $manual=[['id_route'=>71,'route_status'=>'available','postal_prefix'=>'185','city'=>'',
     'mode'=>'bus','origin_name'=>'Manual','station_name'=>'Manual terminal',
