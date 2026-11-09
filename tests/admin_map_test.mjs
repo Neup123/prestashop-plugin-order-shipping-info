@@ -21,7 +21,7 @@ function fixture(data) {
     stations: [], legs: [], transfers: [], cost: {}, leafletImagePath: '/leaflet/',
     ...data
   })};
-  const calls = {circles: [], lines: [], markers: [], mapEvents: {}};
+  const calls = {circles: [], lines: [], markers: [], mapEvents: {}, fits: [], views: []};
   const layer = (type, entry) => {
     const value = {
       events: {}, addTo() { return this; }, bindTooltip() { return this; },
@@ -31,7 +31,8 @@ function fixture(data) {
     entry.layer = value; calls[type].push(entry); return value;
   };
   const map = {
-    setView() { return this; }, fitBounds() {}, on(type, fn) { calls.mapEvents[type] = fn; },
+    setView(...args) { calls.views.push(args); return this; },
+    fitBounds(...args) { calls.fits.push(args); }, on(type, fn) { calls.mapEvents[type] = fn; },
     removeLayer(item) { item.removed = true; }
   };
   const L = {
@@ -68,4 +69,24 @@ assert.equal(elements['grtrans-zone-legend'].children.length, 3, 'Legend matches
 const labels = elements['grtrans-zone-legend'].children.map(item => item.children[1].textContent);
 assert.ok(labels.includes('<first>'), 'Merchant-supplied zone label is text, never HTML');
 assert.equal(calls.markers.length, 2, 'Existing station selection remains available');
-console.log('Admin coverage patches, distinct colours and zone legend passed');
+const single = fixture({stations:[{...station(1, 'One small patch', 38, 24), outer_radius_km:1}]});
+assert.equal(single.calls.fits.length, 1, 'One patch must fit immediately on load');
+const fitted = single.calls.fits[0][0];
+assert.equal(fitted.length, 2, 'Fit rectangle contains radius-derived opposite corners');
+assert.ok(fitted[0][0] < 38 && fitted[1][0] > 38, 'Radius extends past station latitude');
+assert.ok(fitted[0][1] < 24 && fitted[1][1] > 24, 'Radius extends past station longitude');
+assert.ok(single.calls.fits[0][1].maxZoom >= 12, 'Small radius gets working-scale zoom');
+const empty = fixture({});
+assert.equal(empty.calls.fits.length, 0, 'No coverage means full-Greece initial map remains');
+assert.equal(empty.calls.views[0][1], 6, 'Empty network preserves full-Greece zoom');
+const directOnly = fixture({legs:[{id_leg:7,from_station_id:1,to_station_id:null,
+  area_lat:37.9,area_lng:23.7,area_radius_km:2,area_name:'Area',price:2}]});
+// An orphan direct-area leg has no visible patch; a valid origin adds it below.
+assert.equal(directOnly.calls.fits.length, 0, 'Orphan legs do not create phantom coverage');
+const withArea = fixture({stations:[station(1,'Hub',38,24)],legs:[{
+  id_leg:7,from_station_id:1,to_station_id:null,area_lat:36,area_lng:25,
+  area_radius_km:3,area_name:'Area',price:3
+}]});
+assert.ok(withArea.calls.fits[0][0].some(p => p[0] < 36),
+  'Direct-area patch full radius is included in the initial frame');
+console.log('Admin coverage patches, radius-aware default framing and legend passed');
