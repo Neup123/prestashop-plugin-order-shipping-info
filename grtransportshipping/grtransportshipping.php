@@ -252,6 +252,16 @@ class Grtransportshipping extends CarrierModule
                 ? '<strong>' . $this->escape($this->l('EXTENDED PICKUP AREA — LONG WALK')) . '</strong>'
                 : '')
             . '<p>' . $this->escape($row['notice'] ?? '') . '</p>'
+            . (!empty($row['estimate'])
+                ? '<p><strong>' . $this->escape($this->l('SHIPPING ESTIMATE — NOT CHARGED AT CHECKOUT'))
+                    . '</strong> ' . $this->escape(sprintf(
+                        $this->l('Expected transport range: EUR %.2f–%.2f. Final freight payment is arranged separately after the merchant confirms the actual price.'),
+                        (float)($row['estimate_min'] ?? 0),(float)($row['estimate_max'] ?? 0)
+                    )) . '</p>'
+                : '')
+            . (!empty($row['tariff_missing_data'])
+                ? '<p><strong>' . $this->escape($this->l('Parcel measurements incomplete: a configured flat fallback was used.')) . '</strong></p>'
+                : '')
             . (!empty($row['demo'])
                 ? '<strong>' . $this->escape($this->l(self::NOTICE_TEXT['demo'])) . '</strong>'
                 : '');
@@ -312,14 +322,16 @@ class Grtransportshipping extends CarrierModule
         $result = GrTransportNetworkQuote::resolve($routes,
             $location === null ? [] : GrTransportNetworkRepository::snapshot(),
             (string) $address->postcode, (string) $address->city, $location,
-            null, (string) Configuration::get('GRTRANS_EXTENDED_NOTICE'));
+            null, (string) Configuration::get('GRTRANS_EXTENDED_NOTICE'),
+            GrTransportNetworkTariff::cartMeasurements($cart));
         if ($result['status'] === 'quoted') {
             // A CarrierModule overrides PrestaShop's precomputed shipping_cost;
             // persist the eligible shop handling fee with the quote so charge,
             // display and order snapshot all reuse the same adjustment.
-            $result['quote']['handling_fee'] = GrTransportOrderCharge::configuredHandlingFee(
-                GrTransportCarrierLifecycle::activeId($this), (int) ($cart->id_currency ?? 0)
-            );
+            $result['quote']['handling_fee'] = !empty($result['quote']['estimate']) ? 0.0
+                : GrTransportOrderCharge::configuredHandlingFee(
+                    GrTransportCarrierLifecycle::activeId($this), (int) ($cart->id_currency ?? 0)
+                );
             $result['quote'] = GrTransportCartQuote::pin($cartId, $addressId, $fingerprint, $result['quote']);
         } elseif (in_array($result['status'], ['ambiguous', 'suspended'], true)) {
             PrestaShopLogger::addLog('Transport route resolution: ' . $result['status']
@@ -409,9 +421,10 @@ class Grtransportshipping extends CarrierModule
             }
         }
         if ($result['quote']) {
-            $result['quote']['handling_fee'] = GrTransportOrderCharge::configuredHandlingFee(
-                $carrierId, (int) $this->context->currency->id
-            );
+            $result['quote']['handling_fee'] = !empty($result['quote']['estimate']) ? 0.0
+                : GrTransportOrderCharge::configuredHandlingFee(
+                    $carrierId, (int) $this->context->currency->id
+                );
         }
         $carrier = new Carrier($carrierId);
         $result['carrier'] = $carrier->name;
