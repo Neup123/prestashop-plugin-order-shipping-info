@@ -77,9 +77,12 @@ testAssert($qb['price']===10.0 && $qb['branch_id']===22
     && $qb['origin_hub_id']===2,'Cart B chooses its actual origin hub');
 testAssert($quoteFor($eligBoth)['quote']===null,
     'No single fully stocked branch must not produce network quote');
-$blind=GrTransportNetworkQuote::resolve([],$network,'','',$dest);
+testAssert(GrTransportNetworkQuote::resolve([],$network,'','',$dest)['quote']===null,
+    'A branch-configured network must never quote without an eligibility check');
+$withoutBranches=array_replace($network,['branches'=>[],'branch_stock'=>[]]);
+$blind=GrTransportNetworkQuote::resolve([],$withoutBranches,'','',$dest);
 testAssert($blind['quote']['price']===10.0 && !isset($blind['quote']['branch_id']),
-    'No branch restriction parameter preserves original graph behavior');
+    'No branches configured preserves original availability-blind cheapest hub');
 $sim=GrTransportNetworkSimulator::simulate([],$network,['station_id'=>3,'cart'=>$a]);
 testAssert($sim['quote']['price']===$qa['price'] && $sim['quote']['branch_id']===11,
     'Cart-aware simulator and checkout resolver have identical origin selection');
