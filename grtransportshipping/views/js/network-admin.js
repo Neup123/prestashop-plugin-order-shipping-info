@@ -23,7 +23,19 @@
   const linkCancel = document.getElementById('grtrans-link-cancel');
   let chosen = null;
   let linking = false;
-  const bounds = [];
+  // Fit actual patch extents, not just station centres: a 1 km circle at
+  // country zoom is otherwise nearly invisible. Keep the Greece view for an
+  // empty network (no positive-radius coverage).
+  const coverageBounds = [];
+  const includeCoverage = (centre, radiusKm) => {
+    const lat = Number(centre[0]), lng = Number(centre[1]), radius = Number(radiusKm);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) ||
+        !Number.isFinite(radius) || radius <= 0) return;
+    const latitudeSpan = radius / 111.195;
+    const longitudeSpan = radius / (111.195 * Math.max(0.01, Math.cos(lat * Math.PI / 180)));
+    coverageBounds.push([Math.max(-90, lat - latitudeSpan), Math.max(-180, lng - longitudeSpan)]);
+    coverageBounds.push([Math.min(90, lat + latitudeSpan), Math.min(180, lng + longitudeSpan)]);
+  };
   const fmt = n => Number(n).toFixed(2);
   // Render merchant names as text, not HTML inside Leaflet tooltips.
   const safeTooltip = title => {
@@ -122,7 +134,7 @@
   });
   painted.forEach(s => {
     const pos = point(s);
-    bounds.push(pos);
+    includeCoverage(pos, s.outer_radius_km);
     const c = zoneColors.get('station:' + s.id_station);
     const title = s.name + (s.is_origin_hub == 1 ? ' · Origin hub' : '')
       + (Object.prototype.hasOwnProperty.call(costs, s.id_station)
@@ -155,7 +167,7 @@
         fillColor: zoneColors.get('area:' + leg.id_leg), color: zoneColors.get('area:' + leg.id_leg), fillOpacity: leg._stale ? 0.1 : 0.24,
         opacity: leg._stale ? 0.2 : 0.5, weight: 1
       }).addTo(map).bindTooltip(safeTooltip((leg.area_name || 'Direct area') + ' · ' + fmt(leg.price) + ' EUR' + staleLabel(leg)));
-      bounds.push(point(to));
+      includeCoverage(point(to), leg.area_radius_km);
     }
     if (!to) return;
     const title = (leg.operator_label || leg.mode) + ' · ' + fmt(leg.price) + ' EUR' + staleLabel(leg);
@@ -189,5 +201,5 @@
       status.textContent = 'Direct-area centre selected on the map.';
     }
   });
-  if (bounds.length) map.fitBounds(bounds, { padding: [25, 25], maxZoom: 10 });
+  if (coverageBounds.length) map.fitBounds(coverageBounds, { padding: [25, 25], maxZoom: 12 });
 }());
