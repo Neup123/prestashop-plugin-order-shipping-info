@@ -23,7 +23,19 @@
   const linkCancel = document.getElementById('grtrans-link-cancel');
   let chosen = null;
   let linking = false;
-  const bounds = [];
+  // Fit actual patch extents, not just station centres: a 1 km circle at
+  // country zoom is otherwise nearly invisible. Keep the Greece view for an
+  // empty network (no positive-radius coverage).
+  const coverageBounds = [];
+  const includeCoverage = (centre, radiusKm) => {
+    const lat = Number(centre[0]), lng = Number(centre[1]), radius = Number(radiusKm);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) ||
+        !Number.isFinite(radius) || radius <= 0) return;
+    const latitudeSpan = radius / 111.195;
+    const longitudeSpan = radius / (111.195 * Math.max(0.01, Math.cos(lat * Math.PI / 180)));
+    coverageBounds.push([Math.max(-90, lat - latitudeSpan), Math.max(-180, lng - longitudeSpan)]);
+    coverageBounds.push([Math.min(90, lat + latitudeSpan), Math.min(180, lng + longitudeSpan)]);
+  };
   const fmt = n => Number(n).toFixed(2);
   // Render merchant names as text, not HTML inside Leaflet tooltips.
   const safeTooltip = title => {
@@ -61,9 +73,16 @@
     legend.appendChild(item);
   });
   const color = type => baseColor[type] || baseColor.other;
+  // Keep seam layers separate from the route preview (#96), which can hide
+  // schematic joins to expose actual travel paths without touching coverage.
+  const seamLayers = [];
+  const paintSeam = layer => {
+    seamLayers.push(layer);
+    return layer.addTo(map);
+  };
   // A seam belongs to patch rims rather than station centres. Project only
   // locally in kilometres to find the overlap chord / closest outer edges.
-  const drawSeam = (from, to, fromRadius, toRadius, label, stale) => {
+  const drawSeam = (from, to, fromRadius, toRadius, label, stale, fromColor, toColor) => {
     const a = point(from), b = point(to);
     const latScale = 111.195;
     const lngScale = latScale * Math.max(0.01, Math.cos((a[0] + b[0]) / 2 * Math.PI / 180));
@@ -94,24 +113,67 @@
       half = Math.max(0.18, Math.min(half, 10));
     }
     if (spanStart !== undefined) {
-      const segment = L.polyline([at(spanStart, 0), at(spanEnd, 0)], {
-        ...options, dashArray: '3 8', interactive: true
-      }).addTo(map).bindTooltip(safeTooltip(label + ' · schematic gap between coverage patches'));
-      const count = Math.max(2, Math.min(24, Math.ceil((spanEnd - spanStart) / 3)));
-      for (let i = 0; i <= count; i++) {
-        const x = spanStart + (spanEnd - spanStart) * i / count;
-        L.polyline([at(x, -0.15), at(x, 0.15)], options).addTo(map);
+      // Disjoint circles have no literal shared edge. Draw a broad, gently
+      // curved two-colour fabric bridge between their FACING rims, not a road
+      // or a station-to-station line. The hover label discloses the schematic
+      // gap: this cloth-style join does not grant delivery coverage.
+      const gap = spanEnd - spanStart;
+      const bow = Math.min(4, gap * 0.14);
+      const width = Math.max(0.35, Math.min(2.5, Math.min(ra, rb) * 0.55 + gap * 0.008));
+      const sample = t => {
+        const x = spanStart + gap * t;
+        const y = bow * Math.sin(Math.PI * t);
+        const tx = gap, ty = bow * Math.PI * Math.cos(Math.PI * t);
+        const length = Math.hypot(tx, ty);
+        return {x, y, nx: -ty / length, ny: tx / length};
+      };
+      const edge = (t, side) => {
+        const p = sample(t);
+        return at(p.x + p.nx * side * width, p.y + p.ny * side * width);
+      };
+      const samples = Array.from({length: 17}, (_, i) => i / 16);
+      const middle = samples.map(t => edge(t, 0));
+      const left = samples.map(t => edge(t, -1));
+      const right = samples.map(t => edge(t, 1));
+      const opacity = stale ? 0.22 : 0.62;
+      // Two adjacent wide patch-coloured halves, not a single dashed line.
+      const leftFabric = paintSeam(L.polygon([...left, ...middle.slice().reverse()], {
+        color: fromColor, fillColor: fromColor, fillOpacity: opacity,
+        opacity, weight: 2, interactive: false
+      }));
+      paintSeam(L.polygon([...middle, ...right.slice().reverse()], {
+        color: toColor, fillColor: toColor, fillOpacity: opacity,
+        opacity, weight: 2, interactive: false
+      }));
+      // Pixel-width edges remain clearly fabric-like even at national zoom.
+      paintSeam(L.polyline(left, {color: fromColor, weight: 10,
+        opacity: stale ? 0.25 : 0.75, interactive: false}));
+      paintSeam(L.polyline(right, {color: toColor, weight: 10,
+        opacity: stale ? 0.25 : 0.75, interactive: false}));
+      const thread = paintSeam(L.polyline(middle, {
+        color: '#303744', weight: 3, opacity: stale ? 0.3 : 0.92,
+        dashArray: '3 6', interactive: true
+      })).bindTooltip(safeTooltip(label +
+        ' · schematic sewn gap between patches; NOT coverage or a routed path'));
+      const stitches = Math.max(8, Math.min(28, Math.ceil(gap / 4)));
+      for (let i = 1; i < stitches; i++) {
+        const t = i / stitches;
+        paintSeam(L.polyline([edge(Math.max(0, t - 0.014), -1),
+          edge(Math.min(1, t + 0.014), 1)], {
+          color: '#303744', weight: 2.5,
+          opacity: stale ? 0.28 : 0.94, interactive: false
+        }));
       }
-      return segment;
+      return leftFabric;
     }
-    const seam = L.polyline([at(along, -half), at(along, half)], {
+    const seam = paintSeam(L.polyline([at(along, -half), at(along, half)], {
       ...options, dashArray: '4 4', interactive: true
-    }).addTo(map).bindTooltip(safeTooltip(label));
+    })).bindTooltip(safeTooltip(label));
     // Short perpendicular stitches cross the seam, as on sewn fabric.
     const ticks = 8;
     for (let i = 0; i <= ticks; i++) {
       const cross = -half + 2 * half * i / ticks;
-      L.polyline([at(along - 0.16, cross), at(along + 0.16, cross)], options).addTo(map);
+      paintSeam(L.polyline([at(along - 0.16, cross), at(along + 0.16, cross)], options));
     }
     return seam;
   };
@@ -167,7 +229,7 @@
   });
   painted.forEach(s => {
     const pos = point(s);
-    bounds.push(pos);
+    includeCoverage(pos, s.outer_radius_km);
     const c = zoneColors.get('station:' + s.id_station);
     const title = s.name + (s.is_origin_hub == 1 ? ' · Origin hub' : '')
       + (Object.prototype.hasOwnProperty.call(costs, s.id_station)
@@ -200,12 +262,13 @@
         fillColor: zoneColors.get('area:' + leg.id_leg), color: zoneColors.get('area:' + leg.id_leg), fillOpacity: leg._stale ? 0.1 : 0.24,
         opacity: leg._stale ? 0.2 : 0.5, weight: 1
       }).addTo(map).bindTooltip(safeTooltip((leg.area_name || 'Direct area') + ' · ' + fmt(leg.price) + ' EUR' + staleLabel(leg)));
-      bounds.push(point(to));
+      includeCoverage(point(to), leg.area_radius_km);
     }
     if (!to) return;
     const title = (leg.operator_label || leg.mode) + ' · ' + fmt(leg.price) + ' EUR' + staleLabel(leg);
     drawSeam(from, to, from.outer_radius_km, isArea ? leg.area_radius_km : to.outer_radius_km,
-      title, leg._stale);
+      title, leg._stale, zoneColors.get('station:' + from.id_station),
+      zoneColors.get(isArea ? 'area:' + leg.id_leg : 'station:' + to.id_station));
   });
   data.transfers.forEach(transfer => {
     const from = stations.get(Number(transfer.from_station_id));
@@ -213,7 +276,8 @@
     if (!from || !to) return;
     drawSeam(from, to, from.outer_radius_km, to.outer_radius_km,
       transfer.connection_type + ' transfer · ' + fmt(transfer.price) + ' EUR' + staleLabel(transfer),
-      transfer._stale);
+      transfer._stale, zoneColors.get('station:' + from.id_station),
+      zoneColors.get('station:' + to.id_station));
   });
   map.on('click', event => {
     const lat = document.getElementById('grtrans-network-field-lat');
@@ -231,5 +295,5 @@
       status.textContent = 'Direct-area centre selected on the map.';
     }
   });
-  if (bounds.length) map.fitBounds(bounds, { padding: [25, 25], maxZoom: 10 });
+  if (coverageBounds.length) map.fitBounds(coverageBounds, { padding: [25, 25], maxZoom: 12 });
 }());
