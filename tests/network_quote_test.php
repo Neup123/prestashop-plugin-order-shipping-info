@@ -14,7 +14,7 @@ $legs=[
  ['id_leg'=>2,'from_station_id'=>1,'to_station_id'=>3,'mode'=>'bus','operator_label'=>'Bus 2','price'=>9,'bidirectional'=>0],
  ['id_leg'=>3,'from_station_id'=>2,'to_station_id'=>4,'mode'=>'ferry','operator_label'=>'Ferry','price'=>30,'bidirectional'=>0],
  ['id_leg'=>4,'from_station_id'=>1,'to_station_id'=>null,'mode'=>'other','operator_label'=>'Courier','price'=>0,'bidirectional'=>0,
-  'area_name'=>'Athens direct','area_lat'=>38,'area_lng'=>23.7,'area_radius_km'=>10],
+  'area_name'=>'Athens direct','area_lat'=>38,'area_lng'=>23.7,'area_radius_km'=>2],
 ];
 $network=['stations'=>$stations,'legs'=>$legs,'transfers'=>[]];
 $pt=[37.9503,23.6403];
