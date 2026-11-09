@@ -370,13 +370,29 @@ class Grtransportshipping extends CarrierModule
         $location = GrTransportNetworkQuote::addressLocation($address);
         $fingerprint = hash('sha256', (int) $address->id_country . ':'
             . trim((string) $address->postcode) . ':' . trim((string) $address->city)
-            . ':' . ($location === null ? '' : implode(':', $location)));
+            . ':' . ($location === null ? '' : implode(':', $location))
+            . ':' . GrTransportBranchAvailability::cartFingerprint($cart));
         $key = $cartId . ':' . $addressId . ':' . $fingerprint . ':' . ($cartId ? '' : spl_object_id($cart));
         if (isset($this->requestQuotes[$key])) {
             return $this->requestQuotes[$key];
         }
         $pinned = GrTransportCartQuote::pinned($cartId, $addressId, $fingerprint);
         if ($pinned !== null) {
+            if (($pinned['source'] ?? '')==='network') {
+                $networkNow=GrTransportNetworkRepository::snapshot();
+                $hasBranches=!empty($networkNow['branches']);
+                $selectedBranch=(int)($pinned['branch_id'] ?? 0);
+                $eligible=$hasBranches ? GrTransportBranchAvailability::eligible(
+                    $cart,$networkNow['branches'],$networkNow['branch_stock'] ?? []
+                ) : null;
+                if (($hasBranches && (!$selectedBranch || !in_array(
+                    $selectedBranch,$eligible['branch_ids'],true)))
+                    || (!$hasBranches && $selectedBranch)) {
+                    return $this->requestQuotes[$key]=[
+                        'status'=>'unmatched','quote'=>null,
+                    ]; // Never sell a previously pinned, now unfulfillable branch dispatch.
+                }
+            }
             return $this->requestQuotes[$key] = ['status' => 'quoted', 'quote' => $pinned];
         }
         $country = new Country((int) $address->id_country);
