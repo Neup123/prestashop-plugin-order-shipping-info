@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/OrderSnapshot.php';
+require_once __DIR__ . '/NetworkSettings.php';
 
 /**
  * Records an already completed, independently verified payment transaction.
@@ -14,7 +15,7 @@ final class GrTransportEstimateSettlement
         float $estimateLow,float $estimateHigh): array
     {
         if ($employeeId<=0) throw new InvalidArgumentException('A signed-in employee is required');
-        if (!is_finite($amount) || $amount<=0 || $amount>100000) {
+        if (!is_finite($amount) || $amount<=0 || $amount>GrTransportNetworkSettings::get('max_freight_eur')) {
             throw new InvalidArgumentException('Actual shipping receipt must be a positive finite EUR amount');
         }
         $receipt=trim($receipt);
