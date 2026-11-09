@@ -23,6 +23,13 @@
   let linking = false;
   const bounds = [];
   const fmt = n => Number(n).toFixed(2);
+  // Render merchant names as text, not HTML inside Leaflet tooltips.
+  const safeTooltip = title => {
+    const node = document.createElement('span');
+    node.textContent = String(title);
+    return node;
+  };
+  const staleLabel = record => record._stale ? ' · STALE (last verified ' + (record.verified_at || 'unknown') + ')' : '';
   const point = s => [Number(s.lat), Number(s.lng)];
   const costs = data.cost || {};
   const color = type => baseColor[type] || baseColor.other;
@@ -98,12 +105,12 @@
     ].forEach(ring => L.circle(pos, {
       radius: ring.radius, fillColor: c, color: c, fillOpacity: ring.opacity,
       opacity: 0.7, weight: 1
-    }).addTo(map).bindTooltip(title).on('click', event => {
+    }).addTo(map).bindTooltip(safeTooltip(title)).on('click', event => {
       L.DomEvent.stopPropagation(event);
       select(s);
     }));
     L.marker(pos, { title: s.name, alt: s.name })
-      .addTo(map).bindTooltip(title).on('click', event => {
+      .addTo(map).bindTooltip(safeTooltip(title)).on('click', event => {
         L.DomEvent.stopPropagation(event);
         select(s);
       });
@@ -117,25 +124,26 @@
       to = { lat: leg.area_lat, lng: leg.area_lng };
       L.circle(point(to), {
         radius: Number(leg.area_radius_km) * 1000,
-        fillColor: color(leg.mode), color: color(leg.mode), fillOpacity: 0.35,
-        opacity: 0.5, weight: 1
-      }).addTo(map).bindTooltip((leg.area_name || 'Direct area') + ' · ' + fmt(leg.price) + ' EUR');
+        fillColor: color(leg.mode), color: color(leg.mode), fillOpacity: leg._stale ? 0.1 : 0.35,
+        opacity: leg._stale ? 0.2 : 0.5, weight: 1
+      }).addTo(map).bindTooltip(safeTooltip((leg.area_name || 'Direct area') + ' · ' + fmt(leg.price) + ' EUR' + staleLabel(leg)));
       bounds.push(point(to));
     }
     if (!to) return;
-    const title = (leg.operator_label || leg.mode) + ' · ' + fmt(leg.price) + ' EUR';
+    const title = (leg.operator_label || leg.mode) + ' · ' + fmt(leg.price) + ' EUR' + staleLabel(leg);
     L.polyline([point(from), point(to)], {
-      color: colorForLine(leg.mode, leg.operator_label), weight: 4, opacity: 0.85,
+      color: colorForLine(leg.mode, leg.operator_label), weight: 4,
+      opacity: leg._stale ? 0.22 : 0.85,
       dashArray: leg.bidirectional == 1 ? null : '9 5'
-    }).addTo(map).bindTooltip(title);
+    }).addTo(map).bindTooltip(safeTooltip(title));
   });
   data.transfers.forEach(transfer => {
     const from = stations.get(Number(transfer.from_station_id));
     const to = stations.get(Number(transfer.to_station_id));
     if (!from || !to) return;
     L.polyline([point(from), point(to)], {
-      color: '#4a4a4a', weight: 3, opacity: 0.9, dashArray: '3 8'
-    }).addTo(map).bindTooltip(transfer.connection_type + ' transfer · ' + fmt(transfer.price) + ' EUR');
+      color: '#4a4a4a', weight: 3, opacity: transfer._stale ? 0.22 : 0.9, dashArray: '3 8'
+    }).addTo(map).bindTooltip(safeTooltip(transfer.connection_type + ' transfer · ' + fmt(transfer.price) + ' EUR' + staleLabel(transfer)));
   });
   map.on('click', event => {
     const lat = document.getElementById('grtrans-network-field-lat');
