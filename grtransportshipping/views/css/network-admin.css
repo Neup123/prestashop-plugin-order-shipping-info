@@ -19,3 +19,15 @@
 #grtrans-network-map .grtrans-origin-marker {filter:hue-rotate(175deg) saturate(2.2) drop-shadow(0 0 3px #f2a900)}
 #grtrans-network-map .grtrans-preview-pin {filter:hue-rotate(90deg) saturate(2)}
 #grtrans-network-map-tools {flex-wrap:wrap}
+
+/* Owner drawing #103: rounded, softly edged paint blobs, not hard discs.
+   The polygon topology remains the exact sampled union (no internal arcs). */
+#grtrans-network-map .grtrans-organic-patch {
+  stroke-linecap:round;stroke-linejoin:round;
+  filter:drop-shadow(0 0 1px rgba(50,65,72,.12))
+}
+#grtrans-network-map .grtrans-zigzag-stitch,
+#grtrans-network-map .grtrans-air-arc,
+#grtrans-network-map .grtrans-air-arrow {
+  stroke-linejoin:round;stroke-linecap:round
+}
