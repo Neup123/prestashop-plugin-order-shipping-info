@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 
 const source = fs.readFileSync(new URL('../grtransportshipping/views/js/network-admin.js', import.meta.url), 'utf8');
+const geometrySource = fs.readFileSync(new URL('../grtransportshipping/views/js/coverage-geometry.js', import.meta.url), 'utf8');
 function fixture(data, options = {}) {
   const make = () => ({
     children: [], style: {}, attrs: {}, events: {}, disabled: true, hidden: true,
@@ -28,7 +29,8 @@ function fixture(data, options = {}) {
       events: {}, addTo() { this.removed = false; return this; },
       bindTooltip(content) { this.tooltip = content; return this; },
       on(event, fn) { this.events[event] = fn; }, setLatLng(p) { this.point = p; },
-      getLatLng() { return this.point; }, remove() { this.removed = true; }
+      getLatLng() { return this.point; }, remove() { this.removed = true; },
+      setStyle(style) { this.style = {...style}; return this; }
     };
     entry.layer = value; calls[type].push(entry); return value;
   };
@@ -48,16 +50,19 @@ function fixture(data, options = {}) {
     polyline(points, options) { return layer('lines', {points, options}); },
     polygon(points, options) { return layer('polygons', {points, options}); }
   };
-  vm.runInNewContext(source, {
-    window: {L}, L, Map,
+  const runtimeWindow = {L};
+  const runtime = {
+    window: runtimeWindow, L, Map,
     fetch: options.fetch || (async () => ({ok:true,json:async () => ({
       code:'Ok',routes:[{geometry:{coordinates:[[23.7,38.0],[23.72,38.02],[23.75,38.05]]}}]
     })})), document: {
       getElementById(id) { return elements[id] || null; },
       createElement: make
     }
-  });
-  return {elements, calls, map, panes};
+  };
+  vm.runInNewContext(geometrySource, runtime);
+  vm.runInNewContext(source, runtime);
+  return {elements, calls, map, panes, geometry: runtimeWindow.GrtransCoverage};
 }
 const station = (id, name, lat, lng) => ({
   id_station: id, name, type:'bus', lat, lng,
@@ -70,116 +75,175 @@ const {calls, elements, panes} = fixture({
 });
 const circles = calls.circles;
 assert.equal(panes['grtrans-coverage-patches'].style.zIndex, '390',
-  'Coverage pane is above map tiles yet below normal overlays and route previews');
-assert.equal(circles.length, 5, 'Two inner/outer station pairs and direct-area patch');
-assert.equal(circles[0].options.fillOpacity, 0.2, 'Outer radius remains see-through');
-assert.equal(circles[1].options.fillOpacity, 0.1, 'Combined inner fill stays translucent');
-assert.equal(circles.every(c => c.options.fill === true &&
-  c.options.pane === 'grtrans-coverage-patches'), true,
-  'All station and direct-area coverage discs explicitly fill in the dedicated patch pane');
-const colours = [circles[0].options.fillColor, circles[2].options.fillColor, circles[4].options.fillColor];
-assert.equal(new Set(colours).size, 3, 'All zone colours must be different');
-assert.equal(elements['grtrans-zone-legend'].children.length, 3, 'Legend matches all zones');
-const labels = elements['grtrans-zone-legend'].children.map(item => item.children[1].textContent);
-assert.ok(labels.includes('<first>'), 'Merchant-supplied zone label is text, never HTML');
-assert.equal(calls.markers.length, 2, 'Existing station selection remains available');
-const single = fixture({stations:[{...station(1, 'One small patch', 38, 24), outer_radius_km:1}]});
-assert.equal(single.calls.fits.length, 1, 'One patch must fit immediately on load');
+  'Patches retain the #102 dedicated vector pane');
+assert.equal(circles.length, 5, 'Direct area plus two separately rendered station ring pairs');
+assert.equal(circles[0].options.fillOpacity, 0.24,
+  'Dynamic service area is painted first, underneath the station islands');
+assert.equal(circles[1].options.fillOpacity, 0.2, 'Unmerged station outer coverage stays translucent');
+assert.equal(circles[2].options.fillOpacity, 0.1, 'Unmerged station inner coverage stays translucent');
+assert.ok(circles.every(c => c.options.fill === true &&
+  c.options.pane === 'grtrans-coverage-patches'),
+  'Every direct-area and station circle uses the dedicated patch pane');
+assert.equal(new Set([circles[0].options.fillColor, circles[1].options.fillColor,
+  circles[3].options.fillColor]).size, 3, 'Independent zones retain distinct colours');
+assert.equal(elements['grtrans-zone-legend'].children.length, 3);
+assert.ok(elements['grtrans-zone-legend'].children.map(item =>
+  item.children[1].textContent).includes('<first>'),
+  'Merchant-supplied names use text, never HTML');
+assert.equal(calls.markers.length, 2, 'Pin-based station selection remains available');
+const single = fixture({stations:[{...station(1,'One small patch',38,24),outer_radius_km:1}]});
+assert.equal(single.calls.fits.length, 1, 'One radius-aware patch is framed on load');
 const fitted = single.calls.fits[0][0];
-assert.equal(fitted.length, 2, 'Fit rectangle contains radius-derived opposite corners');
-assert.ok(fitted[0][0] < 38 && fitted[1][0] > 38, 'Radius extends past station latitude');
-assert.ok(fitted[0][1] < 24 && fitted[1][1] > 24, 'Radius extends past station longitude');
-assert.ok(single.calls.fits[0][1].maxZoom >= 12, 'Small radius gets working-scale zoom');
+assert.equal(fitted.length, 2);
+assert.ok(fitted[0][0] < 38 && fitted[1][0] > 38);
+assert.ok(fitted[0][1] < 24 && fitted[1][1] > 24);
+assert.ok(single.calls.fits[0][1].maxZoom >= 12);
 const empty = fixture({});
-assert.equal(empty.calls.fits.length, 0, 'No coverage means full-Greece initial map remains');
-assert.equal(empty.calls.views[0][1], 6, 'Empty network preserves full-Greece zoom');
+assert.equal(empty.calls.fits.length, 0);
+assert.equal(empty.calls.views[0][1], 6);
 const directOnly = fixture({legs:[{id_leg:7,from_station_id:1,to_station_id:null,
   area_lat:37.9,area_lng:23.7,area_radius_km:2,area_name:'Area',price:2}]});
-// An orphan direct-area leg has no visible patch; a valid origin adds it below.
-assert.equal(directOnly.calls.fits.length, 0, 'Orphan legs do not create phantom coverage');
+assert.equal(directOnly.calls.fits.length, 0, 'Orphan area has no invented coverage');
 const withArea = fixture({stations:[station(1,'Hub',38,24)],legs:[{
   id_leg:7,from_station_id:1,to_station_id:null,area_lat:36,area_lng:25,
   area_radius_km:3,area_name:'Area',price:3
 }]});
 assert.ok(withArea.calls.fits[0][0].some(p => p[0] < 36),
-  'Direct-area patch full radius is included in the initial frame');
-console.log('Admin coverage patches, radius-aware default framing and legend passed');
-
+  'Direct area radius contributes to map framing');
+assert.equal(withArea.calls.polygons.length, 0,
+  'Dynamic service is its own patch, not a sewn fabric band');
+console.log('Admin coverage pane, area sea, islands, fitting and legend passed');
 
 const connected = fixture({
-  stations: [station(1, 'A', 38.0, 23.7), station(2, 'B', 38.05, 23.75),
-    station(3, 'Disconnected', 39, 25)],
+  stations: [station(1, 'Athens', 38.0, 23.7),
+    station(2, 'Piraeus', 38.05, 23.75),
+    station(3, 'Unrelated', 39, 25)],
   legs: [{id_leg:1, from_station_id:1, to_station_id:2, mode:'bus',
-    operator_label:'Test route', price:10, bidirectional:0}],
-  transfers: []
+    operator_label:'Athens-Piraeus bus', price:10, bidirectional:0}]
 });
-assert.equal(connected.calls.circles.length, 6,
-  'An intersecting connected pair still renders both inner/outer filled discs, plus the third zone');
-const intersectingFills = connected.calls.circles.slice(0, 4);
-assert.deepEqual(intersectingFills.map(c => c.options.fillOpacity), [0.2, 0.1, 0.2, 0.1],
-  'Intersecting zones keep exactly the same fill opacities as disjoint zones');
-assert.ok(intersectingFills.every(c => c.options.fill === true &&
-  c.options.pane === 'grtrans-coverage-patches' && !c.layer.removed),
-  'Each entire intersecting circle is filled in a separate persistent pane');
-assert.notEqual(intersectingFills[0].options.fillColor, intersectingFills[2].options.fillColor,
-  'Both overlap patches preserve their own zone colours');
+// Geometry evidence for correction #1: previously Athens/Piraeus drew
+// FOUR separate overlapping circle paths (two rings each). Now it draws
+// ONE union polygon path and ZERO internal circle paths/arcs.
+assert.equal(connected.calls.polygons.length, 1, 'Two overlapping bus stations form ONE union path');
+assert.equal(connected.calls.circles.length, 2,
+  'Only the unrelated station keeps its two circles; zero Athens/Piraeus internal arcs');
+const union = connected.calls.polygons[0];
+assert.equal(union.options.pane, 'grtrans-coverage-patches');
+assert.equal(union.options.fill, true);
+assert.ok(union.points.length > 180, 'Union path samples continuous exposed circle arcs');
+const kmDistance = (a,b) => Math.hypot((a[0]-b[0])*111.195,
+  (a[1]-b[1])*111.195*Math.cos((a[0]+b[0])*Math.PI/360));
+assert.ok(union.points.every(p => kmDistance(p, [38,23.7]) > 9.94 &&
+  kmDistance(p, [38.05,23.75]) > 9.94),
+  'Every union vertex is on an OUTER perimeter, not a buried internal circle arc');
 assert.equal(connected.calls.lines.length, 2,
-  'Intersecting connection uses only a light marker and its transparent hover target, no ticks');
-assert.equal(connected.calls.polygons.length, 0, 'Intersecting join adds no filled band');
-assert.equal(connected.calls.lines[0].options.weight, 1.25, 'Visible marker is hairline-thin');
-assert.equal(connected.calls.lines[0].options.opacity, 0.55, 'Visible marker is muted');
-assert.equal(connected.calls.lines[1].options.opacity, 0.001,
-  'Wide tooltip hit target is effectively invisible');
-assert.equal(connected.calls.lines[1].layer.tooltip.textContent, 'Test route · 10.00 EUR',
-  'Intersecting join keeps its safe leg-name and price hover label');
-assert.equal(connected.calls.lines[0].points.length, 2, 'Marker follows the common chord');
-const markerPoints = connected.calls.lines[0].points;
-const markerLengthKm = Math.hypot((markerPoints[1][0] - markerPoints[0][0]) * 111.195,
-  (markerPoints[1][1] - markerPoints[0][1]) * 111.195 * Math.cos(38 * Math.PI / 180));
-assert.ok(markerLengthKm <= 1.801, 'Marker is a short section of the lens chord, not its long band');
+  'Only one short priced stitch and its invisible hover target remain');
+assert.equal(connected.calls.lines[0].options.weight, 1.25);
+assert.equal(connected.calls.lines[0].options.opacity, 0.55);
+assert.equal(connected.calls.lines[0].options.dashArray, '2 5');
+assert.equal(connected.calls.lines[1].options.opacity, 0.001);
+assert.equal(connected.calls.lines[0].layer.tooltip, undefined);
+assert.equal(connected.calls.lines[1].layer.tooltip.textContent,
+  'Athens-Piraeus bus · 10.00 EUR');
+const [p,q] = connected.calls.lines[0].points;
+assert.ok(kmDistance(p,q) <= 1.801, 'Stitch length never exceeds 1.8 km');
+assert.notEqual(p[0], 38, 'A stitch is not a station-centre-to-centre line');
 connected.elements['grtrans-map-preview'].events.click();
 assert.ok(connected.calls.lines.every(line => line.layer.removed),
-  'Intersecting connection marker is hidden during routed preview');
-assert.ok(intersectingFills.every(c => !c.layer.removed),
-  'Routed preview never removes the overlapping filled patches');
+  'Preview hides schematic priced stitches');
+assert.ok(!union.layer.removed, 'Preview leaves merged coverage fully visible');
 connected.elements['grtrans-map-preview-clear'].events.click();
 assert.ok(connected.calls.lines.every(line => !line.layer.removed),
-  'Clearing routed preview restores both parts of the connection marker');
-for (const line of connected.calls.lines) {
-  const [p, q] = line.points;
-  const bothStations = (Number(p[0]) === 38 && Number(p[1]) === 23.7 &&
-    Number(q[0]) === 38.05 && Number(q[1]) === 23.75);
-  assert.equal(bothStations, false, 'No line can be a station-centre connector');
-}
-const disconnected = fixture({
-  stations: [station(1, 'A', 38.0, 23.7), station(2, 'B', 38.05, 23.75)]
-});
-assert.equal(disconnected.calls.lines.length, 0, 'Unconnected zones show no seams');
+  'Clear preview restores local stitches');
+assert.ok(!union.layer.removed);
+
+const disconnected = fixture({stations: [
+  station(1, 'A', 38.0, 23.7), station(2, 'B', 38.05, 23.75)
+]});
+assert.equal(disconnected.calls.lines.length, 0, 'No priced link means NO stitch');
+assert.equal(disconnected.calls.polygons.length, 0,
+  'Coincident station types without a shared priced service are not inferred as one service');
+
 const disjoint = fixture({
   stations: [station(1, 'A', 38.0, 23.7), station(2, 'B', 39, 25)],
   transfers: [{id_transfer:5, from_station_id:1,to_station_id:2,
     connection_type:'taxi',price:12}]
 });
-assert.ok(disjoint.calls.lines.length > 1, 'Disjoint connected rims get a schematic stitched gap');
-assert.equal(disjoint.calls.polygons.length, 2,
-  'Disjoint gap is a pair of broad coloured fabric polygons, not only a line');
-assert.notEqual(disjoint.calls.polygons[0].options.fillColor,
-  disjoint.calls.polygons[1].options.fillColor, 'The fabric uses both zone colours');
-assert.ok(disjoint.calls.polygons.every(p => p.options.fillOpacity > 0.4),
-  'Disjoint seam has visible fabric fill');
-assert.ok(disjoint.calls.lines.some(line => line.options.weight === 10),
-  'Wide edges distinguish fabric bridge from a thin routed path');
-assert.ok(disjoint.calls.lines.filter(line => line.options.weight === 2.5).length >= 8,
-  'Diagonal stitch marks cross the two-colour ribbon');
-assert.ok(disjoint.calls.polygons[0].points.length > 20,
-  'Ribbon has sampled curved geometry, not a taut two-point connector');
-const overlapping = fixture({stations:[
-  station(1,'A',38,23.7),station(2,'B',38.08,23.7)
-],legs:[{id_leg:1,from_station_id:1,to_station_id:2,mode:'bus',price:2}]});
-assert.equal(overlapping.calls.polygons.length,0,
-  'Intersecting zones never manufacture disjoint-gap fabric');
+assert.equal(disjoint.calls.polygons.length, 0,
+  'Disjoint priced patches contain NO broad fabric polygons');
+assert.equal(disjoint.calls.lines.length, 4,
+  'Two separate rim-local stitches with two invisible targets, nothing spanning gap');
+assert.ok(disjoint.calls.lines.every(line => kmDistance(
+  line.points[0], line.points[1]) <= 1.801));
+assert.ok(disjoint.calls.lines.every(line => line.options.weight === 1.25 ||
+  line.options.opacity === 0.001), 'No #99 rim bands, rails, ticks or ribbons');
+assert.ok(disjoint.calls.lines.filter(line => line.options.weight === 1.25)
+  .every(line => line.options.dashArray === '2 5' && line.options.opacity === 0.55));
 
-console.log('Admin patch seam and disconnected-zone rendering contracts passed');
+const disjointBus = fixture({
+  stations: [station(1,'A',38,23.7),station(2,'B',40,25)],
+  legs: [{id_leg:6,from_station_id:1,to_station_id:2,mode:'bus',price:5}]
+});
+assert.equal(disjointBus.calls.polygons.length, 0,
+  'A long land journey never manufactures false coverage between its patches');
+assert.equal(disjointBus.calls.circles.length, 4,
+  'Far-apart stations remain separate patches');
+
+const dynamicIsland = fixture({
+  stations: [station(1,'Hub',38,23.7),station(2,'Island',38.04,23.76)],
+  legs: [{id_leg:12,from_station_id:1,to_station_id:null,mode:'other',
+    price:8,area_lat:38.02,area_lng:23.73,area_radius_km:25,
+    area_name:'Taxi coverage sea'}]
+});
+assert.equal(dynamicIsland.calls.circles.length, 5);
+assert.equal(dynamicIsland.calls.circles[0].options.radius, 25000,
+  'Dynamic transport fills one whole area patch underneath two station islands');
+assert.equal(dynamicIsland.calls.polygons.length, 0,
+  'Islands do not punch holes in the area sea or get fabric connectors');
+
+const air = fixture({
+  stations:[station(1,'Airport A',38,23.7),station(2,'Airport B',37,25)],
+  legs:[{id_leg:20,from_station_id:1,to_station_id:2,mode:'flight',price:45}]
+});
+assert.equal(air.calls.lines.length, 4,
+  'Air map currently has local endpoint stitches only, pending route-arc decision');
+assert.ok(air.calls.lines.filter(l => l.options.weight === 1.25)
+  .every(l => kmDistance(l.points[0], l.points[1]) < 1.81));
+air.calls.circles[0].layer.events.mouseover();
+assert.ok(air.calls.circles[0].layer.style.fillOpacity > 0.2,
+  'Hovering one air endpoint darkens its own patch');
+assert.ok(air.calls.circles[2].layer.style.fillOpacity > 0.2,
+  'Hovering one air endpoint also darkens the other endpoint patch');
+air.calls.circles[0].layer.events.mouseout();
+assert.equal(air.calls.circles[2].layer.style.fillOpacity, 0.2,
+  'Hover leave restores both patches');
+
+const sea = fixture({
+  stations:[station(1,'Piraeus',38,23.7),
+    station(2,'Naxos',37.1,25.4), station(3,'Syros',37.4,24.9)],
+  legs:[
+    {id_leg:30,from_station_id:1,to_station_id:2,mode:'ferry',
+      operator_label:'Vessel A',price:29},
+    {id_leg:31,from_station_id:1,to_station_id:3,mode:'ferry',
+      operator_label:'Vessel B',price:24}
+  ]
+});
+assert.equal(sea.calls.lines.length, 8,
+  'Two differently priced sea journeys stay distinct: two local stitches per pair');
+assert.equal(new Set(sea.calls.lines.filter(line => line.options.opacity === 0.001)
+  .map(line => line.layer.tooltip.textContent)).size, 2,
+  'Each priced sea vessel keeps its independent pair-specific label and hover target');
+sea.calls.lines[1].layer.events.mouseover();
+assert.ok(sea.calls.circles[0].layer.style.fillOpacity > 0.2,
+  'Hovering sea vessel A stitch darkens its boarding anchor patch');
+assert.ok(sea.calls.circles[2].layer.style.fillOpacity > 0.2,
+  'Hovering sea vessel A stitch darkens its destination patch');
+assert.equal(sea.calls.circles[4].layer.style.fillOpacity, 0.2,
+  'A second differently priced sea vessel is NOT one fan-out hover unit');
+sea.calls.lines[1].layer.events.mouseout();
+assert.equal(sea.calls.circles[0].layer.style.fillOpacity, 0.2);
+assert.equal(sea.calls.circles[2].layer.style.fillOpacity, 0.2);
+console.log('True union (4 circles -> 1 path), stitches, distance, hover and vessels passed');
 
 const routeA = station(1, 'Road start', 38.0, 23.7);
 const routeB = station(2, 'Ferry port', 38.05, 23.75);
@@ -203,9 +267,10 @@ const routing = fixture({
 assert.equal(routing.calls.markers[0].options.icon.options.className, 'grtrans-origin-marker',
   'Shipment origin shows a distinct admin-only pin style');
 routing.elements['grtrans-map-preview'].events.click();
-assert.ok(routing.calls.polygons.length > 0, 'Long ferry gap has schematic fabric layers');
-assert.ok(routing.calls.polygons.every(p => p.layer.removed),
-  'Schematic gap fabric is hidden in routed-preview mode');
+assert.equal(routing.calls.polygons.length, 1,
+  'Nearby connected bus stations form one union path; ferry gap adds no polygon');
+assert.ok(routing.calls.polygons.every(p => !p.layer.removed),
+  'Preview never removes or hides coverage unions');
 routing.calls.mapEvents.click({latlng:{lat:38,lng:23.7}});
 routing.calls.mapEvents.click({latlng:{lat:37.1,lng:25.37}});
 await new Promise(resolve => setImmediate(resolve));
@@ -217,7 +282,9 @@ assert.ok(routing.calls.lines.some(line => line.options.weight === 5 &&
   line.options.dashArray === '10 5'),'Ferry is a separate port-to-port segment');
 routing.elements['grtrans-map-preview-clear'].events.click();
 assert.ok(routing.calls.polygons.every(p => !p.layer.removed),
-  'Clearing preview restores the schematic fabric joins');
+  'Clearing preview keeps the same union coverage path visible');
+assert.ok(routing.calls.lines.some(l => l.options.weight === 1.25 && !l.layer.removed),
+  'Clearing preview restores priced local connection stitches');
 assert.match(routing.elements['grtrans-preview-status'].textContent,/cleared/);
 const noRoute = fixture({stations:[routeA,routeC]});
 const previousSeams = noRoute.calls.lines.length;
