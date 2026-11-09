@@ -110,11 +110,14 @@ final class GrTransportNetworkGraph
         $candidates=[];
         foreach ($stations as $station) {
             $km=GrTransportNetworkFields::distanceKm($lat,$lng,(float)$station['lat'],(float)$station['lng']);
-            if ($km<=(float)$station['inner_radius_km']) {
-                $candidates[]=['station_id'=>(int)$station['id_station'],'ring'=>'inner','distance_km'=>$km];
-            } elseif ($km<=(float)$station['outer_radius_km']) {
-                $candidates[]=['station_id'=>(int)$station['id_station'],'ring'=>'outer','distance_km'=>$km];
-            }
+            $shape=($station['coverage_kind'] ?? 'radius')!=='radius' &&
+                !empty($station['coverage_geojson']);
+            $covered=$shape
+                ? GrTransportNetworkGeometry::contains($station['coverage_geojson'],$lat,$lng)
+                : $km<=(float)$station['outer_radius_km'];
+            if (!$covered) continue;
+            $ring=$km<=(float)$station['inner_radius_km'] ? 'inner' : 'outer';
+            $candidates[]=['station_id'=>(int)$station['id_station'],'ring'=>$ring,'distance_km'=>$km];
         }
         return $candidates;
     }
@@ -124,10 +127,13 @@ final class GrTransportNetworkGraph
         $matches=[];
         foreach ($legs as $leg) {
             if (!empty($leg['to_station_id']) || $leg['area_lat']===null || $leg['area_lng']===null) continue;
-            if (GrTransportNetworkFields::distanceKm($lat,$lng,(float)$leg['area_lat'],(float)$leg['area_lng'])
-                <=(float)$leg['area_radius_km']) {
-                $matches[]=$leg;
-            }
+            $shape=($leg['area_coverage_kind'] ?? 'radius')!=='radius' &&
+                !empty($leg['area_coverage_geojson']);
+            $covered=$shape
+                ? GrTransportNetworkGeometry::contains($leg['area_coverage_geojson'],$lat,$lng)
+                : GrTransportNetworkFields::distanceKm($lat,$lng,
+                    (float)$leg['area_lat'],(float)$leg['area_lng'])<=(float)$leg['area_radius_km'];
+            if ($covered) $matches[]=$leg;
         }
         return $matches;
     }

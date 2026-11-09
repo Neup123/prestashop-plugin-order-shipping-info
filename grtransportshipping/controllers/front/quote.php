@@ -67,6 +67,13 @@ class GrtransportshippingQuoteModuleFrontController extends ModuleFrontControlle
             'quote_note' => $note,
             'quote_submitted' => $submitted,
             'quote_route' => $quote,
+            'quote_far_required' => $quote && !empty($quote['extended']),
+            // Public check is a preview, not an order. Require two explicit
+            // POST inputs before showing the far-zone option as accepted.
+            'quote_far_confirmed' => $quote && !empty($quote['extended'])
+                && strtoupper((string)($_SERVER['REQUEST_METHOD'] ?? 'GET')) === 'POST'
+                && Tools::getValue('far_accept','') === '1'
+                && Tools::getValue('far_ack','') === '1',
             'quote_carrier' => $result['carrier'] ?? '',
             'quote_price' => $quote ? (!empty($quote['estimate'])
                 ? $this->context->currentLocale->formatPrice((float)$quote['estimate_min'], $this->context->currency->iso_code)

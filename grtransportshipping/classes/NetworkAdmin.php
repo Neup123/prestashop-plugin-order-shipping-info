@@ -101,8 +101,13 @@ final class GrTransportNetworkAdmin
         $base=self::esc((_MODULE_DIR_ . $module->name . '/')) . 'views/';
         $out='<section class="panel" id="grtrans-network">'
             . '<h3>Transport network · coverage map</h3>'
-            . '<p>Stations have a strong inner ring (normal service) and a lighter outer ring (long walk). '
-            . 'Click a station, choose Link, and click its destination. Long-distance links require a type and price.</p>'
+            . '<p>Data-defined coverage: inner normal reach is strong; FAR outer reach is lighter. '
+            . 'Priced transitions show a short zigzag only at a resolved handover boundary; '
+            . 'equal-cost linked land patches merge without an internal seam. '
+            . 'Distant flights have symbolic arcs; ferries have dashed straight lines; '
+            . 'station-bound land follows its recorded/derived road (price gradient if costs differ). '
+            . 'Dynamic services are unbroken area seas; linked islands have perimeter stitches. '
+            . 'Click a station, choose Link, and click its destination.</p>'
             . '<link rel="stylesheet" href="' . $base . 'vendor/leaflet/leaflet.css">'
             . '<link rel="stylesheet" href="' . $base . 'css/network-admin.css">'
             . '<div id="grtrans-network-map" aria-label="Transport network coverage map" role="region" data-config="'
@@ -199,6 +204,11 @@ final class GrTransportNetworkAdmin
                         . self::esc($label) . '</option>';
                 }
                 $out.='</select>';
+            } elseif ($type==='geojson_polygon' || $type==='geojson_line') {
+                $out.='<textarea class="form-control" id="grtrans-network-field-' . $key
+                    . '" name="' . $key . '" maxlength="60000" rows="4"'
+                    . ' placeholder="GeoJSON geometry [lng,lat], validated; leave blank for radius">'
+                    . self::esc($value) . '</textarea>';
             } else {
                 $out.='<input class="form-control" id="grtrans-network-field-' . $key . '" name="' . $key . '"'
                     . ' value="' . self::esc($value) . '"'
@@ -227,6 +237,7 @@ final class GrTransportNetworkAdmin
         }
         $out.=GrTransportNetworkSettings::render($url,$csrf);
         $out.='<script src="' . $base . 'vendor/leaflet/leaflet.js"></script>'
+            . '<script src="' . $base . 'js/coverage-geometry.js"></script>'
             . '<script src="' . $base . 'js/network-admin.js"></script></section>';
         return $out;
     }

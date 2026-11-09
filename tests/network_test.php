@@ -105,4 +105,62 @@ $csv=GrTransportNetworkApi::parseCsv('transfers',
     "from_station_id,to_station_id,connection_type,price\n1,2,taxi,5.50\n");
 testAssert(count($csv['transfers'])===1 && $csv['transfers'][0]['price']==='5.50',
     'CSV parsed through shared validated bulk data path');
+
+/* Visual panel A must match the ACTUAL resolver: persisted polygon footprints
+ * are quote geometry, not a decorative override of circular eligibility. */
+$postalPolygon=json_encode(['type'=>'Polygon','coordinates'=>[[
+    [23.60,37.90],[23.74,37.90],[23.74,38.04],[23.60,38.04],[23.60,37.90],
+]]],JSON_THROW_ON_ERROR);
+$postalStation=array_replace($station,[
+    'coverage_kind'=>'postal_polygon','coverage_geojson'=>$postalPolygon,
+]);
+$parsed=GrTransportNetworkFields::normalize('stations',$postalStation);
+testAssert($parsed['coverage_kind']==='postal_polygon' && $parsed['coverage_geojson']!=='',
+    'Validated postal polygon persists with the station');
+$postalStationRecord=array_replace($parsed,[
+    'id_station'=>30,'lat'=>37.90,'lng'=>23.60,
+    'inner_radius_km'=>1,'outer_radius_km'=>2,
+]);
+testAssert(count(GrTransportNetworkGraph::candidates([$postalStationRecord],38,23.70))===1,
+    'Inside postal polygon but outside radius: eligible with the true polygon');
+testAssert(GrTransportNetworkGraph::candidates([$postalStationRecord],37.88,23.60)===[],
+    'Inside old circle but OUTSIDE postal polygon: must not quote');
+$holePolygon=json_encode(['type'=>'Polygon','coordinates'=>[
+    [[23.6,37.9],[23.8,37.9],[23.8,38.1],[23.6,38.1],[23.6,37.9]],
+    [[23.68,37.98],[23.72,37.98],[23.72,38.02],[23.68,38.02],[23.68,37.98]],
+]],JSON_THROW_ON_ERROR);
+testAssert(!GrTransportNetworkGeometry::contains($holePolygon,38,23.7),
+    'Polygon holes do not confer false delivery coverage');
+testAssert(GrTransportNetworkGeometry::contains($holePolygon,38.06,23.7),
+    'Outer polygon preserves allowed coverage outside its holes');
+$area=array_replace($direct,[
+    'area_coverage_kind'=>'walking_isochrone','area_coverage_geojson'=>$postalPolygon,
+    'area_lat'=>37.9,'area_lng'=>23.6,'area_radius_km'=>2,
+]);
+$validatedArea=GrTransportNetworkFields::normalize('legs',$area);
+testAssert(count(GrTransportNetworkGraph::directAreas([$validatedArea],38,23.7))===1,
+    'Stored isochrone is actually used to determine direct-area service');
+testAssert(GrTransportNetworkGraph::directAreas([$validatedArea],37.88,23.6)===[],
+    'Direct-area circular reach must not override stored isochrone');
+$routeShape=json_encode(['type'=>'LineString','coordinates'=>[
+    [23.7,38.0],[23.74,38.02],[23.75,38.05],
+]],JSON_THROW_ON_ERROR);
+$routeRecord=array_replace(GrTransportNetworkFields::defaults('legs'),[
+    'from_station_id'=>1,'to_station_id'=>2,'route_geojson'=>$routeShape,
+]);
+testAssert(GrTransportNetworkFields::normalize('legs',$routeRecord)['route_geojson']!=='',
+    'Explicitly measured land route is accepted for later map rendering');
+fails(static function () use ($postalStation) {
+    GrTransportNetworkFields::normalize('stations',array_replace($postalStation,[
+        'coverage_geojson'=>'{"type":"Polygon","coordinates":[]}',
+    ]));
+},'Empty polygon was incorrectly accepted');
+fails(static function () use ($postalStation) {
+    GrTransportNetworkFields::normalize('stations',array_replace($postalStation,[
+        'coverage_geojson'=>'',
+    ]));
+},'Named postal coverage was accepted with no polygon');
+testAssert(GrTransportNetworkFields::normalize('stations',$station)['coverage_kind']==='radius',
+    'Legacy station import defaults to radius coverage without migration input');
+
 echo "Station, graph, safe transfers, direct area and API permission tests passed\n";

@@ -4,6 +4,7 @@ if (!defined('_PS_VERSION_')) {
 }
 require_once __DIR__ . '/classes/QuoteEngine.php';
 require_once __DIR__ . '/classes/CartQuote.php';
+require_once __DIR__ . '/classes/FarZoneConsent.php';
 require_once __DIR__ . '/classes/OrderSnapshot.php';
 require_once __DIR__ . '/classes/OrderCharge.php';
 require_once __DIR__ . '/classes/CarrierLifecycle.php';
@@ -50,7 +51,7 @@ class Grtransportshipping extends CarrierModule
     {
         $this->name = 'grtransportshipping';
         $this->tab = 'shipping_logistics';
-        $this->version = '0.10.0';
+        $this->version = '0.11.0';
         $this->author = 'Neup123';
         $this->need_instance = 0;
         $this->bootstrap = true;
@@ -84,6 +85,7 @@ class Grtransportshipping extends CarrierModule
             return false;
         }
         return $this->registerHook('actionCarrierUpdate')
+            && $this->registerHook('displayHeader')
             && $this->registerHook('displayBeforeCarrier')
             && $this->registerHook('displayCarrierExtraContent')
             && $this->registerHook('actionValidateOrder')
@@ -154,6 +156,14 @@ class Grtransportshipping extends CarrierModule
         $quote = $this->currentQuote($cart);
         if (!$quote) {
             throw new RuntimeException('Cannot confirm order: transport quote is unavailable');
+        }
+        // A displayed warning without affirmative consent is NOT permission
+        // to complete a far-zone transport order. Signed proof is bound to
+        // this cart, exact address and current pinned quote.
+        if (!empty($quote['extended']) &&
+            !GrTransportFarZoneConsent::confirmed(
+                $this->context->cookie ?? null, $cart, $quote)) {
+            throw new RuntimeException('Far from the station: explicit customer confirmation is required before this transport option can be ordered');
         }
         // One invariant for both validation and subsequent snapshot repair:
         // distinguish an actual applied free-shipping voucher or configured
@@ -478,6 +488,67 @@ class Grtransportshipping extends CarrierModule
             . '</strong> ' . $this->escape($this->l($message)) . '</div>';
     }
 
+    /**
+     * Load the far-zone consent controller only on the real storefront. Its
+     * event delegation survives Hummingbird's AJAX checkout-step rerenders.
+     */
+    public function hookDisplayHeader($params)
+    {
+        $controller=$this->context->controller ?? null;
+        if ($controller && method_exists($controller,'registerJavascript')) {
+            $controller->registerJavascript('grtransport-far-zone-confirm',
+                'modules/' . $this->name . '/views/js/far-zone-confirm.js',
+                ['position'=>'bottom','priority'=>190]);
+        }
+        return '';
+    }
+
+    /** Single POST entry point for the customer who actively checks the box. */
+    public function confirmFarZoneForCart($cart, $token, bool $confirm): bool
+    {
+        if (!GrTransportFarZoneConsent::validToken($cart,$token)) {
+            throw new DomainException('Invalid far-zone consent token',403);
+        }
+        $result=$this->quoteResult($cart);
+        if ($result['status']!=='quoted' || empty($result['quote']['extended'])) {
+            throw new InvalidArgumentException('No far-zone transport option is quoted for this cart');
+        }
+        GrTransportFarZoneConsent::set(
+            $this->context->cookie ?? null, $cart, $result['quote'], $confirm);
+        return GrTransportFarZoneConsent::confirmed(
+            $this->context->cookie ?? null, $cart, $result['quote']);
+    }
+
+    private function renderFarCheckoutConsent(array $quote): string
+    {
+        if (empty($quote['extended'])) return '';
+        $cart=$this->context->cart ?? null;
+        if (!$cart || (int)($cart->id ?? 0)<=0) {
+            return '<div class="alert alert-warning grtransport-far-zone">'
+                . '<strong>Far from the station.</strong> This location is in the FAR zone. '
+                . 'An active cart and explicit confirmation are required to proceed.</div>';
+        }
+        $confirmed=GrTransportFarZoneConsent::confirmed(
+            $this->context->cookie ?? null,$cart,$quote);
+        $url=$this->context->link->getModuleLink($this->name,'farconfirm',
+            ['ajax'=>1],true);
+        return '<section class="alert alert-warning grtransport-far-zone" '
+            . 'data-confirm-url="' . $this->escape($url) . '" '
+            . 'data-confirm-token="' . $this->escape(GrTransportFarZoneConsent::token($cart)) . '" '
+            . 'data-confirmed="' . ($confirmed?'1':'0') . '" '
+            . 'role="group" aria-label="Far-zone transport confirmation">'
+            . '<strong>Far from the station — FAR zone.</strong> '
+            . '<p>This destination is outside the normal service reach. '
+            . 'It may require a long walk to the station. Proceed with this option anyway?</p>'
+            . '<label><input type="checkbox" class="grtransport-far-ack" '
+            . ($confirmed?'checked ':'') . '> I understand the distance and explicitly '
+            . 'agree to proceed with this far-zone transport option.</label>'
+            . '<p class="grtransport-far-status" role="status" aria-live="polite">'
+            . ($confirmed?'Far-zone option explicitly confirmed.':
+                'Confirmation is required before continuing to payment.') . '</p>'
+            . '</section>';
+    }
+
     public function hookDisplayCarrierExtraContent($params)
     {
         // Extra content only exists for carriers present in delivery_options.
@@ -485,7 +556,8 @@ class Grtransportshipping extends CarrierModule
         // displayBeforeCarrier hook explains why at the checkout step.
         $result = $this->quoteResult($this->context->cart);
         return $result['status'] === 'quoted'
-            ? $this->renderNotice($result['quote'], 'checkout') : '';
+            ? $this->renderNotice($result['quote'], 'checkout')
+                . $this->renderFarCheckoutConsent($result['quote']) : '';
     }
 
     /** Public page adapter: live route engine and the checkout handling-fee rule. */

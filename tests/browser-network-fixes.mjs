@@ -99,6 +99,56 @@ try {
   assert.equal(await legRow.count(), 1);
   console.log('LIVE NETWORK FEEDBACK: stations and leg created, station edited with correct notices');
 
+
+  // #103 Panel H: create a direct-area leg through the REAL admin form and
+  // verify that its DB-backed map snapshot has SQL NULL (not numeric zero).
+  // A DB seed would bypass the Db::insert/update nullable writer bug.
+  await page.goto(legsUrl.toString(), { waitUntil: 'domcontentloaded', timeout: 45000 });
+  form = page.locator('#grtrans-network-editor form');
+  await form.locator('select[name="from_station_id"]').selectOption(source);
+  await form.locator('select[name="to_station_id"]').selectOption('');
+  await form.locator('select[name="mode"]').selectOption('other');
+  await form.locator('input[name="operator_label"]').fill('CI dynamic sea via admin');
+  await form.locator('input[name="price"]').fill('8.00');
+  await form.locator('input[name="area_name"]').fill('CI area sea');
+  await form.locator('input[name="area_lat"]').fill('38.0');
+  await form.locator('input[name="area_lng"]').fill('23.7');
+  await form.locator('input[name="area_radius_km"]').fill('25');
+  await form.getByRole('button', { name: 'Create record' }).click();
+  await page.getByText('Network record created.', { exact: true }).first().waitFor({ timeout: 20000 });
+  const storedArea = () => page.locator('#grtrans-network-map').evaluate(root => {
+    const legs = JSON.parse(root.dataset.config).legs;
+    return legs.find(leg => leg.operator_label === 'CI dynamic sea via admin') || null;
+  });
+  let savedArea = await storedArea();
+  assert.ok(savedArea, 'Created area leg must appear in the DB-backed admin map config');
+  assert.equal(savedArea.to_station_id, null,
+    'Direct-area to_station_id must be SQL NULL after INSERT, not 0');
+  assert.equal(Number(savedArea.area_radius_km), 25);
+  const seamRing = page.locator('#grtrans-network-map path.grtrans-linked-island-perimeter');
+  await seamRing.first().waitFor({ timeout: 20000 });
+  assert.ok(await seamRing.count() >= 1, 'Panel H: rendered area has a linked island stitch');
+  const frameFreeSea = page.locator('#grtrans-network-map path.grtrans-organic-patch[stroke="none"][fill-opacity="0.24"]');
+  await frameFreeSea.first().waitFor({ timeout: 20000 });
+  assert.ok(await frameFreeSea.count() >= 1, 'Panel H: unframed dynamic sea fill is rendered');
+
+  // Editing the SAME area leg must preserve NULL in Db::update as well.
+  const areaRow = page.locator('#grtrans-network table').nth(1)
+    .locator('tbody tr').filter({ hasText: 'CI dynamic sea via admin' });
+  assert.equal(await areaRow.count(), 1);
+  await areaRow.getByRole('link', { name: 'Edit' }).click();
+  form = page.locator('#grtrans-network-editor form');
+  await form.locator('input[name="area_radius_km"]').fill('26');
+  await form.getByRole('button', { name: 'Save changes' }).click();
+  await page.getByText('Network record updated.', { exact: true }).first().waitFor({ timeout: 20000 });
+  savedArea = await storedArea();
+  assert.equal(savedArea.to_station_id, null,
+    'Direct-area to_station_id must remain SQL NULL after UPDATE');
+  assert.equal(Number(savedArea.area_radius_km), 26,
+    'The updated area geometry must be persisted and served to the map');
+  await seamRing.first().waitFor({ timeout: 20000 });
+  console.log('LIVE PANEL H: admin area INSERT/UPDATE preserved SQL NULL, sea fill + island stitch rendered');
+
   // #87: Customer public map and BO map both load actual bundled PNGs over HTTP.
   await page.goto('http://localhost:8080/index.php?fc=module&module=grtransportshipping&controller=quote',
     { waitUntil: 'domcontentloaded', timeout: 45000 });
