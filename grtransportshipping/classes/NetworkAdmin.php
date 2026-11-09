@@ -17,6 +17,10 @@ final class GrTransportNetworkAdmin
         }
         try {
             $action=(string)$_POST['grtrans_network_action'];
+            if ($action==='save_operational_settings') {
+                GrTransportNetworkSettings::save($_POST);
+                return '<div class="alert alert-success">Network operating defaults saved.</div>';
+            }
             if ($action==='save_extended_notice') {
                 $notice=$_POST['extended_notice'] ?? '';
                 if (!is_string($notice) || mb_strlen($notice, 'UTF-8')>1200) {
@@ -84,7 +88,7 @@ final class GrTransportNetworkAdmin
         foreach ($route['cost'] as $id=>$amount) {
             if (is_finite($amount)) $cost[(string)$id]=round($amount,2);
         }
-        $mapConfig=json_encode($data+['cost'=>$cost],JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_THROW_ON_ERROR);
+        $mapConfig=json_encode($data+['cost'=>$cost,'nearbyGapKm'=>GrTransportNetworkSettings::get('nearby_gap_km')],JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_THROW_ON_ERROR);
         $base=self::esc((_MODULE_DIR_ . $module->name . '/')) . 'views/';
         $out='<section class="panel" id="grtrans-network">'
             . '<h3>Transport network · coverage map</h3>'
@@ -192,6 +196,7 @@ final class GrTransportNetworkAdmin
                 . '<button name="grtrans_network_action" value="rotate_' . $scope
                 . '" class="btn btn-warning">Generate / revoke ' . $scope . ' token</button></form> ';
         }
+        $out.=GrTransportNetworkSettings::render($url,$csrf);
         $out.='<script src="' . $base . 'vendor/leaflet/leaflet.js"></script>'
             . '<script src="' . $base . 'js/network-admin.js"></script></section>';
         return $out;
