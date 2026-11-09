@@ -46,6 +46,8 @@ The back-office map uses locally bundled **Leaflet** and OpenStreetMap tiles. It
 
 Station coverage is drawn in descending reachable-price order so cheaper service is visually above more expensive coverage. The costs come from the shared directed graph used by the quote system, not manually entered map prices. Unreachable station discs are editing aids, not promised delivery coverage. No disc means no network-geography coverage.
 
+**Origin pins and routed preview:** dispatch/origin stations have visually distinct admin-only pins. Press **Preview route between two pins**, then click two map points or station markers. Pins must be inside a stored station's outer radius; the preview follows valid directed legs/transfers, preferring the lowest configured price. Road segments use on-demand OSRM driving geometry; ferry segments are dashed port-to-port approximations, **not** recorded sailing tracks or schedules. If OSRM is unavailable or a directed path cannot be calculated, the status gives a visible error with **no straight-line fallback**. Flight geometry and unconnected direct-area services cannot be previewed. The schematic seam overlays are hidden during preview and return on **Clear preview**. This preview does not save routes or alter pricing.
+
 Edits made through the form or API appear on refresh. The map is optional: all data can also be managed in the tables or through the API.
 
 ## Network CRUD and import API (#70)
