@@ -24,6 +24,9 @@ final class GrTransportNetworkFields
                     'from_station_id'=>['id'], 'to_station_id'=>['nullable_id'],
                     'mode'=>['choice',['bus','ferry','flight','other']],
                     'operator_label'=>['text',190], 'price'=>['range',0,100000],
+                    'tariff_type'=>['choice',['flat','weight','volume']], 'rate_per_unit'=>['range',0,100000],
+                    'estimate'=>['bool'], 'estimate_low_factor'=>['range',0,10],
+                    'estimate_high_factor'=>['range',0,10],
                     'bidirectional'=>['bool'],
                     'area_name'=>['text',190], 'area_lat'=>['nullable_latitude'],
                     'area_lng'=>['nullable_longitude'], 'area_radius_km'=>['range',0,500],
@@ -46,7 +49,9 @@ final class GrTransportNetworkFields
             ];
             case 'legs': return [
                 'from_station_id'=>0, 'to_station_id'=>null, 'mode'=>'bus',
-                'operator_label'=>'', 'price'=>0, 'bidirectional'=>0,
+                'operator_label'=>'', 'price'=>0, 'tariff_type'=>'flat','rate_per_unit'=>0,
+                'estimate'=>0,'estimate_low_factor'=>0.9,'estimate_high_factor'=>1.1,
+                'bidirectional'=>0,
                 'area_name'=>'', 'area_lat'=>null, 'area_lng'=>null, 'area_radius_km'=>0,
             ];
             case 'transfers': return [
@@ -122,6 +127,9 @@ final class GrTransportNetworkFields
                 throw new InvalidArgumentException('Outer station radius must be positive and at least the inner radius');
             }
         } elseif ($entity==='legs') {
+            if ($output['estimate'] && $output['estimate_high_factor']<=$output['estimate_low_factor']) {
+                throw new InvalidArgumentException('Estimate high factor must exceed low factor');
+            }
             if ($output['to_station_id']!==null) {
                 if ($output['to_station_id']===$output['from_station_id']) throw new InvalidArgumentException('A leg must connect distinct stations');
                 if ($output['area_lat']!==null || $output['area_lng']!==null || $output['area_radius_km']>0) {
