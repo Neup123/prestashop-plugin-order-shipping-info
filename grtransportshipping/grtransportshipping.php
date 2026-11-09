@@ -8,6 +8,7 @@ require_once __DIR__ . '/classes/OrderSnapshot.php';
 require_once __DIR__ . '/classes/OrderCharge.php';
 require_once __DIR__ . '/classes/CarrierLifecycle.php';
 require_once __DIR__ . '/classes/RouteRepository.php';
+require_once __DIR__ . '/classes/NetworkAdmin.php';
 
 /**
  * Athens-origin public transport parcel quotes. Prices in EUR.
@@ -44,7 +45,7 @@ class Grtransportshipping extends CarrierModule
     {
         $this->name = 'grtransportshipping';
         $this->tab = 'shipping_logistics';
-        $this->version = '0.5.3';
+        $this->version = '0.6.0';
         $this->author = 'Neup123';
         $this->need_instance = 0;
         $this->bootstrap = true;
@@ -100,7 +101,8 @@ class Grtransportshipping extends CarrierModule
             . GrTransportRouteFields::schemaColumns()
             . ') ENGINE=' . _MYSQL_ENGINE_ . ' DEFAULT CHARSET=utf8mb4';
         return (bool) Db::getInstance()->execute($sql)
-            && $this->installOrderSchema() && $this->installCartQuoteSchema();
+            && $this->installOrderSchema() && $this->installCartQuoteSchema()
+            && GrTransportNetworkRepository::installSchema();
     }
 
     public function installOrderSchema(): bool
@@ -405,7 +407,7 @@ class Grtransportshipping extends CarrierModule
 
     public function getContent()
     {
-        $out = '';
+        $out = GrTransportNetworkAdmin::handle($this);
         $submitted = null;
         $fieldErrors = [];
         $saveError = '';
@@ -643,7 +645,7 @@ class Grtransportshipping extends CarrierModule
         }
         $out .= '<button type="submit" name="grtrans_save" value="1" class="btn btn-primary">'
             . $this->escape($editing ? $this->l('Save route changes') : $this->l('Add route')) . '</button></form></section>';
-        return $out;
+        return $out . GrTransportNetworkAdmin::render($this);
     }
 
     /** One named-field collection shared by saving and failed-save re-rendering. */
