@@ -361,9 +361,12 @@
     const add = (key, from, to) => {
       if (!Object.hasOwn(costs, from) || !Object.hasOwn(costs, to)) return;
       const fromCost = Number(costs[from]), toCost = Number(costs[to]);
-      if (!Number.isFinite(fromCost) || !Number.isFinite(toCost)) return;
+      if (!Number.isFinite(fromCost) || !Number.isFinite(toCost) ||
+          Math.abs(fromCost - toCost) <= 0.005) return;
+      // Equal-cost reach has no cheaper-to-dearer boundary: a linked land
+      // service merges instead (panel F). Never manufacture a transfer.
       output[key] = {
-        boundaryOwner: 'station:' + (fromCost <= toCost ? from : to),
+        boundaryOwner: 'station:' + (fromCost < toCost ? from : to),
         rule: 'cheapest-reachable'
       };
     };
