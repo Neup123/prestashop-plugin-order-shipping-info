@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="1660" viewBox="0 0 1240 1660" font-family="DejaVu Sans, Arial, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="2080" viewBox="0 0 1240 2080" font-family="DejaVu Sans, Arial, sans-serif">
 <defs>
   <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
     <path d="M0,0 L10,5 L0,10 z" fill="#333"/>
@@ -8,7 +8,7 @@
     <stop offset="1" stop-color="#0b3d91"/>
   </linearGradient>
 </defs>
-<rect x="0" y="0" width="1240" height="1660" fill="#ffffff"/>
+<rect x="0" y="0" width="1240" height="2080" fill="#ffffff"/>
 <text x="620" y="42" font-size="30" font-weight="bold" text-anchor="middle" fill="#222">Coverage patches &amp; connection model — admin map</text>
 
 <!-- PANEL A -->
@@ -109,5 +109,23 @@
   <polyline points="1046,1490 1039,1494 1045,1499 1037,1502 1041,1508 1032,1510 1035,1516 1026,1517 1026,1523 1017,1522 1016,1529 1008,1526 1005,1533 997,1529 992,1534 986,1530 980,1534 975,1529 967,1533 964,1526 956,1529 955,1522 946,1523 946,1517 937,1516 940,1510 931,1508 935,1502 927,1499 933,1494 926,1490 933,1486 927,1481 935,1478 931,1472 940,1470 937,1464 946,1463 946,1457 955,1458 956,1451 964,1454 967,1447 975,1451 980,1446 986,1450 992,1446 997,1451 1005,1447 1008,1454 1016,1451 1017,1458 1026,1457 1026,1463 1035,1464 1032,1470 1041,1472 1037,1478 1045,1481 1039,1486 1046,1490" fill="none" stroke="#c0392b" stroke-width="2.5"/>
   <text x="930" y="1580" font-size="16" text-anchor="middle" fill="#444">taxi / courier: one area patch that also reaches INTO the islands;</text>
   <text x="930" y="1602" font-size="16" text-anchor="middle" fill="#444">a LINKED island is stitched all the way around its edge</text>
+</g>
+
+<!-- PANEL I -->
+<g>
+  <rect x="20" y="1670" width="1200" height="380" rx="12" fill="#fafafa" stroke="#ddd"/>
+  <text x="40" y="1702" font-size="19" font-weight="bold" fill="#222">I. Two-tier patch — inner reach + outer lighter "far" zone with a warning</text>
+  <path d="M120,1790 C220,1725 420,1735 470,1845 C515,1945 400,2020 260,2018 C130,2016 55,1935 75,1855 C85,1812 92,1810 120,1790 Z" fill="#b9a7e6" fill-opacity="0.18"/>
+  <path d="M185,1832 C245,1792 345,1800 368,1862 C390,1922 330,1972 255,1968 C185,1964 138,1912 152,1868 C158,1848 166,1844 185,1832 Z" fill="#b9a7e6" fill-opacity="0.55"/>
+  <text x="262" y="1762" font-size="15" text-anchor="middle" fill="#6b5ca5">outer spread — lighter: "far" zone</text>
+  <text x="255" y="1905" font-size="15" text-anchor="middle" fill="#5b4a9e">inner reach</text>
+  <g>
+    <rect x="640" y="1800" width="470" height="130" rx="14" fill="#fff8e1" stroke="#e0a800" stroke-width="2"/>
+    <text x="668" y="1848" font-size="19" font-weight="bold" fill="#7a5b00">⚠ Far from the station</text>
+    <text x="668" y="1880" font-size="16" fill="#7a5b00">This address is in the far zone.</text>
+    <text x="668" y="1906" font-size="16" fill="#7a5b00">Proceed with this option anyway?</text>
+  </g>
+  <text x="875" y="1975" font-size="16" text-anchor="middle" fill="#444">in the outer zone the customer is warned it is far</text>
+  <text x="875" y="1997" font-size="16" text-anchor="middle" fill="#444">and asked whether he wants it — not silently served</text>
 </g>
 </svg>
