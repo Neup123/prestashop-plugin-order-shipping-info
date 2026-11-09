@@ -15,7 +15,7 @@ final class GrTransportNetworkQuote
         'Extended pickup area: reaching the collection station may require a long walk. Consider this before choosing this delivery method.';
 
     public static function resolve(array $flatRoutes,array $network,string $postcode,string $city,
-        ?array $coords=null,?array $originIds=null,string $extendedNotice='',?array $parcel=null): array
+        ?array $coords=null,?array $originIds=null,string $extendedNotice='',?array $parcel=null,array $branchByOrigin=[]): array
     {
         $manual=GrTransportQuoteEngine::resolve($flatRoutes,$postcode,$city);
         if ($manual['status']==='quoted' || in_array($manual['status'],['suspended','ambiguous'],true)) {
@@ -41,7 +41,7 @@ final class GrTransportNetworkQuote
             $choices[]=self::choice($path,(string)$station['name'],
                 $end ? (string)$end['mode'] : (string)$station['type'],
                 (string)$graph['stations'][$path['origin_hub_id']]['name'],1,
-                $notice,$candidate['ring'],$id,1,$parcel ?? []);
+                $notice,$candidate['ring'],$id,1,$parcel ?? [],$branchByOrigin);
         }
         foreach (GrTransportNetworkGraph::directAreas($legs,$location[0],$location[1]) as $service) {
             $id=(int)$service['from_station_id'];
@@ -63,7 +63,7 @@ final class GrTransportNetworkQuote
                 (string)$service['mode'],
                 (string)$graph['stations'][$prefix['origin_hub_id']]['name'],0,
                 'Direct delivery to your address within the service area.',
-                'direct',null,0,$parcel ?? []);
+                'direct',null,0,$parcel ?? [],$branchByOrigin);
         }
         if (!$choices) return $manual;
         usort($choices,static function ($a,$b) {
@@ -78,7 +78,7 @@ final class GrTransportNetworkQuote
     }
 
     /** Simulate one named station rather than silently switching to another overlapping station. */
-    public static function forStation(array $network,int $id,?array $originIds=null,?array $parcel=null): array
+    public static function forStation(array $network,int $id,?array $originIds=null,?array $parcel=null,array $branchByOrigin=[]): array
     {
         $graph=GrTransportNetworkGraph::routes($network['stations'] ?? [],
             GrTransportNetworkTariff::apply($network['legs'] ?? [],$parcel ?? []),
@@ -89,12 +89,12 @@ final class GrTransportNetworkQuote
         $end=$path['edges'] ? end($path['edges']) : null;
         $choice=self::choice($path,(string)$station['name'],
             $end ? (string)$end['mode'] : (string)$station['type'],
-            (string)$graph['stations'][$path['origin_hub_id']]['name'],1,'','inner',$id,1,$parcel ?? []);
+            (string)$graph['stations'][$path['origin_hub_id']]['name'],1,'','inner',$id,1,$parcel ?? [],$branchByOrigin);
         return ['status'=>'quoted','quote'=>$choice['quote'],'route_id'=>0];
     }
 
     private static function choice(array $path,string $stationName,string $mode,string $originName,
-        int $pickup,string $notice,string $ring,?int $stationId,int $priority,array $parcel=[]): array
+        int $pickup,string $notice,string $ring,?int $stationId,int $priority,array $parcel=[],array $branchByOrigin=[]): array
     {
         $tariff=GrTransportNetworkTariff::totals($path['edges']);
         $window=GrTransportNetworkTiming::window($path['edges']);
@@ -115,6 +115,11 @@ final class GrTransportNetworkQuote
             'source'=>'network',
             'delivery_window_hours'=>$window,
         ];
+        $branch=$branchByOrigin[(int)$path['origin_hub_id']] ?? null;
+        if (is_array($branch)) {
+            $quote['branch_id']=(int)$branch['id_branch'];
+            $quote['branch_name']=(string)$branch['name'];
+        }
         return ['priority'=>$priority,'comparison_cost'=>round((float)$path['total'],2),'quote'=>$quote];
     }
 
