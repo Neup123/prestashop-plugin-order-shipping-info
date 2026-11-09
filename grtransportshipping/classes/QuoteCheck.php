@@ -1,10 +1,14 @@
 <?php
 require_once __DIR__ . '/QuoteEngine.php';
+require_once __DIR__ . '/NetworkSettings.php';
 
 /** Input adapter only. All eligibility, precedence and pricing remain in QuoteEngine. */
 final class GrTransportQuoteCheck
 {
-    public const PIN_RADIUS_KM = 25.0;
+    public static function pinRadiusKm(): float
+    {
+        return GrTransportNetworkSettings::get('pin_radius_km');
+    }
 
     public static function stations(): array
     {
@@ -68,7 +72,7 @@ final class GrTransportQuoteCheck
         return $quotes ? reset($quotes) : $results[0];
     }
 
-    /** Nearest catalogued destination, inclusive 25 km great-circle radius.
+    /** Nearest catalogued destination, inclusive configured great-circle radius.
      * Equal distances use catalogue order. Never skip a nearer unpriced or
      * suspended station to offer a more distant route. No geocoding service.
      */
@@ -76,6 +80,7 @@ final class GrTransportQuoteCheck
     {
         $nearest = null;
         $distance = INF;
+        $radius = self::pinRadiusKm();
         if (!is_scalar($latitude) || !is_scalar($longitude)
             || !is_numeric($latitude) || !is_numeric($longitude)
             || !is_finite((float) $latitude) || !is_finite((float) $longitude)
@@ -84,7 +89,7 @@ final class GrTransportQuoteCheck
         }
         foreach (self::stations() as $station) {
             $km = self::distance((float) $latitude, (float) $longitude, $station['lat'], $station['lng']);
-            if ($km <= self::PIN_RADIUS_KM && $km < $distance) {
+            if ($km <= $radius && $km < $distance) {
                 $nearest = $station;
                 $distance = $km;
             }
