@@ -148,7 +148,12 @@ final class GrTransportNetworkRepository
         }
         $row=[];
         foreach ($normalized as $name=>$value) {
-            $row[$name]=is_string($value) ? pSQL($value) : $value;
+            // Db::insert/update stringify PHP null unless encoded as an SQL
+            // literal. Use typed SQL ONLY for null; keep '' as an empty string
+            // (null_values=true would also turn non-null empty text into NULL).
+            $row[$name]=$value===null
+                ? ['type'=>'sql','value'=>'NULL']
+                : (is_string($value) ? pSQL($value) : $value);
         }
         if ($entity==='legs' || $entity==='transfers') {
             $row['verified_at']=gmdate('Y-m-d H:i:s');
@@ -157,11 +162,9 @@ final class GrTransportNetworkRepository
         $db=Db::getInstance();
         $where=GrTransportNetworkFields::IDS[$entity].' = '.$id
             . (self::isShopScoped($entity) ? ' AND id_shop = '.self::shopId() : '');
-        // PrestaShop's Db writer otherwise converts PHP null into numeric 0
-        // (or an empty string). Direct-area legs require SQL NULL here.
         $ok=$id
-            ? $db->update(self::table($entity),$row,$where,0,true)
-            : $db->insert(self::table($entity),$row,true);
+            ? $db->update(self::table($entity),$row,$where)
+            : $db->insert(self::table($entity),$row);
         if (!$ok) throw new RuntimeException('Network write failed: ' . $entity);
         return $id ?: (int)$db->Insert_ID();
     }
