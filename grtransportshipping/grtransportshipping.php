@@ -50,7 +50,7 @@ class Grtransportshipping extends CarrierModule
     {
         $this->name = 'grtransportshipping';
         $this->tab = 'shipping_logistics';
-        $this->version = '0.10.0';
+        $this->version = '0.11.0';
         $this->author = 'Neup123';
         $this->need_instance = 0;
         $this->bootstrap = true;
