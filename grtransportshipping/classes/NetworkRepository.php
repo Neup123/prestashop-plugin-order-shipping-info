@@ -157,9 +157,11 @@ final class GrTransportNetworkRepository
         $db=Db::getInstance();
         $where=GrTransportNetworkFields::IDS[$entity].' = '.$id
             . (self::isShopScoped($entity) ? ' AND id_shop = '.self::shopId() : '');
+        // PrestaShop's Db writer otherwise converts PHP null into numeric 0
+        // (or an empty string). Direct-area legs require SQL NULL here.
         $ok=$id
-            ? $db->update(self::table($entity),$row,$where)
-            : $db->insert(self::table($entity),$row);
+            ? $db->update(self::table($entity),$row,$where,0,true)
+            : $db->insert(self::table($entity),$row,true);
         if (!$ok) throw new RuntimeException('Network write failed: ' . $entity);
         return $id ?: (int)$db->Insert_ID();
     }

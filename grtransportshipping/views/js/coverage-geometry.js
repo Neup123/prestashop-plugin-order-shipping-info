@@ -266,7 +266,9 @@
           !Number.isFinite(Number(leg.price)) || Number(leg.price) < 0) continue;
       const from = lookup.get(Number(leg.from_station_id));
       const to = lookup.get(Number(leg.to_station_id));
-      if (!from || !to || from.type !== to.type) continue;
+      // A port can also be a bus/train stop: the LINK kind, not station labels,
+      // determines whether equal-cost overlapping reaches share a silhouette.
+      if (!from || !to) continue;
       // Same-priced station reaches unite; expensive and cheaper reaches
       // must keep their individual fill silhouettes for panel G.
       const fromCost = Number(costs[from.id_station]), toCost = Number(costs[to.id_station]);

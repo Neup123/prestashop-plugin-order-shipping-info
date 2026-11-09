@@ -170,9 +170,11 @@ assert.ok(stitch.points.every(p=>polygonContains(p,firstBlob)&&polygonContains(p
 assert.ok(lengthKm(stitch.points)<=1.8,'#102 length limit applies to WHOLE zigzag');
 assert.ok(stitch.points.every(p=>Math.abs(kmDistance(p,[38,23.7])-10)<0.3),
   'Seam is on the €5 patch OUTER cheap-reach boundary, not centred in overlap');
-assert.equal(stitch.options.weight,1.25);
-assert.equal(stitch.options.opacity,.55);
-assert.equal(stitch.options.dashArray,'2 5');
+assert.equal(stitch.options.weight,3,
+  'Panel C: short winning-boundary stitch must be thick enough for z11–z12');
+assert.equal(stitch.options.opacity,.9);
+assert.equal(stitch.options.dashArray,'3 2',
+  'Panel C: a dense dash shows multiple marks even on a short stitch');
 assert.ok(!withPrices.calls.polygons.some(p=>p.options.fillOpacity>0.6));
 await new Promise(resolve=>setImmediate(resolve));
 const gradient=withPrices.calls.lines.filter(l=>l.options.className==='grtrans-land-gradient');
@@ -208,6 +210,32 @@ samePrice.elements['grtrans-map-preview'].events.click();
 assert.ok(!union.layer.removed,'Route preview leaves union patch visible');
 samePrice.elements['grtrans-map-preview-clear'].events.click();
 assert.ok(solid.every(l=>!l.layer.removed));
+
+/* Panel F regression: a ferry-type port can be a stop on a BUS leg.
+ * Link transport kind and equal route cost, not station type, own the union. */
+const mixedStops = [a, {...b,type:'ferry'}];
+const mixedNoLink = fixture({stations:mixedStops,cost:{1:0,2:0}});
+assert.equal(mixedNoLink.calls.polygons.length,4,
+  'A bus hub and ferry port do not merge without a priced fixed-route link');
+const mixedBus=fixture({stations:mixedStops,cost:{1:0,2:0},legs:[{
+  ...busLeg,price:5,route_geojson:JSON.stringify({type:'LineString',coordinates:[
+    [23.7,38],[23.72,38.02],[23.75,38.05]]})
+}]});
+assert.equal(mixedBus.geometry.stationGroups(mixedStops,[{...busLeg,price:5}],{1:0,2:0}).length,1,
+  'Bus leg combines mixed station labels at equal route cost (0 = 0)');
+assert.equal(mixedBus.calls.polygons.length,2,
+  'Panel F: bus hub ↔ ferry port makes ONE outer union and ONE normal tier');
+assert.ok(mixedBus.calls.polygons[0].points.every((p,i,ring=mixedBus.calls.polygons[0].points)=>{
+  const q=ring[(i+1)%ring.length];
+  const midpoint=[(p[0]+q[0])/2,(p[1]+q[1])/2];
+  return !(polygonContains(midpoint,firstBlob)&&polygonContains(midpoint,secondBlob));
+}), 'Mixed-label station union has NO buried boundary arcs');
+await new Promise(resolve=>setImmediate(resolve));
+const mixedRoad=mixedBus.calls.lines.filter(l=>l.options.className==='grtrans-land-road');
+assert.equal(mixedRoad.length,1,'Mixed-label linked stations keep ONE continuous road');
+assert.equal(mixedRoad[0].points.length,3,'Recorded road geometry remains authoritative');
+assert.equal(mixedRoad[0].options.weight,3.5);
+assert.ok(mixedRoad[0].options.opacity>.9,'Road stays stronger than area fill');
 const zeroPrice=fixture({stations:[a,b],cost:{1:0,2:0},legs:[{
   ...busLeg,price:0}]});
 assert.ok(!zeroPrice.calls.lines.some(l=>l.options.className==='grtrans-zigzag-stitch'),
@@ -287,6 +315,10 @@ const seaPatch=dynamic.calls.polygons[0];
 assert.equal(seaPatch.options.fillOpacity,.24);
 assert.equal(seaPatch.options.fill,true);
 assert.equal(seaPatch.options.pane,'grtrans-coverage-patches');
+assert.equal(seaPatch.options.stroke,false,
+  'Panel H: dynamic sea must have NO general outline/frame');
+assert.equal(seaPatch.options.weight,0);
+assert.equal(seaPatch.options.opacity,0);
 assert.ok(seaPatch.points.length>100 && !Array.isArray(seaPatch.points[0][0]),
   'Sea is ONE uncut outer polygon, not a punched-out ring or polygon with holes');
 assert.ok(dynamic.calls.polygons.slice(1).every(p=>p.options.fillOpacity<1),

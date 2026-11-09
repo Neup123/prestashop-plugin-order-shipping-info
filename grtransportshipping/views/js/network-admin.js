@@ -84,8 +84,8 @@
   const palette = zones.map((zone, index) =>
     'hsl(' + ((17 + 360 * index / zones.length) % 360).toFixed(5) + ' 67% 42%)');
   const zoneColors = new Map(zones.map((zone, index) => [zone.key, palette[index]]));
-  // Only a priced, station-bound leg between overlapping compatible stations
-  // establishes shared service. Identical station-type labels alone do not.
+  // Only the priced fixed-route LINK (not station-type labels) determines
+  // whether equal-cost, overlapping stations share a service silhouette.
   const stationGroups = geometry.stationGroups(data.stations, data.legs, costs);
   const groupsByStation = new Map();
   stationGroups.forEach(group => {
@@ -168,8 +168,8 @@
     const pieces = geometry.stitches(from, to, lane, resolution);
     for (const endpoints of pieces) {
       paintSeam(L.polyline(endpoints, {
-        color: '#637384', weight: 1.25,
-        opacity: stale ? 0.22 : 0.55, dashArray: '2 5', interactive: false,
+        color: '#637384', weight: 3,
+        opacity: stale ? 0.35 : 0.9, dashArray: '3 2', interactive: false,
         className: 'grtrans-zigzag-stitch'
       }));
       const target = paintSeam(L.polyline(endpoints, {
@@ -566,8 +566,10 @@
     const c = zoneColors.get('area:' + leg.id_leg);
     const style = {
       pane: 'grtrans-coverage-patches', fill: true, className: 'grtrans-organic-patch',
+      // The dynamic sea is a fill, not a second offset coastline/frame.
+      // Only a linked station island receives an explicit perimeter stitch.
       fillColor: c, color: c, fillOpacity: leg._stale ? 0.1 : 0.24,
-      opacity: leg._stale ? 0.2 : 0.5, weight: 1
+      stroke: false, opacity: 0, weight: 0
     };
     const owner = 'area:' + leg.id_leg;
     const layer = L.polygon(geometry.leafletPaths(geometry.patchPaths(areaPatch(leg))),
