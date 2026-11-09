@@ -60,8 +60,9 @@
   // Stable IDs make the legend independent of painting order and price changes.
   const zones = data.stations.map(s => ({
     key: 'station:' + s.id_station, name: s.name
-  })).concat(data.legs.filter(leg => !leg.to_station_id &&
-    leg.area_lat !== null && leg.area_lng !== null).map(leg => ({
+  })).concat(data.legs.filter(leg => leg.to_station_id == null &&
+    leg.area_lat != null && leg.area_lng != null &&
+    Number(leg.area_radius_km) > 0 && stations.has(Number(leg.from_station_id))).map(leg => ({
     key: 'area:' + leg.id_leg, name: leg.area_name || 'Direct area #' + leg.id_leg
   }))).sort((a, b) => a.key.localeCompare(b.key));
   const palette = zones.map((zone, index) =>
