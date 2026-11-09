@@ -64,6 +64,62 @@
     if (!(Number(record.radiusKm) > 0)) return [];
     return [[patchContour(record)]];
   };
+  // Tier model: outer reach is the source's complete coverage shape;
+  // inner reach is the intersection of that shape with the station's normal
+  // walking radius. Polygon/isochrone holes remain holes. No invented reach.
+  const clipConvex = (subject, clip) => {
+    const ring = subject.slice();
+    if (ring.length>1 && Math.abs(ring[0][0]-ring[ring.length-1][0])<EPS &&
+        Math.abs(ring[0][1]-ring[ring.length-1][1])<EPS) ring.pop();
+    const signed = clip.reduce((sum,p,i)=>{
+      const q=clip[(i+1)%clip.length];
+      return sum+p[1]*q[0]-q[1]*p[0];
+    },0);
+    const sign = signed < 0 ? -1 : 1;
+    let output=ring;
+    for (let i=0;i<clip.length;i++) {
+      const p=clip[i],q=clip[(i+1)%clip.length];
+      const edge=(v)=>sign*((q[1]-p[1])*(v[0]-p[0])-
+        (q[0]-p[0])*(v[1]-p[1]));
+      const insideClip=v=>edge(v)>=-1e-10;
+      const crossAt=(a,b)=>{
+        const fa=edge(a),fb=edge(b);
+        const t=Math.abs(fa-fb)<EPS?0:fa/(fa-fb);
+        return [a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t];
+      };
+      const input=output;
+      output=[];
+      if(!input.length)break;
+      for(let j=0;j<input.length;j++) {
+        const a=input[j],z=input[(j+1)%input.length];
+        const ai=insideClip(a),zi=insideClip(z);
+        if(ai&&zi)output.push(z);
+        else if(ai&&!zi)output.push(crossAt(a,z));
+        else if(!ai&&zi)output.push(crossAt(a,z),z);
+      }
+    }
+    return output.length>=3?output:[];
+  };
+  const coverageTiers = (record, innerRadiusKm) => {
+    const outer=patchPaths(record);
+    const tiers=[{kind:'far',paths:outer,fillOpacity:0.16,outline:true}];
+    const inner=Number(innerRadiusKm)||0;
+    if (inner<=0 || !outer.length) return tiers;
+    const clip=patchContour({lat:record.lat,lng:record.lng,
+      radiusKm:inner,key:record.key}).slice(0,-0||undefined);
+    const normal=[];
+    for (const part of outer) {
+      if(!part.length)continue;
+      const ring=clipConvex(part[0],clip);
+      if(ring.length<3)continue;
+      const holes=part.slice(1).map(hole=>clipConvex(hole,clip))
+        .filter(hole=>hole.length>=3);
+      normal.push([ring].concat(holes));
+    }
+    if(normal.length) tiers.push({kind:'normal',paths:normal,
+      fillOpacity:0.42,outline:false});
+    return tiers;
+  };
   const leafletPaths = paths => paths.length === 1
     ? (paths[0].length === 1 ? paths[0][0] : paths[0]) : paths;
   // Radius-based walking reach is a true circle, as in panel A. There is no
@@ -444,7 +500,7 @@
     }catch(_){return [];}
   };
   global.GrtransCoverage = Object.freeze({
-    kind, patchContour, patchPaths, leafletPaths, overlaps, stationGroups, unionContours,
+    kind, patchContour, patchPaths, leafletPaths, coverageTiers, overlaps, stationGroups, unionContours,
     zigzagSeam, stitches, airArc, seaLine, routePaths,
     containsPatch, islandStitchRings
   });
