@@ -115,7 +115,29 @@
     }
     return seam;
   };
+  const previewButton = document.getElementById('grtrans-map-preview');
+  const clearButton = document.getElementById('grtrans-map-preview-clear');
+  const previewStatus = document.getElementById('grtrans-preview-status');
+  let previewSelecting = false;
+  let previewGeneration = 0;
+  let previewPoints = [];
+  let previewMarkers = [];
+  let previewLayers = [];
+  const previewMessage = message => { if (previewStatus) previewStatus.textContent = message; };
+  const clearPreview = () => {
+    previewGeneration++;
+    previewMarkers.forEach(layer => map.removeLayer(layer));
+    previewLayers.forEach(layer => map.removeLayer(layer));
+    previewMarkers = [];
+    previewLayers = [];
+    previewPoints = [];
+    previewSelecting = false;
+  };
   const select = station => {
+    if (previewSelecting) {
+      addPreviewPin({lat: Number(station.lat), lng: Number(station.lng)});
+      return;
+    }
     if (linking && chosen && Number(chosen.id_station) !== Number(station.id_station)) {
       document.getElementById('grtrans-link-from').value = chosen.id_station;
       document.getElementById('grtrans-link-to').value = station.id_station;
@@ -148,6 +170,167 @@
       + Math.cos(a[0] * r) * Math.cos(b[0] * r) * Math.sin(dLng / 2) ** 2;
     return 6371.0088 * 2 * Math.asin(Math.sqrt(Math.min(1, x)));
   };
+  // Preview is read-only. It uses the persisted directed leg/transfer graph
+  // without changing prices, quote eligibility, forms or stored network data.
+  const nearestCoveredStation = p => {
+    let best = null, bestKm = Infinity;
+    for (const station of data.stations) {
+      const km = distance([p.lat, p.lng], point(station));
+      if (km <= Number(station.outer_radius_km) && km < bestKm) {
+        best = station; bestKm = km;
+      }
+    }
+    return best;
+  };
+  const previewPath = (start, finish) => {
+    const adjacency = new Map();
+    const add = edge => {
+      if (!adjacency.has(edge.from)) adjacency.set(edge.from, []);
+      adjacency.get(edge.from).push(edge);
+    };
+    for (const leg of data.legs) {
+      const from = Number(leg.from_station_id), to = Number(leg.to_station_id);
+      if (!stations.has(from) || !stations.has(to) || Number(leg.price) < 0) continue;
+      add({from, to, mode: leg.mode, price: Number(leg.price)});
+      if (Number(leg.bidirectional) === 1) {
+        add({from: to, to: from, mode: leg.mode, price: Number(leg.price)});
+      }
+    }
+    for (const transfer of data.transfers) {
+      const from = Number(transfer.from_station_id), to = Number(transfer.to_station_id);
+      if (!stations.has(from) || !stations.has(to) || Number(transfer.price) < 0) continue;
+      add({from, to, mode: transfer.connection_type, price: Number(transfer.price)});
+    }
+    const cost = new Map([[Number(start.id_station), 0]]);
+    const parent = new Map();
+    const pending = new Set(stations.keys());
+    while (pending.size) {
+      let current = null, best = Infinity;
+      for (const id of pending) {
+        if ((cost.get(id) ?? Infinity) < best) {
+          current = id; best = cost.get(id);
+        }
+      }
+      if (current === null || current === Number(finish.id_station)) break;
+      pending.delete(current);
+      for (const edge of adjacency.get(current) || []) {
+        const candidate = best + edge.price;
+        if (pending.has(edge.to) && candidate + 0.000001 < (cost.get(edge.to) ?? Infinity)) {
+          cost.set(edge.to, candidate); parent.set(edge.to, edge);
+        }
+      }
+    }
+    const steps = [];
+    let cursor = Number(finish.id_station);
+    while (cursor !== Number(start.id_station)) {
+      const edge = parent.get(cursor);
+      if (!edge) throw new Error('No directed network connection between the selected coverage zones.');
+      steps.unshift(edge);
+      cursor = edge.from;
+      if (steps.length > stations.size) throw new Error('Invalid network route cycle.');
+    }
+    return steps;
+  };
+  const roadGeometry = async (a, b) => {
+    const coords = p => Number(p.lng).toFixed(7) + ',' + Number(p.lat).toFixed(7);
+    // The OSRM demo service is used only after an explicit admin preview.
+    const url = 'https://router.project-osrm.org/route/v1/driving/'
+      + coords(a) + ';' + coords(b) + '?overview=full&geometries=geojson';
+    const controller = typeof AbortController === 'function' ? new AbortController() : null;
+    const timer = controller ? setTimeout(() => controller.abort(), 12000) : null;
+    try {
+      const response = await fetch(url, controller ? {signal: controller.signal} : {});
+      if (!response.ok) throw new Error('OSRM returned HTTP ' + response.status);
+      const payload = await response.json();
+      const coordinates = payload.routes && payload.routes[0] && payload.routes[0].geometry
+        && payload.routes[0].geometry.coordinates;
+      if (payload.code !== 'Ok' || !Array.isArray(coordinates) || coordinates.length < 2) {
+        throw new Error('OSRM has no road route for this segment');
+      }
+      return coordinates.map(p => [p[1], p[0]]);
+    } finally {
+      if (timer !== null) clearTimeout(timer);
+    }
+  };
+  const previewGeometry = (a, b, mode) => {
+    if (mode === 'ferry') return Promise.resolve([ [a.lat, a.lng], [b.lat, b.lng] ]);
+    if (mode === 'flight') return Promise.reject(new Error(
+      'Flight path cannot be previewed: no air-route geometry is stored.'));
+    // Driving geometry follows roads; no stored bus schedules, pedestrian paths
+    // or stop-by-stop itineraries exist in the network model.
+    return roadGeometry(a, b);
+  };
+  async function renderPreview(generation) {
+    const [a, b] = previewPoints;
+    const from = nearestCoveredStation(a), to = nearestCoveredStation(b);
+    if (!from || !to) throw new Error(
+      'A pin is outside every station coverage radius. No network route can be previewed.');
+    const path = previewPath(from, to);
+    const pieces = [];
+    const append = async (p, q, mode) => {
+      if (distance([p.lat,p.lng],[q.lat,q.lng]) < 0.005) return;
+      const points = await previewGeometry(p, q, mode);
+      pieces.push({points, mode});
+    };
+    const asPoint = station => ({lat:Number(station.lat), lng:Number(station.lng)});
+    if (Number(from.id_station) === Number(to.id_station)) {
+      await append(a, b, 'bus');
+    } else {
+      await append(a, asPoint(from), 'bus');
+      for (const edge of path) {
+        await append(asPoint(stations.get(edge.from)), asPoint(stations.get(edge.to)), edge.mode);
+      }
+      await append(asPoint(to), b, 'bus');
+    }
+    if (generation !== previewGeneration) return; // Ignore an obsolete preview response.
+    for (const piece of pieces) {
+      const ferry = piece.mode === 'ferry';
+      const layer = L.polyline(piece.points, {
+        color: ferry ? '#138799' : '#2259b5',
+        weight: 5, opacity: 0.95, dashArray: ferry ? '10 5' : null
+      }).addTo(map);
+      previewLayers.push(layer);
+    }
+    if (pieces.length) map.fitBounds(pieces.flatMap(piece => piece.points), {
+      padding: [25,25], maxZoom: 12
+    });
+    previewMessage('Route preview ready: ' + path.length + ' stored network legs. '
+      + 'Roads: OSRM driving geometry; ferries: direct port-to-port segments. '
+      + 'This is not a timetable or pedestrian itinerary.');
+  }
+  function addPreviewPin(latlng) {
+    if (!previewSelecting || previewPoints.length >= 2) return;
+    previewPoints.push({lat:Number(latlng.lat),lng:Number(latlng.lng)});
+    const marker = L.marker(latlng, {
+      title: 'Preview point ' + previewPoints.length,
+      alt: 'Preview point ' + previewPoints.length,
+      icon: new L.Icon.Default({className:'grtrans-preview-pin'})
+    }).addTo(map);
+    previewMarkers.push(marker);
+    if (previewPoints.length === 1) {
+      previewMessage('Starting pin set. Choose the destination point or station.');
+      return;
+    }
+    previewSelecting = false;
+    const generation = ++previewGeneration;
+    previewMessage('Computing routed preview…');
+    renderPreview(generation).catch(error => {
+      if (generation === previewGeneration) {
+        previewMessage('Route preview unavailable: ' + error.message + ' No straight-line fallback.');
+      }
+    });
+  }
+  if (previewButton && clearButton) {
+    previewButton.addEventListener('click', () => {
+      clearPreview();
+      previewSelecting = true;
+      previewMessage('Choose a starting point on the map or click a station pin.');
+    });
+    clearButton.addEventListener('click', () => {
+      clearPreview();
+      previewMessage('Preview cleared. Coverage patches remain visible.');
+    });
+  }
   selectedButton.addEventListener('click', () => {
     if (!chosen) return;
     linking = true;
@@ -182,7 +365,10 @@
       L.DomEvent.stopPropagation(event);
       select(s);
     }));
-    L.marker(pos, { title: s.name, alt: s.name })
+    L.marker(pos, { title: s.name, alt: s.name,
+      ...(Number(s.is_origin_hub) === 1 ? {
+        icon: new L.Icon.Default({className: 'grtrans-origin-marker'})
+      } : {}) })
       .addTo(map).bindTooltip(safeTooltip(title)).on('click', event => {
         L.DomEvent.stopPropagation(event);
         select(s);
@@ -216,6 +402,7 @@
       transfer._stale);
   });
   map.on('click', event => {
+    if (previewSelecting) { addPreviewPin(event.latlng); return; }
     const lat = document.getElementById('grtrans-network-field-lat');
     const lng = document.getElementById('grtrans-network-field-lng');
     if (lat && lng) {
