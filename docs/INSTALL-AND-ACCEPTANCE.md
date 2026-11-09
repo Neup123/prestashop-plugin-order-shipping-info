@@ -199,3 +199,17 @@ Pure regression checks are in `tests/network_timing_test.php` and the PHP 8.2/8.
 5. Confirm historical order snapshots and checkout prices are unaffected by the visualization settings.
 
 `tests/network_freshness_test.php` covers missing/old/fresh timestamps, calendar-month threshold, turn-off, and explicit confirmation without changing other data. Browser appearance verification remains a separate real-Shop acceptance step.
+
+## Optional branch stock / cart origins (0.10.0; #78)
+
+1. Upgrade the module to 0.10.0. Verify the new `grtrans_branch` and `grtrans_branch_stock` tables and their indexes; existing PrestaShop `stock_available` and existing route/order data must remain unchanged. Reinstall/upgrade retry is safe and creates **zero** branches by default.
+2. Before configuring branches, test the same known network cart/address; its cheapest origin and price remain exactly as before.
+3. Mark two station records as origin hubs. Create *Athens* and *Thessaloniki* branches, each linked to one hub, in the module's Branches admin editor. Both must belong to the **current shop**. A non-hub station ID must be rejected.
+4. Enter product A quantity 5 in Athens and product B combination X quantity 3 in Thessaloniki, both under Branch Stock. Verify new stock entries are visible via `GET ?entity=branch_stock` and CSV, and that the read-token cannot modify them.
+5. Quote A-only and B-only carts. The selected path must begin at the corresponding branch station and the computed amounts should differ when the two hub paths have different prices. The admin simulator using the same **Cart ID** must return the same origin/price. The placed order snapshot must include branch ID/name.
+6. Quote a cart with A+B where no single branch has both. The network carrier must not offer a route, but manually priced flat Routes/other carriers remain unaffected. No automatic split shipments.
+7. Verify exact `id_product_attribute`, not the product's combined stock: a different combination or insufficient quantity must make the branch ineligible. Changing the cart's items or quantities must invalidate its old pinned quote fingerprint.
+8. In a second shop under the same PrestaShop installation, confirm the first shop's branches/quantities are invisible and that empty branch configuration retains the availability-blind origin model. The shared stations/legs themselves remain installation-wide.
+9. Use the JSON bulk API to import a branch with `client_ref` and a stock row using `branch_ref`; verify all-or-nothing handling of an invalid row, including cross-shop record IDs. Confirm branch inventory is a separate record system and is **not** deducted by PrestaShop core on sale.
+
+The pure regression suite `tests/network_branch_test.php` exercises distinct products/combinations, full-cart eligibility, changing cheapest origin, no splits, fallback and simulator parity. Additional real PrestaShop 9.2 rig tests are required for admin forms/API/whole-cart checkout and multistore isolation.
