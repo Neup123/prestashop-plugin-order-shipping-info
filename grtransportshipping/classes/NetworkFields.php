@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/NetworkSettings.php';
+require_once __DIR__ . '/NetworkGeometry.php';
 /**
  * Shared network-data contract for API, map editor, importer and quote engine.
  * Prices are EUR. Coordinates are WGS84, radii are kilometres.
@@ -19,6 +20,8 @@ final class GrTransportNetworkFields
                     'address_text'=>['text',500], 'lat'=>['latitude'], 'lng'=>['longitude'],
                     'inner_radius_km'=>['range',0,GrTransportNetworkSettings::get('max_coverage_km')], 'outer_radius_km'=>['range',0,GrTransportNetworkSettings::get('max_coverage_km')],
                     'is_origin_hub'=>['bool'],
+                    'coverage_kind'=>['choice',['radius','postal_polygon','walking_isochrone']],
+                    'coverage_geojson'=>['geojson_polygon'],
                 ];
             case 'legs':
                 return [
@@ -35,6 +38,9 @@ final class GrTransportNetworkFields
                     'transit_max_hours'=>['range',0,GrTransportNetworkSettings::get('max_leg_hours')],
                     'area_name'=>['text',190], 'area_lat'=>['nullable_latitude'],
                     'area_lng'=>['nullable_longitude'], 'area_radius_km'=>['range',0,GrTransportNetworkSettings::get('max_coverage_km')],
+                    'area_coverage_kind'=>['choice',['radius','postal_polygon','walking_isochrone']],
+                    'area_coverage_geojson'=>['geojson_polygon'],
+                    'route_geojson'=>['geojson_line'],
                 ];
             case 'branches':
                 return [
@@ -61,6 +67,7 @@ final class GrTransportNetworkFields
                 'name'=>'', 'type'=>'bus', 'address_text'=>'', 'lat'=>null, 'lng'=>null,
                 'inner_radius_km'=>GrTransportNetworkSettings::get('station_inner_km'),
                 'outer_radius_km'=>GrTransportNetworkSettings::get('station_outer_km'), 'is_origin_hub'=>0,
+                'coverage_kind'=>'radius','coverage_geojson'=>'',
             ];
             case 'legs': return [
                 'from_station_id'=>0, 'to_station_id'=>null, 'mode'=>'bus',
@@ -71,6 +78,7 @@ final class GrTransportNetworkFields
                 'lead_hours'=>0, 'preparation_hours'=>0,
                 'transit_min_hours'=>0, 'transit_max_hours'=>0,
                 'area_name'=>'', 'area_lat'=>null, 'area_lng'=>null, 'area_radius_km'=>0,
+                'area_coverage_kind'=>'radius','area_coverage_geojson'=>'','route_geojson'=>'',
             ];
             case 'branches': return ['name'=>'', 'origin_station_id'=>0];
             case 'branch_stock': return [
@@ -97,7 +105,10 @@ final class GrTransportNetworkFields
             }
             $value=$input[$key];
             $type=$spec[0];
-            if ($type==='text') {
+            if ($type==='geojson_polygon' || $type==='geojson_line') {
+                $output[$key]=GrTransportNetworkGeometry::normalize($value,
+                    $type==='geojson_polygon' ? 'polygon' : 'line');
+            } elseif ($type==='text') {
                 if (!is_string($value) && !is_numeric($value)) throw new InvalidArgumentException('Invalid ' . $key);
                 $text=trim((string)$value);
                 $length=function_exists('mb_strlen') ? mb_strlen($text,'UTF-8') : strlen($text);
@@ -151,10 +162,16 @@ final class GrTransportNetworkFields
             if ($output['name']==='' || $output['lat']===null || $output['lng']===null) {
                 throw new InvalidArgumentException('Station name and map coordinates are required');
             }
+            if ($output['coverage_kind']!=='radius' && $output['coverage_geojson']==='') {
+                throw new InvalidArgumentException('Postal/isochrone coverage requires a real GeoJSON polygon');
+            }
             if ($output['outer_radius_km']<$output['inner_radius_km'] || $output['outer_radius_km']<=0) {
                 throw new InvalidArgumentException('Outer station radius must be positive and at least the inner radius');
             }
         } elseif ($entity==='legs') {
+            if ($output['area_coverage_kind']!=='radius' && $output['area_coverage_geojson']==='') {
+                throw new InvalidArgumentException('Direct-area postal/isochrone coverage requires a real GeoJSON polygon');
+            }
             if ($output['transit_min_hours']>0 && $output['transit_max_hours']<$output['transit_min_hours']
                 || ($output['transit_min_hours']==0 && $output['transit_max_hours']>0)
                 || ($output['transit_min_hours']>0 && $output['transit_max_hours']==0)) {
@@ -165,10 +182,12 @@ final class GrTransportNetworkFields
             }
             if ($output['to_station_id']!==null) {
                 if ($output['to_station_id']===$output['from_station_id']) throw new InvalidArgumentException('A leg must connect distinct stations');
-                if ($output['area_lat']!==null || $output['area_lng']!==null || $output['area_radius_km']>0) {
+                if ($output['area_lat']!==null || $output['area_lng']!==null || $output['area_radius_km']>0 ||
+                    $output['area_coverage_geojson']!=='' || $output['area_coverage_kind']!=='radius') {
                     throw new InvalidArgumentException('A station leg cannot also be a direct area service');
                 }
-            } elseif ($output['area_lat']===null || $output['area_lng']===null || $output['area_radius_km']<=0) {
+            } elseif ($output['area_lat']===null || $output['area_lng']===null ||
+                ($output['area_radius_km']<=0 && $output['area_coverage_kind']==='radius')) {
                 throw new InvalidArgumentException('Direct service requires area centre and coverage radius');
             }
         } elseif ($entity==='branches') {
