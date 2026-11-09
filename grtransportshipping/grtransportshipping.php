@@ -301,7 +301,8 @@ class Grtransportshipping extends CarrierModule
                 ? '<strong>' . $this->escape($this->l('EXTENDED PICKUP AREA — LONG WALK')) . '</strong>'
                 : '')
             . '<p>' . $this->escape($row['notice'] ?? '') . '</p>'
-            . (is_array($row['delivery_window_hours'] ?? null)
+            . (GrTransportNetworkSettings::get('show_delivery_time')>=0.5
+                && is_array($row['delivery_window_hours'] ?? null)
                 ? '<p><strong>' . $this->escape($this->l('Estimated delivery window:')) . '</strong> '
                     . $this->escape(number_format((float)$row['delivery_window_hours']['min_hours'],2))
                     . '–' . $this->escape(number_format((float)$row['delivery_window_hours']['max_hours'],2))
