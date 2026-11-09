@@ -10,6 +10,7 @@ require_once __DIR__ . '/classes/CarrierLifecycle.php';
 require_once __DIR__ . '/classes/RouteRepository.php';
 require_once __DIR__ . '/classes/NetworkAdmin.php';
 require_once __DIR__ . '/classes/NetworkQuote.php';
+require_once __DIR__ . '/classes/BranchAvailability.php';
 require_once __DIR__ . '/classes/NetworkSimulator.php';
 require_once __DIR__ . '/classes/EstimateSettlement.php';
 
@@ -40,6 +41,7 @@ class Grtransportshipping extends CarrierModule
         'draft_only' => 'The matching transport route is a draft and is not for sale.',
         'suspended' => 'This destination is suspended; broader regional prices are not applied.',
         'ambiguous' => 'Conflicting transport routes require an administrator to resolve them.',
+        'requires_cart' => 'Network pricing requires cart items to verify available stock at a dispatch branch.',
     ];
 
     private array $requestQuotes = [];
@@ -48,7 +50,7 @@ class Grtransportshipping extends CarrierModule
     {
         $this->name = 'grtransportshipping';
         $this->tab = 'shipping_logistics';
-        $this->version = '0.9.0';
+        $this->version = '0.10.0';
         $this->author = 'Neup123';
         $this->need_instance = 0;
         $this->bootstrap = true;
@@ -265,7 +267,11 @@ class Grtransportshipping extends CarrierModule
     {
         $edges=$quote['network_path']['edges'] ?? [];
         if (!is_array($edges) || !$edges) return '';
-        $out='<section class="grtrans-dispatch-path"><h4>Transport journey at order time</h4><ol>';
+        $out='<section class="grtrans-dispatch-path"><h4>Transport journey at order time</h4>'
+            . (!empty($quote['branch_name']) ? '<p>Dispatch branch: '
+                . $this->escape($quote['branch_name']) . ' (origin station #'
+                . (int)($quote['origin_hub_id'] ?? 0) . ')</p>' : '')
+            . '<ol>';
         foreach ($edges as $edge) {
             if (!is_array($edge)) continue;
             $description=(string)($edge['kind'] ?? 'leg') . ': '
@@ -291,6 +297,9 @@ class Grtransportshipping extends CarrierModule
         }
         $heading = !empty($row['pickup_only']) ? self::NOTICE_TEXT['pickup'] : self::NOTICE_TEXT['arrangement'];
         $body = '<strong>' . $this->escape($this->l($heading)) . '</strong>'
+            . (!empty($row['branch_name']) ? '<p><strong>'
+                . $this->escape($this->l('Dispatch branch:'))
+                . '</strong> ' . $this->escape($row['branch_name']) . '</p>' : '')
             . ($context === 'admin'
                 ? '<p>' . $this->escape($this->l(self::NOTICE_TEXT['mode']))
                     . $this->escape($row['mode'] ?? '') . '</p>'
@@ -378,11 +387,20 @@ class Grtransportshipping extends CarrierModule
         if (!is_array($routes)) {
             throw new RuntimeException('Transport route lookup failed');
         }
-        $result = GrTransportNetworkQuote::resolve($routes,
-            $location === null ? [] : GrTransportNetworkRepository::snapshot(),
+        $network=$location === null ? [] : GrTransportNetworkRepository::snapshot();
+        $origins=null;
+        $branchByOrigin=[];
+        if (!empty($network['branches'])) {
+            $eligible=GrTransportBranchAvailability::eligible(
+                $cart,$network['branches'],$network['branch_stock'] ?? []
+            );
+            $origins=$eligible['origin_ids'];
+            $branchByOrigin=$eligible['by_origin'];
+        }
+        $result = GrTransportNetworkQuote::resolve($routes,$network,
             (string) $address->postcode, (string) $address->city, $location,
-            null, (string) Configuration::get('GRTRANS_EXTENDED_NOTICE'),
-            GrTransportNetworkTariff::cartMeasurements($cart));
+            $origins, (string) Configuration::get('GRTRANS_EXTENDED_NOTICE'),
+            GrTransportNetworkTariff::cartMeasurements($cart),$branchByOrigin);
         if ($result['status'] === 'quoted') {
             // A CarrierModule overrides PrestaShop's precomputed shipping_cost;
             // persist the eligible shop handling fee with the quote so charge,
@@ -474,9 +492,16 @@ class Grtransportshipping extends CarrierModule
             && !in_array($result['status'], ['ambiguous', 'suspended'], true)) {
             $location = GrTransportNetworkQuote::validLocation($pin);
             if ($location !== null) {
-                $network = GrTransportNetworkQuote::resolve([], GrTransportNetworkRepository::snapshot(),
-                    '', '', $location, null, (string) Configuration::get('GRTRANS_EXTENDED_NOTICE'));
-                if ($network['status'] === 'quoted') $result = $network;
+                $snapshot=GrTransportNetworkRepository::snapshot();
+                if (!empty($snapshot['branches'])) {
+                    // A public quote page has no cart inventory. Never offer a
+                    // branch-specific network price without checking all items.
+                    $result=['status'=>'requires_cart','quote'=>null];
+                } else {
+                    $network = GrTransportNetworkQuote::resolve([], $snapshot,
+                        '', '', $location, null, (string) Configuration::get('GRTRANS_EXTENDED_NOTICE'));
+                    if ($network['status'] === 'quoted') $result = $network;
+                }
             }
         }
         if ($result['quote']) {
