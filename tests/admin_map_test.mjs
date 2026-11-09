@@ -114,7 +114,8 @@ assert.equal(postal.calls.polygons[0].points.length,5,
 assert.equal(postal.calls.polygons[0].points[0][1],23.6);
 const iso=fixture({stations:[{...station(1,'Walking routes',38,23.6),
   coverage_kind:'walking_isochrone',coverage_geojson:isochrone}]});
-assert.equal(iso.calls.polygons.length,2);
+assert.equal(iso.calls.polygons.length,1,
+  'A distant isochrone not intersecting the station inner reach has only its outer footprint');
 assert.equal(iso.calls.polygons[0].points.length,5,'Isochrone polygon not a circle');
 const empty=fixture({});
 assert.equal(empty.calls.fits.length,0);
@@ -138,7 +139,8 @@ assert.equal(postal.calls.polygons[0].points.length,5,
   'Recorded postal polygon remains the true outer geometry');
 assert.ok(postal.calls.polygons[1].points.length >= 3,
   'Inner postal tier is clipped to actual polygon reach, not an invented full disc');
-assert.ok(iso.calls.polygons[0].options.fillOpacity < iso.calls.polygons[1].options.fillOpacity);
+assert.equal(iso.calls.polygons[0].options.className.includes('tier-far'),true,
+  'An isochrone outside normal walking radius remains only a far-zone polygon');
 console.log('Panel I: normal strong inner coverage, lighter far outer spread, extensible tier model passed');
 
 
