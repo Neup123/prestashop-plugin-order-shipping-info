@@ -27,5 +27,6 @@ function upgrade_module_0_11_0($module)
                 bqSQL($field) . '` ' . $definition)) return false;
         }
     }
-    return true;
+    // Existing shops must also load the checkout confirmation UI.
+    return $module->registerHook('displayHeader');
 }
