@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/NetworkApi.php';
 require_once __DIR__ . '/NetworkGraph.php';
+require_once __DIR__ . '/NetworkFreshness.php';
 
 /** Operator interface over the exact NetworkRepository/NetworkApi contract. */
 final class GrTransportNetworkAdmin
@@ -52,6 +53,8 @@ final class GrTransportNetworkAdmin
                     if (str_starts_with($definition[0],'nullable_') && $data[$key]==='') $data[$key]=null;
                 }
                 GrTransportNetworkRepository::save($entity,$data,(int)$id);
+            } elseif ($action==='verify') {
+                GrTransportNetworkRepository::confirm($entity,(int)$id);
             } elseif ($action==='link') {
                 GrTransportNetworkRepository::save('transfers',[
                     'from_station_id'=>$_POST['from_station_id'] ?? null,
@@ -70,6 +73,8 @@ final class GrTransportNetworkAdmin
     public static function render($module): string
     {
         $data=GrTransportNetworkRepository::snapshot();
+        $data['legs']=GrTransportNetworkFreshness::mapRecords($data['legs']);
+        $data['transfers']=GrTransportNetworkFreshness::mapRecords($data['transfers']);
         $path=Context::getContext()->link->getAdminLink('AdminModules',true,[],[
             'configure'=>$module->name,'module_name'=>$module->name,
         ]);
@@ -125,11 +130,15 @@ final class GrTransportNetworkAdmin
                 . '<div class="table-responsive"><table class="table table-striped"><thead><tr><th>ID</th>';
             $names=array_keys(GrTransportNetworkFields::fields($collection));
             foreach ($names as $name) $out.='<th>' . self::esc(str_replace('_',' ',$name)) . '</th>';
+            if ($collection==='legs' || $collection==='transfers') $out.='<th>Last verified (UTC)</th>';
             $out.='<th>Actions</th></tr></thead><tbody>';
             foreach ($data[$collection] as $record) {
                 $id=(int)$record[GrTransportNetworkFields::IDS[$collection]];
                 $out.='<tr><td>' . $id . '</td>';
                 foreach ($names as $name) $out.='<td>' . self::esc($record[$name] ?? '—') . '</td>';
+                if ($collection==='legs' || $collection==='transfers') {
+                    $out.='<td>' . self::esc($record['verified_at'] ?: 'Not yet verified') . '</td>';
+                }
                 $out.='<td><a class="btn btn-default btn-sm" href="' . $url . '&amp;network_entity='
                     . $collection . '&amp;network_edit=' . $id . '#grtrans-network-editor">Edit</a>'
                     . '<form method="post" action="' . $url . '#grtrans-network" class="grtrans-network-inline">'
@@ -138,7 +147,14 @@ final class GrTransportNetworkAdmin
                     . '<input type="hidden" name="network_entity" value="' . $collection . '">'
                     . '<input type="hidden" name="network_id" value="' . $id . '">'
                     . '<button class="btn btn-danger btn-sm" onclick="return confirm(\'Delete network record?\')">Delete</button>'
-                    . '</form></td></tr>';
+                    . '</form>'
+                    . (($collection==='legs' || $collection==='transfers')
+                        ? '<form method="post" action="' . $url . '#grtrans-network" class="grtrans-network-inline">'
+                            . '<input type="hidden" name="token" value="' . $csrf . '">'
+                            . '<input type="hidden" name="network_entity" value="' . $collection . '">'
+                            . '<input type="hidden" name="network_id" value="' . $id . '">'
+                            . '<button class="btn btn-default btn-sm" type="submit" name="grtrans_network_action" value="verify">Confirm current</button></form>'
+                        : '') . '</td></tr>';
             }
             $out.='</tbody></table></div>';
         }
