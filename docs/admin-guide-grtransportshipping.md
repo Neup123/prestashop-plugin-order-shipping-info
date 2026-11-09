@@ -143,3 +143,25 @@ Existing legacy **Regenerate original pickup snapshot** remains available for pr
 **Do not promise automated payment capture:** the current implementation safely records a verified payment externally, but cannot initiate a second charge through an arbitrary shop payment gateway. To capture the charge inside the shop, a merchant-specific gateway integration and customer authorization flow are required. The exact constraint is recorded in the PR.
 
 Review [installation and acceptance](INSTALL-AND-ACCEPTANCE.md) for the test matrix. Tracking/pickup status notifications (#74) remain post-first-release.
+
+## Configurable operating defaults (owner decision, 2026-11-09)
+
+Open **Module Manager → Greek public transport shipping → Configure → Transport network operating defaults**. All settings are initialized automatically on install/upgrade; the defaults apply even if an older installation has no configuration row. This is an **operator customization**, not a first-run requirement. Changing a default never rewrites existing stations, pinned checkout quotes or frozen orders.
+
+| Setting / Configuration key | Default | Purpose |
+|---|---:|---|
+| Customer map-pin matching radius · `GRTRANS_PIN_RADIUS_KM` | **25 km** | Public customer map pin chooses the nearest catalogued demo station within the inclusive radius; ties retain catalogue order |
+| New station inner ring · `GRTRANS_STATION_INNER_KM` | **1 km** | Initial inner walking coverage on new station form |
+| New station outer ring · `GRTRANS_STATION_OUTER_KM` | **5 km** | Initial extended-service radius on new station form |
+| Maximum allowed network radius · `GRTRANS_MAX_COVERAGE_KM` | **500 km** | Upper input bound for station/area coverage, not the actual radius of any station |
+| Extra nearby transfer gap · `GRTRANS_NEARBY_GAP_KM` | **0 km** | Free walk link when centres are within the sum of inner radii plus this additional gap; otherwise the operator defines transport type and price |
+| Default estimate low factor · `GRTRANS_DEFAULT_ESTIMATE_LOW` | **0.9** | New estimate leg lower multiplier |
+| Default estimate high factor · `GRTRANS_DEFAULT_ESTIMATE_HIGH` | **1.1** | New estimate leg upper multiplier |
+| Cart quote hold · `GRTRANS_QUOTE_TTL_MIN` | **30 minutes** | Time until an unconsumed quote must be recomputed; previously consumed quotes stay immutable |
+| Weight-unit conversion · `GRTRANS_WEIGHT_TO_KG` | **1** | Number of kilograms per product weight unit, for shops not storing products in kg |
+| Dimension-unit conversion · `GRTRANS_DIMENSION_TO_CM` | **1** | Number of centimetres per product dimension unit; set to 2.54 for inches, 100 for metres |
+| Maximum freight amount · `GRTRANS_MAX_FREIGHT_EUR` | **€100,000** | Operator-adjustable maximum for a leg or separately recorded freight receipt |
+
+The **extended pickup notice** is separately editable, with a built-in safe English message if left blank. Existing PrestaShop **handling fees** use PrestaShop's own carrier/handling settings; there is no duplicated module default to configure. An individual leg's price, transfer fee and an individual station's radii are merchant **record values**, not global defaults.
+
+Technical constants remain fixed: WGS84 latitude/longitude bounds, Haversine Earth radius 6371.0088 km, JSON/CSV request size and 1,000-row import caps, field lengths/DB numeric precision, price-rounding tolerance, and 100-record quote cleanup batches are protocol, resource or correctness safeguards. Visual map opacity/color is presentation, not merchant service policy.
