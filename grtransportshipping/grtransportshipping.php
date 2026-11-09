@@ -48,7 +48,7 @@ class Grtransportshipping extends CarrierModule
     {
         $this->name = 'grtransportshipping';
         $this->tab = 'shipping_logistics';
-        $this->version = '0.7.1';
+        $this->version = '0.8.0';
         $this->author = 'Neup123';
         $this->need_instance = 0;
         $this->bootstrap = true;
@@ -301,6 +301,15 @@ class Grtransportshipping extends CarrierModule
                 ? '<strong>' . $this->escape($this->l('EXTENDED PICKUP AREA — LONG WALK')) . '</strong>'
                 : '')
             . '<p>' . $this->escape($row['notice'] ?? '') . '</p>'
+            . (is_array($row['delivery_window_hours'] ?? null)
+                ? '<p><strong>' . $this->escape($this->l('Estimated delivery window:')) . '</strong> '
+                    . $this->escape(number_format((float)$row['delivery_window_hours']['min_hours'],2))
+                    . '–' . $this->escape(number_format((float)$row['delivery_window_hours']['max_hours'],2))
+                    . ' ' . $this->escape($this->l('hours'))
+                    . (!empty($row['delivery_window_hours']['transfer_time_unknown'])
+                        ? ' (' . $this->escape($this->l('Transfer travel time not included')) . ')' : '')
+                    . '</p>'
+                : '')
             . (!empty($row['estimate'])
                 ? '<p><strong>' . $this->escape($this->l('SHIPPING ESTIMATE — NOT CHARGED AT CHECKOUT'))
                     . '</strong> ' . $this->escape(sprintf(
