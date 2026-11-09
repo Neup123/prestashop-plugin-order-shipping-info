@@ -93,7 +93,8 @@ final class GrTransportNetworkAdmin
         foreach ($route['cost'] as $id=>$amount) {
             if (is_finite($amount)) $cost[(string)$id]=round($amount,2);
         }
-        $mapConfig=json_encode($data+['cost'=>$cost,'nearbyGapKm'=>GrTransportNetworkSettings::get('nearby_gap_km')],JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_THROW_ON_ERROR);
+        $mapData=array_intersect_key($data,array_flip(['stations','legs','transfers']));
+        $mapConfig=json_encode($mapData+['cost'=>$cost,'nearbyGapKm'=>GrTransportNetworkSettings::get('nearby_gap_km')],JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_THROW_ON_ERROR);
         $base=self::esc((_MODULE_DIR_ . $module->name . '/')) . 'views/';
         $out='<section class="panel" id="grtrans-network">'
             . '<h3>Transport network · coverage map</h3>'
@@ -122,11 +123,11 @@ final class GrTransportNetworkAdmin
         $out.='<div class="grtrans-network-toolbar"><strong>Manage:</strong> ';
         foreach (GrTransportNetworkFields::ENTITIES as $choice) {
             $out.='<a class="btn btn-default" href="' . $url . '&amp;network_entity='
-                . $choice . '#grtrans-network-editor">' . ucfirst($choice) . '</a> ';
+                . $choice . '#grtrans-network-editor">' . ucwords(str_replace('_',' ',$choice)) . '</a> ';
         }
         $out.='</div>';
         foreach (GrTransportNetworkFields::ENTITIES as $collection) {
-            $out.='<h4>' . ucfirst($collection) . '</h4>'
+            $out.='<h4>' . ucwords(str_replace('_',' ',$collection)) . '</h4>'
                 . '<div class="table-responsive"><table class="table table-striped"><thead><tr><th>ID</th>';
             $names=array_keys(GrTransportNetworkFields::fields($collection));
             foreach ($names as $name) $out.='<th>' . self::esc(str_replace('_',' ',$name)) . '</th>';
@@ -170,11 +171,16 @@ final class GrTransportNetworkAdmin
             $out.='<div class="form-group"><label for="grtrans-network-field-' . $key . '">'
                 . self::esc(ucfirst(str_replace('_',' ',$key))) . '</label>';
             $value=$values[$key] ?? '';
-            if ($type==='choice' || $type==='bool' || $type==='id' || $type==='nullable_id') {
+            if ($type==='choice' || $type==='bool'
+                || ($type==='id' && $key!=='id_product') || $type==='nullable_id') {
                 $choices=$type==='choice' ? array_combine($definition[1],$definition[1])
                     : ($type==='bool' ? [0=>'No',1=>'Yes'] : []);
                 if ($type==='nullable_id') $choices['']='Direct area (no pickup station)';
-                if ($type==='id' || $type==='nullable_id') {
+                if ($key==='id_branch') {
+                    foreach ($data['branches'] as $branch) {
+                        $choices[(int)$branch['id_branch']]=$branch['name'];
+                    }
+                } elseif ($type==='id' || $type==='nullable_id') {
                     foreach ($data['stations'] as $station) {
                         $choices[(int)$station['id_station']]=$station['name'];
                     }
@@ -190,7 +196,7 @@ final class GrTransportNetworkAdmin
                 $out.='<input class="form-control" id="grtrans-network-field-' . $key . '" name="' . $key . '"'
                     . ' value="' . self::esc($value) . '"'
                     . ($type==='text' ? ' maxlength="' . (int)$definition[1] . '"' : '')
-                    . ($type!=='text' ? ' type="number" step="any"' : '') . '>';
+                    . ($type!=='text' ? ' type="number" step="any" min="0"' : '') . '>';
             }
             $out.='</div>';
         }
