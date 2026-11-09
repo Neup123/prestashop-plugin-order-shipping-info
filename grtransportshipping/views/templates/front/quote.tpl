@@ -24,10 +24,6 @@
         <dd>{$quote_carrier|escape:'htmlall':'UTF-8'}</dd>
         <dt>{l s='Transport price including eligible handling' mod='grtransportshipping'}</dt>
         <dd>{$quote_price|escape:'htmlall':'UTF-8'}</dd>
-        <dt>{l s='Origin station' mod='grtransportshipping'}</dt>
-        <dd>{$quote_route.origin_name|escape:'htmlall':'UTF-8'}</dd>
-        <dt>{l s='Destination station' mod='grtransportshipping'}</dt>
-        <dd>{$quote_route.station_name|escape:'htmlall':'UTF-8'}</dd>
       </dl>
       {$quote_notice nofilter}{* Escaped by the module's shared checkout notice renderer. *}
       <p>{l s='Current route estimate; checkout confirms the final amount. Cart discounts and free shipping are not included here.' mod='grtransportshipping'}</p>
