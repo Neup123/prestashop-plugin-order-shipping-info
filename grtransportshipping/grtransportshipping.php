@@ -47,7 +47,7 @@ class Grtransportshipping extends CarrierModule
     {
         $this->name = 'grtransportshipping';
         $this->tab = 'shipping_logistics';
-        $this->version = '0.6.1';
+        $this->version = '0.7.0';
         $this->author = 'Neup123';
         $this->need_instance = 0;
         $this->bootstrap = true;
@@ -116,7 +116,14 @@ class Grtransportshipping extends CarrierModule
             `price` DECIMAL(12,2) NOT NULL,
             `pickup_only` TINYINT(1) NOT NULL DEFAULT 1,
             `notice` TEXT NULL,
-            `demo` TINYINT(1) NOT NULL DEFAULT 0
+            `demo` TINYINT(1) NOT NULL DEFAULT 0,
+            `route_snapshot` LONGTEXT NULL,
+            `estimate_min` DECIMAL(12,2) NULL,
+            `estimate_max` DECIMAL(12,2) NULL,
+            `estimate_state` VARCHAR(16) NOT NULL DEFAULT 'not_estimate',
+            `actual_shipping_charge` DECIMAL(12,2) NULL,
+            `external_receipt` VARCHAR(190) NULL,
+            `settled_at` DATETIME NULL
         ) ENGINE=' . _MYSQL_ENGINE_ . ' DEFAULT CHARSET=utf8mb4');
     }
 
