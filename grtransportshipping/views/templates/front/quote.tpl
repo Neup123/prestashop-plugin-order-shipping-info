@@ -31,6 +31,28 @@
   {if $quote_submitted}
     <div role="status" aria-live="polite" id="grtransport-quote-result">
     {if $quote_route}
+      {if $quote_far_required && !$quote_far_confirmed}
+        <div class="alert alert-warning grtransport-far-preview" role="alert">
+          <strong>{l s='Far from the station — FAR zone' mod='grtransportshipping'}</strong>
+          <p>{l s='This address is outside the normal service reach. You may need to walk a long distance to the station. Proceed with this far-zone transport option anyway?' mod='grtransportshipping'}</p>
+        </div>
+        <form method="post" action="{$quote_action|escape:'htmlall':'UTF-8'}" id="grtransport-quote-far-confirm">
+          <input type="hidden" name="fc" value="module">
+          <input type="hidden" name="module" value="grtransportshipping">
+          <input type="hidden" name="controller" value="quote">
+          <input type="hidden" name="destination" value="{$quote_destination|escape:'htmlall':'UTF-8'}">
+          <input type="hidden" name="pin" value="{if $quote_is_pin}1{else}0{/if}">
+          <input type="hidden" name="lat" value="{$quote_lat|escape:'htmlall':'UTF-8'}">
+          <input type="hidden" name="lng" value="{$quote_lng|escape:'htmlall':'UTF-8'}">
+          <input type="hidden" name="note" value="{$quote_note|escape:'htmlall':'UTF-8'}">
+          <label>
+            <input type="checkbox" name="far_ack" value="1" required>
+            {l s='I understand that the station is far away and explicitly choose to proceed with this option.' mod='grtransportshipping'}
+          </label>
+          <button class="btn btn-warning" type="submit" name="far_accept" value="1">{l s='Proceed with far-zone transport quote' mod='grtransportshipping'}</button>
+        </form>
+        <p>{l s='Any eventual checkout order requires a separate far-zone confirmation.' mod='grtransportshipping'}</p>
+      {else}
       <dl>
         <dt>{l s='Route' mod='grtransportshipping'}</dt>
         <dd>{$quote_route.origin_name|escape:'htmlall':'UTF-8'} → {$quote_route.station_name|escape:'htmlall':'UTF-8'}</dd>
@@ -41,6 +63,7 @@
       </dl>
       {$quote_notice nofilter}{* Escaped by the module's shared checkout notice renderer. *}
       <p>{l s='Current route estimate; checkout confirms the final amount. Cart discounts and free shipping are not included here.' mod='grtransportshipping'}</p>
+      {/if}
     {else}
       <p class="alert alert-info">{$quote_message|escape:'htmlall':'UTF-8'}</p>
     {/if}
