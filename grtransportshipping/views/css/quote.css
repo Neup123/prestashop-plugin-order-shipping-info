@@ -2,3 +2,6 @@
 .grtransport-quote .form-control { max-width: 30rem; margin-bottom: .75rem; }
 #grtransport-map { height: 400px; max-height: 65vh; margin-bottom: 1rem; }
 .grtransport-quote [hidden] { display: none !important; }
+
+#grtransport-pin-status {margin:.5rem 0 1rem;color:#3e5369}
+.grtransport-quote-note {white-space:pre-wrap;overflow-wrap:anywhere}
