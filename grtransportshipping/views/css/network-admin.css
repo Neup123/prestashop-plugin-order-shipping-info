@@ -10,3 +10,7 @@
 #grtrans-link-popup label {display:block;margin:8px 0 2px}
 #grtrans-link-popup input {max-width:100%;padding:6px}
 #grtrans-network .leaflet-container {font-family:Arial,sans-serif}
+
+#grtrans-zone-legend {display:flex;flex-wrap:wrap;gap:8px 16px;margin:6px 0 12px}
+.grtrans-zone-key {display:inline-flex;gap:6px;align-items:center;font-size:12px}
+.grtrans-zone-swatch {display:inline-block;width:14px;height:14px;border:1px solid #6d7780;border-radius:3px;flex:none}

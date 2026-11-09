@@ -23,7 +23,19 @@
   const linkCancel = document.getElementById('grtrans-link-cancel');
   let chosen = null;
   let linking = false;
-  const bounds = [];
+  // Fit actual patch extents, not just station centres: a 1 km circle at
+  // country zoom is otherwise nearly invisible. Keep the Greece view for an
+  // empty network (no positive-radius coverage).
+  const coverageBounds = [];
+  const includeCoverage = (centre, radiusKm) => {
+    const lat = Number(centre[0]), lng = Number(centre[1]), radius = Number(radiusKm);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) ||
+        !Number.isFinite(radius) || radius <= 0) return;
+    const latitudeSpan = radius / 111.195;
+    const longitudeSpan = radius / (111.195 * Math.max(0.01, Math.cos(lat * Math.PI / 180)));
+    coverageBounds.push([Math.max(-90, lat - latitudeSpan), Math.max(-180, lng - longitudeSpan)]);
+    coverageBounds.push([Math.min(90, lat + latitudeSpan), Math.min(180, lng + longitudeSpan)]);
+  };
   const fmt = n => Number(n).toFixed(2);
   // Render merchant names as text, not HTML inside Leaflet tooltips.
   const safeTooltip = title => {
@@ -34,6 +46,32 @@
   const staleLabel = record => record._stale ? ' · STALE (last verified ' + (record.verified_at || 'unknown') + ')' : '';
   const point = s => [Number(s.lat), Number(s.lng)];
   const costs = data.cost || {};
+  // A palette with a different hue for every actual zone, including direct areas.
+  // Stable IDs make the legend independent of painting order and price changes.
+  const zones = data.stations.map(s => ({
+    key: 'station:' + s.id_station, name: s.name
+  })).concat(data.legs.filter(leg => !leg.to_station_id &&
+    leg.area_lat !== null && leg.area_lng !== null).map(leg => ({
+    key: 'area:' + leg.id_leg, name: leg.area_name || 'Direct area #' + leg.id_leg
+  }))).sort((a, b) => a.key.localeCompare(b.key));
+  const palette = zones.map((zone, index) =>
+    'hsl(' + ((17 + 360 * index / zones.length) % 360).toFixed(5) + ' 67% 42%)');
+  const zoneColors = new Map(zones.map((zone, index) => [zone.key, palette[index]]));
+  const legend = document.getElementById('grtrans-zone-legend');
+  if (legend) zones.forEach(zone => {
+    const item = document.createElement('span');
+    item.className = 'grtrans-zone-key';
+    item.setAttribute('role', 'listitem');
+    const swatch = document.createElement('span');
+    swatch.className = 'grtrans-zone-swatch';
+    swatch.style.backgroundColor = zoneColors.get(zone.key);
+    swatch.setAttribute('aria-hidden', 'true');
+    const name = document.createElement('span');
+    name.textContent = zone.name;
+    item.appendChild(swatch);
+    item.appendChild(name);
+    legend.appendChild(item);
+  });
   const color = type => baseColor[type] || baseColor.other;
   const colorForLine = (mode, operator) => {
     // Same transport mode, distinguish operators visually without losing family.
@@ -96,14 +134,14 @@
   });
   painted.forEach(s => {
     const pos = point(s);
-    bounds.push(pos);
-    const c = color(s.type);
+    includeCoverage(pos, s.outer_radius_km);
+    const c = zoneColors.get('station:' + s.id_station);
     const title = s.name + (s.is_origin_hub == 1 ? ' · Origin hub' : '')
       + (Object.prototype.hasOwnProperty.call(costs, s.id_station)
         ? ' · cheapest ' + fmt(costs[s.id_station]) + ' EUR' : ' · no priced path');
     [
-      { radius: Number(s.outer_radius_km) * 1000, opacity: 0.33 },
-      { radius: Number(s.inner_radius_km) * 1000, opacity: 0.67 }
+      { radius: Number(s.outer_radius_km) * 1000, opacity: 0.20 },
+      { radius: Number(s.inner_radius_km) * 1000, opacity: 0.10 }
     ].forEach(ring => L.circle(pos, {
       radius: ring.radius, fillColor: c, color: c, fillOpacity: ring.opacity,
       opacity: 0.7, weight: 1
@@ -126,10 +164,10 @@
       to = { lat: leg.area_lat, lng: leg.area_lng };
       L.circle(point(to), {
         radius: Number(leg.area_radius_km) * 1000,
-        fillColor: color(leg.mode), color: color(leg.mode), fillOpacity: leg._stale ? 0.1 : 0.35,
+        fillColor: zoneColors.get('area:' + leg.id_leg), color: zoneColors.get('area:' + leg.id_leg), fillOpacity: leg._stale ? 0.1 : 0.24,
         opacity: leg._stale ? 0.2 : 0.5, weight: 1
       }).addTo(map).bindTooltip(safeTooltip((leg.area_name || 'Direct area') + ' · ' + fmt(leg.price) + ' EUR' + staleLabel(leg)));
-      bounds.push(point(to));
+      includeCoverage(point(to), leg.area_radius_km);
     }
     if (!to) return;
     const title = (leg.operator_label || leg.mode) + ' · ' + fmt(leg.price) + ' EUR' + staleLabel(leg);
@@ -163,5 +201,5 @@
       status.textContent = 'Direct-area centre selected on the map.';
     }
   });
-  if (bounds.length) map.fitBounds(bounds, { padding: [25, 25], maxZoom: 10 });
+  if (coverageBounds.length) map.fitBounds(coverageBounds, { padding: [25, 25], maxZoom: 12 });
 }());
