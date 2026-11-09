@@ -65,6 +65,12 @@
   const staleLabel = record => record._stale ? ' · STALE (last verified ' + (record.verified_at || 'unknown') + ')' : '';
   const point = s => [Number(s.lat), Number(s.lng)];
   const costs = data.cost || {};
+  // Map renderer receives an explicit transition resolution result.
+  // Today's adapter uses the shared cheapest-route costs; future #107
+  // may supply winner-boundary data in resolutionByLink without changing
+  // line, seam or patch rendering code.
+  const resolutions = data.resolutionByLink ||
+    geometry.defaultResolutions(data.legs,data.transfers,costs);
   // A palette with a different hue for every actual zone, including direct areas.
   // Stable IDs make the legend independent of painting order and price changes.
   const zones = data.stations.map(s => ({
@@ -158,12 +164,8 @@
     area_coverage_geojson: leg.area_coverage_geojson
   });
   const pairLanes = new Map();
-  const drawStitch = (from, to, label, stale, fromOwner, toOwner, lane) => {
-    const ca = costs[fromOwner.replace('station:', '')];
-    const cb = costs[toOwner.replace('station:', '')];
-    const priceOrder = Number.isFinite(Number(ca)) && Number.isFinite(Number(cb)) &&
-      ca !== undefined && cb !== undefined ? [Number(ca), Number(cb)] : null;
-    const pieces = geometry.stitches(from, to, lane, priceOrder);
+  const drawStitch = (from, to, label, stale, fromOwner, toOwner, lane, resolution) => {
+    const pieces = geometry.stitches(from, to, lane, resolution);
     for (const endpoints of pieces) {
       paintSeam(L.polyline(endpoints, {
         color: '#637384', weight: 1.25,
@@ -300,7 +302,7 @@
       })());
     points.then(paths => drawLandPath(paths,ca,cb,fromStation,toStation,stale));
   };
-  const renderConnection = (mode, from, to, label, stale, fromOwner, toOwner, bidirectional, leg = null) => {
+  const renderConnection = (mode, from, to, label, stale, fromOwner, toOwner, bidirectional, leg = null, resolution = null) => {
     const ends = [fromOwner, toOwner].sort();
     const key = ends.join('=>');
     const lane = pairLanes.get(key) || 0;
@@ -313,10 +315,10 @@
     } else if (mode === 'sea' && !geometry.overlaps(from, to)) {
       drawSeaLink(from, to, label, stale, fromOwner, toOwner);
     } else if (mode !== 'station-bound' || !leg) {
-      drawStitch(from, to, label, stale, fromOwner, toOwner, lane);
+      drawStitch(from, to, label, stale, fromOwner, toOwner, lane, resolution);
     }
     if (mode === 'station-bound' && leg) {
-      if (geometry.overlaps(from,to)) drawStitch(from,to,label,stale,fromOwner,toOwner,lane);
+      if (geometry.overlaps(from,to)) drawStitch(from,to,label,stale,fromOwner,toOwner,lane,resolution);
       drawLandLink(leg.fromStation,leg.toStation,leg,label,stale);
     }
   };
@@ -711,13 +713,14 @@
         // A station at the sea edge is an ordinary short transfer,
         // not an artificial full ring around an island outside the sea.
         drawStitch(stationPatch(from), areaPatch(leg), label,
-          leg._stale, a, b, 0);
+          leg._stale, a, b, 0, null);
       }
       return;
     }
     renderConnection(mode, stationPatch(from), stationPatch(to),
       label, leg._stale, a, b, Number(leg.bidirectional) === 1,
-      mode==='station-bound' ? {...leg,fromStation:from,toStation:to} : null);
+      mode==='station-bound' ? {...leg,fromStation:from,toStation:to} : null,
+      resolutions['leg:' + leg.id_leg] || null);
   });
   data.transfers.forEach(transfer => {
     const from = stations.get(Number(transfer.from_station_id));
@@ -729,7 +732,8 @@
     if (mode === 'air' || mode === 'sea') linkGroup(a, b);
     renderConnection(mode, stationPatch(from), stationPatch(to),
       transfer.connection_type + ' transfer · ' + fmt(transfer.price) + ' EUR' + staleLabel(transfer),
-      transfer._stale, a, b, false);
+      transfer._stale, a, b, false, null,
+      resolutions['transfer:' + transfer.id_transfer] || null);
   });
   map.on('click', event => {
     if (previewSelecting) { addPreviewPin(event.latlng); return; }
