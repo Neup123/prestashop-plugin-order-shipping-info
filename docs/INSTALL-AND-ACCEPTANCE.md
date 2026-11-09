@@ -178,3 +178,14 @@ The pure PHP `network_tariff_test.php` covers rates, ranges, cart dimensions, mi
 6. Invalid bounds, noninteger hold minutes, lower factor ≥ upper, or radius defaults greater than the allowed maximum must be rejected server-side with no partial configuration save.
 
 These tests are separate from the original #62 static quote-page acceptance. The same changes are covered by `tests/network_settings_test.php` on both PHP CI versions, but the real PrestaShop browser/admin checks remain part of post-merge shop acceptance.
+
+## Leg delivery-time window acceptance (0.8.0; #73)
+
+1. Upgrade to 0.8.0; confirm four new fields (`lead_hours`, `preparation_hours`, `transit_min_hours`, `transit_max_hours`) exist on `grtrans_leg`, default to zero, and migrate without changing prices or historical orders. Repeated upgrade must succeed.
+2. Define a two-leg route with a preparation, lead and min–max transit time on both legs; confirm each field appears and is editable through the same API and admin forms as other leg attributes.
+3. In the admin simulator verify the total earliest/latest hours. Verify exactly the same window accompanies the fare at checkout, on the customer quote page and on order confirmation.
+4. Edit a leg's lead hours; a fresh quote must change its delivery window without changing its price. Previously placed order snapshot and time must not change.
+5. Disable **Show delivery-time windows (0=off)**; all storefront/order/simulator notices must hide the window. Price and preserved history remain the same. Re-enable to restore new quote timing.
+6. Unconfigured zero transit must not make a misleading zero-hour delivery promise. If the quoted path includes transfers whose time is not recorded by #73, show **Transfer travel time not included** as a limitation.
+
+Pure regression checks are in `tests/network_timing_test.php` and the PHP 8.2/8.4 CI matrix. Manual real-shop browser testing is required for visual acceptance on the merchant's theme.
