@@ -183,3 +183,34 @@ Every service **leg** and **transfer link** has an operator verification timesta
 The coverage map displays a **faded line / faded service circle and STALE label** for any unverified or old leg/link. By default, an entry becomes stale after **6 calendar months**; change **Mark leg/transfer data stale after months** in the network operating defaults (`GRTRANS_STALE_AFTER_MONTHS`). This is a reminder only; it does not automatically suspend the service or rewrite customer prices. A price is not externally verified merely because the module timestamp changed: the operator must actually confirm current freight terms with the transport operator.
 
 To hide freshness overlays entirely, set **Show stale leg/transfer markings on map** (`GRTRANS_SHOW_STALE_MAP`) to **0**, then save. Default is **1/on**. Disabling visualization **retains all dates** and has no effect on quote eligibility, network paths, charges, or order history. Existing database rows upgraded to 0.9.0 have a null timestamp and are shown as **Not yet verified**, rather than being falsely declared current.
+
+## Branch-aware origin stock (#78)
+
+Branches are **optional**. With **no branches defined** for this PrestaShop shop, the network quotes from all marked origin hubs exactly as before. You can adopt this feature later without configuring anything during installation.
+
+A branch is a named physical stock location **inside one PrestaShop shop**; it links to exactly **one existing station flagged Is origin hub**. It does **not** replace PrestaShop's own shop-level product stock and does not split orders between branches.
+
+### Set up branches and product/combination availability
+
+1. Go to **Module Manager → Greek public transport shipping → Configure → Transport network**, then **Manage → Branches**. Enter the branch name (for example *Athens Warehouse*) and choose its **Origin station ID** from the dropdown. Only a station flagged as a dispatch hub can be saved as an origin.
+2. Open **Manage → Branch Stock**. Select the branch ID; enter the exact PrestaShop **product ID**, the **combination ID** (or 0 for a product without combinations), and the branch quantity (whole units). Save. Repeat for products/variants the location holds. Quantities of 0 mean unavailable.
+3. Add a second branch and its own stock. If a cart contains product A at branch 1 and product B only at branch 2, **neither branch can fulfil the complete cart**: the network does not invent a split shipment. Other carriers and any existing manually priced flat Route remain available under their normal rules.
+4. Each quote checks that **one** branch has enough quantity of **every** exact cart product+combination, including duplicate lines and requested quantities. If more than one branch qualifies, the path engine computes the complete journey from each qualifying branch's origin hub and selects the cheapest total. If two eligible branches share an origin station, the lower branch ID is chosen deterministically.
+5. Checkout and order confirmation show the **Dispatch branch**, alongside the origin terminal; the complete chosen branch and route are frozen in the original order snapshot. Subsequent merchant edits do not rewrite a placed order's dispatch history.
+
+The branch stock record is *supplemental dispatch availability*: the normal PrestaShop `stock_available`, stock deductions, product restrictions and checkout validation still operate unchanged. **Branch inventory does not automatically update when PrestaShop products sell**, so staff or an external inventory synchronizer must maintain these quantities. This is an explicit limitation of the first version, not automatic stock synchronization.
+
+**Cart-quote safety:** adding/removing items, variants, quantities or parcel measurements changes the cart quote fingerprint and re-evaluates branch eligibility. Already pinned network quotes are refused if the recorded branch loses the capacity to fulfil their current cart within the normal quote hold. If the branch is no longer eligible, a new quote may require expiration of the existing pin or a new address/cart; the module never silently reassigns an already pinned dispatch.
+
+**Customer quote-check page:** without a cart, a public map pin cannot verify branch-specific stock. If branches exist and no manually priced flat Route matches, the page explains that **cart items are required for branch availability** rather than advertising a potentially impossible network price. The back-office simulator can use an **existing Cart ID in this same shop** for exact quote parity. Without a cart ID, it refuses branch-restricted network pricing; a station-only test is availability-blind only when no branches are configured.
+
+### Branch API and bulk import
+
+The existing authenticated network endpoint now accepts `entity=branches` and `entity=branch_stock` for GET/POST/PATCH/DELETE and `format=csv`, with the **same read/write tokens** as stations/legs/transfers. Both entities are always scoped to the current shop context, not installation-wide. API writes never accept a caller-supplied `id_shop`.
+
+- `branches`: `name`, `origin_station_id`.
+- `branch_stock`: `id_branch`, `id_product`, `id_product_attribute` (0 if none), `quantity` (nonnegative whole number).
+
+The atomic `POST ?bulk=1` importer also handles branch and combination-stock arrays, in one checked transaction. A newly imported station can be referenced from a branch by `origin_ref` pointing at the station's `client_ref`; a newly imported branch can be referenced from stock rows by `branch_ref`. CSV uses the numeric IDs of already saved stations/branches. Invalid shop ownership, foreign combination, nonexistent product, or negative quantity is refused. A branch with stock rows cannot be deleted until those records are removed; a hub with dependent branches cannot be deleted.
+
+This is dispatch availability, not the official inventory ledger. Keep the per-branch quantities synchronized with real stock and test the flow in the disposable shop before selling live.
