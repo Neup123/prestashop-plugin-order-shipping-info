@@ -383,6 +383,54 @@
       arrow:[projection.ll(move(rear,side,arrowSize*0.45)),
         projection.ll(tip),projection.ll(move(rear,side,-arrowSize*0.45))]};
   };
+  // Panel H/v7: classify a whole island, not merely an intersecting lens.
+  // Treat the sea polygon as continuous underneath the island; containment
+  // controls only whether a FULL-perimeter stitch is appropriate.
+  const containsPatch = (sea, island) => {
+    const seaParts = patchPaths(sea), islandParts = patchPaths(island);
+    if (!seaParts.length || !islandParts.length) return false;
+    const projection = projector([[sea.lat, sea.lng], [island.lat, island.lng]]);
+    const area = seaParts.map(polygon => polygon.map(ring => ring.map(projection.xy)));
+    const inSea = xy => area.some(polygon =>
+      inside(xy, polygon[0]) && !polygon.slice(1).some(hole => inside(xy, hole)));
+    return islandParts.every(polygon => polygon[0].length >= 3 &&
+      polygon[0].every(vertex => inSea(projection.xy(vertex))));
+  };
+
+  // Full zigzag around EACH exterior island ring (including multipolygon
+  // islands). No artificial gap: this overlays the island boundary while the
+  // sea's uninterrupted fill remains visible through the translucent island.
+  const islandStitchRings = island => {
+    const parts = patchPaths(island);
+    if (!parts.length) return [];
+    const projection = projector([[island.lat, island.lng]]);
+    const all = [];
+    for (const part of parts) {
+      if (!part.length || part[0].length < 3) continue;
+      const boundary = part[0].map(projection.xy);
+      if (length(boundary[0], boundary[boundary.length - 1]) < 1e-7) boundary.pop();
+      if (boundary.length < 3) continue;
+      const outline = [];
+      const radius = Number(island.radiusKm) || 1;
+      const amplitude = Math.min(0.09, Math.max(0.012, radius * 0.012));
+      for (let i = 0; i < boundary.length; i++) {
+        const p = boundary[i], q = boundary[(i + 1) % boundary.length];
+        const delta = difference(q, p), d = length(p, q);
+        if (d < EPS) continue;
+        const normal = {x: -delta.y / d, y: delta.x / d};
+        outline.push(projection.ll(p));
+        // A true alternating zigzag, not the smooth edge duplicated.
+        outline.push(projection.ll(move(
+          move(p, delta, 0.5), normal, (i % 2 === 0 ? amplitude : -amplitude)
+        )));
+      }
+      if (outline.length >= 6) {
+        outline.push(outline[0].slice());
+        all.push(outline);
+      }
+    }
+    return all;
+  };
   const routePaths = value => {
     if (!value) return [];
     try {
@@ -395,6 +443,7 @@
   };
   global.GrtransCoverage = Object.freeze({
     kind, patchContour, patchPaths, leafletPaths, overlaps, stationGroups, unionContours,
-    zigzagSeam, stitches, airArc, seaLine, routePaths
+    zigzagSeam, stitches, airArc, seaLine, routePaths,
+    containsPatch, islandStitchRings
   });
 }(window));
