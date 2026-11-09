@@ -364,6 +364,40 @@ class Grtransportshipping extends CarrierModule
             ? $this->renderNotice($result['quote'], 'checkout') : '';
     }
 
+    /** Public page adapter: live route engine and the checkout handling-fee rule. */
+    public function customerQuoteCheck(string $input, ?array $pin = null): array
+    {
+        require_once __DIR__ . '/classes/QuoteCheck.php';
+        $carrierId = GrTransportCarrierLifecycle::activeId($this);
+        if ($carrierId <= 0) {
+            return ['status' => 'unmatched', 'quote' => null];
+        }
+        $routes = Db::getInstance()->executeS('SELECT * FROM `' . _DB_PREFIX_ . 'grtrans_route`');
+        if (!is_array($routes)) {
+            throw new RuntimeException('Transport route lookup failed');
+        }
+        $result = $pin === null ? GrTransportQuoteCheck::text($routes, $input)
+            : GrTransportQuoteCheck::pin($routes, $pin[0] ?? null, $pin[1] ?? null);
+        if ($result['quote']) {
+            $result['quote']['handling_fee'] = GrTransportOrderCharge::configuredHandlingFee(
+                $carrierId, (int) $this->context->currency->id
+            );
+        }
+        $carrier = new Carrier($carrierId);
+        $result['carrier'] = $carrier->name;
+        return $result;
+    }
+
+    public function customerQuoteNotice(array $quote): string
+    {
+        return $this->renderNotice($quote, 'checkout');
+    }
+
+    public function customerQuoteMessage(string $status): string
+    {
+        return $this->l(self::NO_QUOTE_TEXT[$status] ?? 'The transport quote is temporarily unavailable.');
+    }
+
     private function escape($value): string
     {
         return htmlspecialchars((string) $value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');

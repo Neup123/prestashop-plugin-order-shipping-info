@@ -52,3 +52,77 @@ The current implementation deliberately loads **all** route rows on the first qu
 Module-authored storefront pickup/no-quote notices and back-office route controls now pass through PrestaShop's existing **classic module `l()` translation system**, with an `el` dictionary in `grtransportshipping/translations/el.php`. English is the source language and the fallback. The dictionary covers the safety-critical pickup-only, no-home-delivery, unverified-demo and no-route messages, plus route editor status, action and field labels. Merchant-entered route station names/notices and the ten demo seed rows intentionally remain **English sample/merchant content**: they are data, not module UI translations. Operators may customize them individually.
 
 PrestaShop's native `carrier.name` is global rather than a multilingual field, so the module ships a short **bilingual English/Greek default name**; the actual `carrier_lang.delay` text is translated separately for Greek, with English for other languages. The 0.5.3 upgrade updates only the **unchanged stock text** on existing module-owned carriers; customized merchant carrier names/delays are preserved. Greek customers must have the Greek shop language installed and selected. Translations do not change route matching, rates, quote pinning or the native shipping-charge calculation.
+
+## Customer quote-check page
+
+The module provides a public PrestaShop module front controller (`quote`). It
+requires no customer account, cart or saved address and does not pin checkout
+quotes. Checkout behaviour is unchanged.
+
+To place a link on the FAQ (or another CMS page):
+
+1. In the back office, open **Design → Pages** and edit the FAQ page.
+2. Insert a link with the English label **Check transport shipping**. Set its
+   destination to your shop's base URL followed by
+   `index.php?fc=module&module=grtransportshipping&controller=quote`.
+   For example, `https://shop.example/index.php?fc=module&module=grtransportshipping&controller=quote`.
+   Keep any shop subdirectory in the base URL.
+3. Save the page. Open the link as a guest and check a postcode or city.
+
+This is a linked page, not an embedded CMS hook. No CMS template modification,
+new hook registration, API key or module reinstall is needed. Code that needs a
+friendly URL should use `$context->link->getModuleLink('grtransportshipping', 'quote')`.
+
+The one-field GET form works without JavaScript, Leaflet or map tiles. Greek
+city comparisons use the existing checkout normalisation (tonos, dialytika,
+case and final sigma). The terminal catalogue supplies Greek/English locality
+aliases and representative destination postcodes for the seeded routes. For
+other merchant rules, an omitted city or postcode can be inferred only when
+all matching completions resolve to the same route. Conflicting completions
+fail closed. No price or availability is stored in the catalogue: the current
+route rows, checkout quote engine, carrier identity and handling-fee rule are
+always used. Results show the current transport amount including eligible
+handling; cart discounts/free-shipping rules are confirmed at checkout.
+
+### Optional map
+
+Leaflet 1.9.4 is bundled locally under `views/vendor/leaflet` with its BSD licence
+and marker images. Opening **Choose destination on a map** loads public
+OpenStreetMap tiles with visible attribution. No geocoder, remote JavaScript,
+account, paid provider or API key is used. Text input remains available if tiles
+cannot load.
+
+A click or a dragged pin sets coordinates; **Check pin destination** submits
+these coordinates to the server. The nearest destination terminal in
+`data/stations.php` is selected by great-circle (Haversine) distance, using mean
+Earth radius 6371.0088 km, **within an inclusive 25 km radius**. Equal distances
+use catalogue order. The radius does not promise home delivery. An out-of-radius
+or invalid pin produces the usual no-route message. A nearer terminal that has
+no priced route, is draft, or is suspended is never skipped in favour of a more
+distant priced terminal.
+
+Catalogue locations are approximate terminal points; representative postcodes
+identify seeded quote destinations, not every postcode within the circle.
+The selected destination uses the same postcode/canonical Greek locality as
+text lookup. Merchant pricing, suspension and pickup flags remain authoritative.
+The matched route's named origin and destination appear as markers joined by a
+straight line (not a travel itinerary). Terminal coordinates are displayed only
+when both stored terminal names still match the catalogue; renamed/custom
+stations remain fully usable via text but need a catalogue entry to be plotted.
+Catalogue edits never rewrite merchant route rows or seed prices.
+
+### Local quote-page checks
+
+```sh
+php tests/quote_check_test.php
+php tests/quote_page_test.php
+node tests/quote_map_test.mjs
+```
+
+The first test covers route/price parity, Greek matching, station pickup,
+nearest-terminal selection, overlapping radii, radius boundaries and blocked
+routes. The second exercises the actual page controller and module checkout
+entry points with local platform doubles, including handling fees and escaped
+notices. The Node test covers map opt-in, terminal plotting, click/drag submission
+and missing Leaflet. These are local contracts; live PrestaShop theme/FAQ
+acceptance remains a separate deployment check.
