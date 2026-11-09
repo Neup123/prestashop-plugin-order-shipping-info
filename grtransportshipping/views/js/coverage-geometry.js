@@ -37,20 +37,43 @@
     }
     return hash / 4294967296 * TAU;
   };
-  const isValid = record => Number(record.radiusKm) > 0 &&
-    Number.isFinite(Number(record.lat)) && Number.isFinite(Number(record.lng));
-  // Three low-frequency harmonics provide gentle paint-like scallops. Their
-  // combined amplitude stays below the radius: we never assert new coverage.
-  const blobRadius = (radius, angle, phase) => Number(radius) * (
-    0.964 + 0.018 * Math.sin(3 * angle + phase) +
-    0.011 * Math.sin(5 * angle + 2.3 * phase) +
-    0.006 * Math.sin(8 * angle - 1.7 * phase));
+  const decoded = record => {
+    const raw = record.coverage_geojson || record.area_coverage_geojson || '';
+    if (!raw) return null;
+    try {
+      const data = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      return data.type === 'Feature' ? data.geometry : data;
+    } catch (_) {return null;}
+  };
+  const geoPaths = record => {
+    const feature = decoded(record);
+    if (!feature) return null;
+    const polygon = ring => ring.map(p => [Number(p[1]), Number(p[0])]);
+    if (feature.type === 'Polygon') return [feature.coordinates.map(polygon)];
+    if (feature.type === 'MultiPolygon') return feature.coordinates.map(part => part.map(polygon));
+    return null;
+  };
+  const isValid = record => Number.isFinite(Number(record.lat)) &&
+    Number.isFinite(Number(record.lng)) &&
+    (Number(record.radiusKm) > 0 || geoPaths(record) !== null);
+  const patchPaths = record => {
+    const geo = geoPaths(record);
+    if (geo) return geo;
+    if (!(Number(record.radiusKm) > 0)) return [];
+    return [[patchContour(record)]];
+  };
+  const leafletPaths = paths => paths.length === 1
+    ? (paths[0].length === 1 ? paths[0][0] : paths[0]) : paths;
+  // Radius-based walking reach is a true circle, as in panel A. There is no
+  // arbitrary wavy alteration to priced geography. CSS softens its paint edge.
+  const blobRadius = radius => Number(radius);
   const shapeXY = (record, projection) => {
+    const geometry = geoPaths(record);
+    if (geometry) return geometry[0][0].map(projection.xy).slice(0, -1);
     const centre = projection.xy([record.lat, record.lng]);
-    const phase = seed(record);
     return Array.from({length: SAMPLES}, (_, i) => {
       const angle = TAU * i / SAMPLES;
-      const radius = blobRadius(record.radiusKm, angle, phase);
+      const radius = blobRadius(record.radiusKm, angle);
       return {x: centre.x + Math.cos(angle) * radius,
         y: centre.y + Math.sin(angle) * radius};
     });
@@ -79,6 +102,13 @@
     return t >= -EPS && t <= 1 + EPS && u >= -EPS && u <= 1 + EPS ? t : null;
   };
   const nearby = (a, b, projection) => {
+    if (geoPaths(a) || geoPaths(b)) {
+      const polyA = shapeXY(a, projection), polyB = shapeXY(b, projection);
+      const ax = polyA.map(p => p.x), ay = polyA.map(p => p.y);
+      const bx = polyB.map(p => p.x), by = polyB.map(p => p.y);
+      return Math.min(...ax) <= Math.max(...bx) && Math.min(...bx) <= Math.max(...ax)
+        && Math.min(...ay) <= Math.max(...by) && Math.min(...by) <= Math.max(...ay);
+    }
     const p = projection.xy([a.lat, a.lng]), q = projection.xy([b.lat, b.lng]);
     return length(p, q) < Number(a.radiusKm) + Number(b.radiusKm);
   };
@@ -160,7 +190,7 @@
   };
   // Only an explicit priced station-bound link can establish same-service
   // membership. Shared mode labels alone NEVER merge separate operators.
-  const stationGroups = (stations, legs) => {
+  const stationGroups = (stations, legs, costs = {}) => {
     const lookup = new Map(stations.map(s => [Number(s.id_station), s]));
     const parents = new Map([...lookup.keys()].map(id => [id, id]));
     const root = id => {
@@ -179,9 +209,17 @@
       const from = lookup.get(Number(leg.from_station_id));
       const to = lookup.get(Number(leg.to_station_id));
       if (!from || !to || from.type !== to.type) continue;
+      // Same-priced station reaches unite; expensive and cheaper reaches
+      // must keep their individual fill silhouettes for panel G.
+      const fromCost = Number(costs[from.id_station]), toCost = Number(costs[to.id_station]);
+      if (!Object.hasOwn(costs, from.id_station) || !Object.hasOwn(costs, to.id_station) ||
+          !Number.isFinite(fromCost) || !Number.isFinite(toCost) ||
+          Math.abs(fromCost - toCost) > 0.005) continue;
       if (!overlaps(
-        {lat: from.lat, lng: from.lng, radiusKm: from.outer_radius_km, key: 'station:' + from.id_station},
-        {lat: to.lat, lng: to.lng, radiusKm: to.outer_radius_km, key: 'station:' + to.id_station})) continue;
+        {lat: from.lat, lng: from.lng, radiusKm: from.outer_radius_km,
+          coverage_geojson: from.coverage_geojson, key: 'station:' + from.id_station},
+        {lat: to.lat, lng: to.lng, radiusKm: to.outer_radius_km,
+          coverage_geojson: to.coverage_geojson, key: 'station:' + to.id_station})) continue;
       const a = root(Number(from.id_station)), b = root(Number(to.id_station));
       if (a !== b) parents.set(b, a);
     }
@@ -194,48 +232,73 @@
     return [...groups.values()];
   };
 
-  // Short zigzag follows the shared interior boundary perpendicular to the
-  // station axis, and every vertex is guaranteed to lie INSIDE both blobs.
-  const zigzagSeam = (first, second, lane = 0) => {
-    if (!overlaps(first, second)) return null;
-    const projection = projector([[first.lat, first.lng], [second.lat, second.lng]]);
-    const A = projection.xy([first.lat, first.lng]);
-    const B = projection.xy([second.lat, second.lng]);
-    const differenceAB = difference(B, A);
-    const d = length(A, B);
-    const unit = d > EPS ? {x: differenceAB.x / d, y: differenceAB.y / d} : {x: 1, y: 0};
-    const tangent = {x: -unit.y, y: unit.x};
-    const a = shapeXY(first, projection), b = shapeXY(second, projection);
-    const common = [];
-    for (let i = 0; i <= 160; i++) {
-      const centre = move(A, unit, d * i / 160);
-      if (inside(centre, a) && inside(centre, b)) common.push(d * i / 160);
+  // Panel C: the transfer seam hugs the CHEAPER service's OUTER reach
+  // boundary, but only its section inside the dearer reach. Not the mid-lens.
+  const zigzagSeam = (cheap, expensive, lane = 0) => {
+    if (!overlaps(cheap, expensive)) return null;
+    const projection = projector([[cheap.lat, cheap.lng], [expensive.lat, expensive.lng]]);
+    const cheapRing = shapeXY(cheap, projection), expensiveRing = shapeXY(expensive, projection);
+    const centre = projection.xy([cheap.lat, cheap.lng]);
+    // A midpoint of a cheap-perimeter segment entirely inside the dearer
+    // polygon is the actual changeover from both-reach to dearer-only.
+    const candidates = [];
+    for (let i = 0; i < cheapRing.length; i++) {
+      const a = cheapRing[i], b = cheapRing[(i + 1) % cheapRing.length];
+      const mid = move(a, difference(b, a), 0.5);
+      if (inside(mid, expensiveRing)) {
+        // Prefer the portion facing the dearer centre (the widest lens).
+        const expensiveCentre = projection.xy([expensive.lat, expensive.lng]);
+        candidates.push({i, mid, score: length(mid, expensiveCentre)});
+      }
     }
-    if (!common.length) return null;
-    const interval = (common[0] + common[common.length - 1]) / 2;
-    const offset = Math.max(-0.18, Math.min(0.18, lane * 0.08));
-    const centre = move(A, unit, interval + offset);
-    let half = Math.min(0.52, Number(first.radiusKm) * 0.14,
-      Number(second.radiusKm) * 0.14);
-    for (let retry = 0; retry < 12; retry++) {
-      const amp = Math.min(0.065, half * 0.22);
-      const vertices = Array.from({length: 9}, (_, i) => {
-        const along = half * (i / 4 - 1);
-        const across = (i % 2 ? -amp : amp);
-        return move(move(centre, tangent, along), unit, across);
-      });
-      const pathLength = vertices.slice(1).reduce((sum, point, i) =>
-        sum + length(point, vertices[i]), 0);
-      if (pathLength <= 1.75 && vertices.every(point =>
-        inside(point, a) && inside(point, b))) return vertices.map(projection.ll);
-      half *= 0.7;
+    if (!candidates.length) return null;
+    candidates.sort((a, b) => a.score - b.score);
+    const chosen = candidates[0].i;
+    const ring = cheapRing;
+    const signedArea = ring.reduce((sum, p, i) => sum +
+      cross(p, ring[(i + 1) % ring.length]), 0);
+    for (let scale = 1; scale >= 0.08; scale *= 0.7) {
+      const half = Math.min(0.65, Number(cheap.radiusKm || 2) * 0.14) * scale;
+      const wiggle = 0.035 * scale;
+      const vertices = [];
+      for (let k = 0; k < 9; k++) {
+        const signed = (k / 4 - 1) * half;
+        let index = chosen;
+        let pos = move(ring[index], difference(ring[(index+1)%ring.length],ring[index]),0.5);
+        let remaining = Math.abs(signed);
+        const dir = signed < 0 ? -1 : 1;
+        while (remaining > EPS) {
+          const next = dir > 0 ? ring[(index+1)%ring.length] : ring[index];
+          const dist = length(pos,next);
+          if (dist >= remaining || dist < EPS) {
+            if (dist > EPS) pos=move(pos,difference(next,pos),remaining/dist);
+            break;
+          }
+          remaining -= dist;
+          pos=next;
+          index=(index+dir+ring.length)%ring.length;
+        }
+        const p0=ring[index],p1=ring[(index+1)%ring.length];
+        const tangent=difference(p1,p0), norm=length(p0,p1);
+        if (norm<EPS) {vertices.length=0;break;}
+        const inward=signedArea>=0
+          ? {x:-tangent.y/norm,y:tangent.x/norm}
+          : {x:tangent.y/norm,y:-tangent.x/norm};
+        vertices.push(move(pos,inward,wiggle * (1 + (k % 2 ? 0.6 : 0))));
+      }
+      if (vertices.length!==9) continue;
+      const kmLength=vertices.slice(1).reduce((sum,p,i)=>sum+length(p,vertices[i]),0);
+      if (kmLength<=1.8 && vertices.every(p=>inside(p,cheapRing)&&inside(p,expensiveRing)))
+        return vertices.map(projection.ll);
     }
     return null;
   };
   // Fallback for distant, unresolved land/sea links: only two small, local,
   // facing-patch marks, with a fully empty interstation gap.
-  const stitches = (first, second, lane = 0) => {
-    const insideLens = zigzagSeam(first, second, lane);
+  const stitches = (first, second, lane = 0, costs = null) => {
+    const cheap = costs && costs[0] > costs[1] ? second : first;
+    const pricey = cheap === first ? second : first;
+    const insideLens = zigzagSeam(cheap, pricey, lane);
     if (insideLens) return [insideLens];
     if (overlaps(first, second) || !isValid(first) || !isValid(second)) return [];
     const projection = projector([[first.lat, first.lng], [second.lat, second.lng]]);
@@ -289,8 +352,49 @@
       reverseArrow: bidirectional ? tip(curve[0], towardStart) : null
     };
   };
+
+  // Panel E: the symbolic sea line is STRAIGHT, clipped to the two local
+  // patches rather than painting a maritime coverage band.
+  const seaLine = (from, to) => {
+    const projection = projector([[from.lat, from.lng], [to.lat, to.lng]]);
+    const a = projection.xy([from.lat, from.lng]);
+    const b = projection.xy([to.lat, to.lng]);
+    const delta = difference(b, a), distance = length(a, b);
+    if (distance < EPS) return null;
+    const unit={x:delta.x/distance,y:delta.y/distance};
+    const edgeAt = (record, start, direction) => {
+      const ring=shapeXY(record,projection);
+      const dir={x:unit.x*direction,y:unit.y*direction};
+      let closest=null, best=Infinity;
+      for(let i=0;i<ring.length;i++) {
+        const p=ring[i],q=ring[(i+1)%ring.length];
+        const ray=move(start,dir,distance*3+1000);
+        const t=intersection(start,ray,p,q);
+        if(t!==null && t<best) {best=t;closest=move(start,difference(ray,start),t);}
+      }
+      return closest||move(start,dir,Math.max(0,Number(record.radiusKm)||0));
+    };
+    const left=edgeAt(from,a,1),right=edgeAt(to,b,-1);
+    const tip=right;
+    const arrowSize=Math.min(3,Math.max(0.3,distance*0.02));
+    const side={x:-unit.y,y:unit.x};
+    const rear=move(tip,unit,-arrowSize);
+    return {points:[projection.ll(left),projection.ll(right)],
+      arrow:[projection.ll(move(rear,side,arrowSize*0.45)),
+        projection.ll(tip),projection.ll(move(rear,side,-arrowSize*0.45))]};
+  };
+  const routePaths = value => {
+    if (!value) return [];
+    try {
+      const geo=typeof value==='string'?JSON.parse(value):value;
+      const segments=geo.type==='LineString'?[geo.coordinates]:
+        geo.type==='MultiLineString'?geo.coordinates:[];
+      return segments.map(seg=>seg.map(p=>[Number(p[1]),Number(p[0])]))
+        .filter(seg=>seg.length>1);
+    }catch(_){return [];}
+  };
   global.GrtransCoverage = Object.freeze({
-    kind, patchContour, overlaps, stationGroups, unionContours,
-    zigzagSeam, stitches, airArc
+    kind, patchContour, patchPaths, leafletPaths, overlaps, stationGroups, unionContours,
+    zigzagSeam, stitches, airArc, seaLine, routePaths
   });
 }(window));
