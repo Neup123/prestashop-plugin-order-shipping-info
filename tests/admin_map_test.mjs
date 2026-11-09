@@ -107,14 +107,14 @@ assert.ok(Math.max(...radiusRing.map(p=>kmDistance(p,[37.9,23.6]))) -
 const postalStation={...station(1,'Postal reach',38,23.65),
   coverage_kind:'postal_polygon',coverage_geojson:polygon};
 const postal=fixture({stations:[postalStation]});
-assert.equal(postal.calls.polygons.length,1,
-  'Postal-code reach uses ONE recorded polygon; never invents a radius wash');
+assert.equal(postal.calls.polygons.length,2,
+  'Postal reach has one exact outer polygon plus its shape-clipped inner tier');
 assert.equal(postal.calls.polygons[0].points.length,5,
   'Postal polygon geometry is used verbatim');
 assert.equal(postal.calls.polygons[0].points[0][1],23.6);
 const iso=fixture({stations:[{...station(1,'Walking routes',38,23.6),
   coverage_kind:'walking_isochrone',coverage_geojson:isochrone}]});
-assert.equal(iso.calls.polygons.length,1);
+assert.equal(iso.calls.polygons.length,2);
 assert.equal(iso.calls.polygons[0].points.length,5,'Isochrone polygon not a circle');
 const empty=fixture({});
 assert.equal(empty.calls.fits.length,0);
@@ -124,6 +124,23 @@ assert.equal(orphan.calls.polygons.length,0,'Orphan direct-area service has no c
 assert.ok(postal.calls.fits.length===1 && postal.calls.fits[0][0].some(p=>p[1]===23.6),
   'Polygon extents, not arbitrary radius, determine map framing');
 console.log('Panel A: exact postal polygon / walking radius / isochrone, pane and fit passed');
+
+/* Panel I: tier definitions are geometry data and work for circles and
+ * polygonal reach. The far spread stays LIGHTER than the normal inner fill. */
+assert.equal(original.calls.polygons[1].options.className.includes('tier-far'),true);
+assert.equal(original.calls.polygons[2].options.className.includes('tier-normal'),true);
+assert.ok(original.calls.polygons[1].options.fillOpacity <
+  original.calls.polygons[2].options.fillOpacity,
+  'Far zone visibly lighter than normal reach (panel I)');
+assert.equal(original.calls.polygons[2].options.stroke,false,
+  'Normal wash has no spurious interior circle outline');
+assert.equal(postal.calls.polygons[0].points.length,5,
+  'Recorded postal polygon remains the true outer geometry');
+assert.ok(postal.calls.polygons[1].points.length >= 3,
+  'Inner postal tier is clipped to actual polygon reach, not an invented full disc');
+assert.ok(iso.calls.polygons[0].options.fillOpacity < iso.calls.polygons[1].options.fillOpacity);
+console.log('Panel I: normal strong inner coverage, lighter far outer spread, extensible tier model passed');
+
 
 const a=station(1,'Athens',38,23.7);
 const b=station(2,'Piraeus',38.05,23.75);
@@ -167,8 +184,8 @@ const samePrice=fixture({stations:[a,b],cost:{1:5,2:5},legs:[{
   route_geojson:JSON.stringify({type:'LineString',coordinates:[
     [23.7,38],[23.72,38.02],[23.75,38.05]]})
 }]});
-assert.equal(samePrice.calls.polygons.length,1,
-  'Panel F: 4 inner/outer circle paths BEFORE -> 1 union polygon AFTER');
+assert.equal(samePrice.calls.polygons.length,2,
+  'Panel F/I: four legacy paths become ONE outer union and ONE inner-tier layer');
 assert.equal(samePrice.calls.circles.length,0,
   'Panel F: zero internal arcs from former overlapping stamped circles');
 const union=samePrice.calls.polygons[0];
@@ -193,6 +210,27 @@ const zeroPrice=fixture({stations:[a,b],cost:{1:0,2:0},legs:[{
   ...busLeg,price:0}]});
 assert.ok(zeroPrice.calls.lines.some(l=>l.options.className==='grtrans-zigzag-stitch'),
   'Explicit zero-priced land link still gets a transfer seam');
+
+/* Resolution is a data contract, not hard-coded price interpretation inside
+ * the seam painter. An override-aware resolver can replace this map in #107. */
+const explicitBoundary = fixture({
+  stations:[a,b], cost:{1:5,2:9},
+  resolutionByLink:{'leg:1':{boundaryOwner:'station:2',rule:'external-resolution'}},
+  legs:[busLeg]
+});
+const resolvedSeam=explicitBoundary.calls.lines.find(l =>
+  l.options.className==='grtrans-zigzag-stitch');
+assert.ok(resolvedSeam,'An external resolution result still produces a linked seam');
+assert.ok(resolvedSeam.points.every(p=>Math.abs(kmDistance(p,[38.05,23.75])-10)<0.3),
+  'Injected winner-boundary result overrides cheapest-cost default WITHOUT geometry changes');
+const explicitUnresolved=fixture({
+  stations:[a,b],cost:{1:5,2:9},
+  resolutionByLink:{'leg:1':null},legs:[busLeg]
+});
+assert.ok(!explicitUnresolved.calls.lines.some(l=>
+  l.options.className==='grtrans-zigzag-stitch'),
+  'An unresolved winner produces no fabricated handover seam');
+
 console.log('Panels B/C/F/G: no-link blend, cheaper boundary, same-price union and gradient passed');
 
 const air=fixture({stations:[{...a,type:'airport'},
@@ -210,13 +248,13 @@ const airRadii=arc.points.map(p=>Math.hypot((p[0]-airMiddle[0])*111.195,
 assert.ok(Math.max(...airRadii)-Math.min(...airRadii)<.05,
   'Distant flight is a true symbolic half-circle, not an arbitrary bend');
 air.calls.polygons[0].layer.events.mouseover();
-assert.ok(air.calls.polygons[2].layer.style.fillOpacity>.2,
+assert.ok(air.calls.polygons[2].layer.style.fillOpacity>.16,
   'Mental hover highlights both distant plane-island reaches');
 air.calls.polygons[0].layer.events.mouseout();
-assert.equal(air.calls.polygons[2].layer.style.fillOpacity,.2);
+assert.equal(air.calls.polygons[2].layer.style.fillOpacity,.16);
 arc.layer.events.mouseover();
-assert.ok(air.calls.polygons[0].layer.style.fillOpacity>.2);
-assert.ok(air.calls.polygons[2].layer.style.fillOpacity>.2);
+assert.ok(air.calls.polygons[0].layer.style.fillOpacity>.16);
+assert.ok(air.calls.polygons[2].layer.style.fillOpacity>.16);
 arc.layer.events.mouseout();
 const sea=fixture({stations:[
   {...a,type:'ferry'},
@@ -233,9 +271,9 @@ assert.equal(vessels.length,2,
 assert.ok(vessels.every(l=>l.points.length===2&&l.options.dashArray==='8 7'));
 assert.equal(sea.calls.lines.filter(l=>l.options.className==='grtrans-sea-arrow').length,2);
 vessels[0].layer.events.mouseover();
-assert.ok(sea.calls.polygons[0].layer.style.fillOpacity>.2);
-assert.ok(sea.calls.polygons[2].layer.style.fillOpacity>.2);
-assert.equal(sea.calls.polygons[4].layer.style.fillOpacity,.2,
+assert.ok(sea.calls.polygons[0].layer.style.fillOpacity>.16);
+assert.ok(sea.calls.polygons[2].layer.style.fillOpacity>.16);
+assert.equal(sea.calls.polygons[4].layer.style.fillOpacity,.16,
   'Sea mental link is priced-pair-scoped, NOT one fan-out');
 vessels[0].layer.events.mouseout();
 const dynamic=fixture({stations:[a,station(2,'Island',38.04,23.76)],
@@ -283,12 +321,12 @@ assert.ok(!dynamic.calls.lines.some(l=>l.options.className==='grtrans-land-road'
 assert.ok(ringTarget[0].layer.tooltip.textContent.includes('entire linked island boundary'));
 ringTarget[0].layer.events.mouseover();
 assert.ok(dynamic.calls.polygons[0].layer.style.fillOpacity>.24 &&
-  dynamic.calls.polygons[1].layer.style.fillOpacity>.2,
+  dynamic.calls.polygons[1].layer.style.fillOpacity>.16,
   'Ring hover highlights the dynamic sea and linked island');
-assert.equal(dynamic.calls.polygons[3].layer.style.fillOpacity,.2,
+assert.equal(dynamic.calls.polygons[3].layer.style.fillOpacity,.16,
   'Unlinked island is not accidentally linked or highlighted');
 ringTarget[0].layer.events.mouseout();
-assert.equal(dynamic.calls.polygons[3].layer.style.fillOpacity,.2);
+assert.equal(dynamic.calls.polygons[3].layer.style.fillOpacity,.16);
 dynamic.elements['grtrans-map-preview'].events.click();
 assert.ok(dynamic.calls.lines.every(l=>l.layer.removed),
   'Explicit route preview hides full-perimeter stitch without hiding the sea');
@@ -321,13 +359,14 @@ const routing = fixture({
 }});
 assert.equal(routing.calls.markers[0].options.icon.options.className,'grtrans-origin-marker');
 routing.elements['grtrans-map-preview'].events.click();
-assert.equal(routing.calls.polygons.length,3,
-  'Overlapping bus union plus the far ferry station outer/inner organic washes');
+assert.equal(routing.calls.polygons.length,4,
+  'One outer union and one inner tier plus the ferry station outer and inner tier');
 assert.ok(routing.calls.polygons.every(p => !p.layer.removed));
 routing.calls.mapEvents.click({latlng:{lat:38,lng:23.7}});
 routing.calls.mapEvents.click({latlng:{lat:37.1,lng:25.37}});
 await new Promise(resolve => setImmediate(resolve));
-assert.equal(roadRequests,1,'Road preview uses OSRM; ferry preview does not');
+assert.equal(roadRequests,2,
+  'One OSRM request for base road line and one for explicit preview; no ferry routing');
 assert.match(routing.elements['grtrans-preview-status'].textContent,/Route preview ready/);
 assert.ok(routing.calls.lines.some(line => line.points.length===3 &&
   line.options.weight===5),'Road preview contains OSRM bend');
