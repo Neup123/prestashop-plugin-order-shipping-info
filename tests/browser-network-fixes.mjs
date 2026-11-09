@@ -106,6 +106,29 @@ try {
   await page.locator('#grtransport-map').click({ position: { x: 120, y: 120 } });
   await checkMarkerAssets('#grtransport-map', 'customer destination map');
   console.log('LIVE LEAFLET ASSETS: customer and admin markers/shadows load with HTTP 200');
+
+  // #90: Customer quote result has one Route line, not repeated station rows.
+  // Exercise the real Smarty-rendered result, preserving pickup instructions.
+  await page.goto(
+    'http://localhost:8080/index.php?fc=module&module=grtransportshipping&controller=quote&destination=84300',
+    { waitUntil: 'domcontentloaded', timeout: 45000 }
+  );
+  const result = page.locator('#grtransport-quote-result');
+  await result.locator('dl dt').first().waitFor({ timeout: 20000 });
+  const labels = (await result.locator('dl dt').allInnerTexts()).map(text => text.trim());
+  assert.deepEqual(labels, ['Route', 'Carrier', 'Transport price including eligible handling'],
+    'Customer details must omit duplicate Origin station / Destination station rows');
+  const values = (await result.locator('dl dd').allInnerTexts()).map(text => text.trim());
+  assert.equal(values.length, 3, 'Route, carrier, and price each have one value');
+  assert.equal(values[0], 'Port of Piraeus → Naxos Port', 'Route still identifies both terminals');
+  assert.ok(values[1].length > 0, 'Carrier still appears');
+  assert.match(values[2], /\d+[.,]\d{2}\s*(?:EUR|€)/, 'Transport price still appears');
+  const pickup = result.locator('.grtransport-pickup');
+  assert.ok(await pickup.isVisible(), 'Customer pickup notice stays visible');
+  assert.match(await pickup.innerText(), /STATION PICKUP ONLY/, 'Pickup warning remains');
+  assert.match(await pickup.innerText(), /Collection point:\s*Naxos Port/,
+    'Collection point is a necessary customer pickup instruction');
+  console.log('LIVE CUSTOMER QUOTE: Route, carrier, price and collection notice; no duplicate station rows');
 } catch (error) {
   console.error('Network fix browser acceptance failed:', error);
   console.error('Current URL:', page.url());
