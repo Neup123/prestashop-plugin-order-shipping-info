@@ -90,7 +90,11 @@
   function show() {
     panel.hidden = false;
     if (map) { map.invalidateSize(); return; }
-    map = L.map(element, {zoomControl:false}).setView([38.5,24],6);
+    // The customer payload intentionally exposes no stations or coverage.
+    // Fit the geographic bounds of Greece instead of showing the wider
+    // eastern Mediterranean at a generic country-centre zoom.
+    map = L.map(element, {zoomControl:false});
+    map.fitBounds([[34.7,19.2],[41.9,29.8]], {padding:[20,20],maxZoom:8});
     L.control.zoom({zoomInTitle:config.zoomIn,zoomOutTitle:config.zoomOut}).addTo(map);
     const attribution = document.createElement('a');
     attribution.href = 'https://www.openstreetmap.org/copyright';
