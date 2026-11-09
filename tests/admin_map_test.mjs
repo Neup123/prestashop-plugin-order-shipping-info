@@ -210,8 +210,8 @@ samePrice.elements['grtrans-map-preview-clear'].events.click();
 assert.ok(solid.every(l=>!l.layer.removed));
 const zeroPrice=fixture({stations:[a,b],cost:{1:0,2:0},legs:[{
   ...busLeg,price:0}]});
-assert.ok(zeroPrice.calls.lines.some(l=>l.options.className==='grtrans-zigzag-stitch'),
-  'Explicit zero-priced land link still gets a transfer seam');
+assert.ok(!zeroPrice.calls.lines.some(l=>l.options.className==='grtrans-zigzag-stitch'),
+  'Equal-cost linked land stations merge without a false cheap-to-expensive transfer seam');
 
 /* Resolution is a data contract, not hard-coded price interpretation inside
  * the seam painter. An override-aware resolver can replace this map in #107. */
@@ -376,7 +376,8 @@ assert.ok(routing.calls.lines.some(line => line.options.weight===5 &&
   line.options.dashArray==='10 5'),'Preview ferry uses direct port-to-port line');
 routing.elements['grtrans-map-preview-clear'].events.click();
 assert.ok(routing.calls.polygons.every(p => !p.layer.removed));
-assert.ok(routing.calls.lines.some(l => l.options.weight===1.25 && !l.layer.removed));
+assert.ok(routing.calls.lines.some(l => l.options.className==='grtrans-sea-line' && !l.layer.removed),
+  'Clearing preview restores the actual ferry transport line');
 assert.match(routing.elements['grtrans-preview-status'].textContent,/cleared/);
 const noRoute = fixture({stations:[routeA,routeC]});
 const previous = noRoute.calls.lines.length;
