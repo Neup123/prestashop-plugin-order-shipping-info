@@ -101,7 +101,8 @@ final class GrTransportNetworkAdmin
         $base=self::esc((_MODULE_DIR_ . $module->name . '/')) . 'views/';
         $out='<section class="panel" id="grtrans-network">'
             . '<h3>Transport network · coverage map</h3>'
-            . '<p>Stations have a strong inner ring (normal service) and a lighter outer ring (long walk). '
+            . '<p>Local station/area coverage only: overlapping linked stations of one service merge into one patch; '
+            . 'priced links have short joining stitches, never route-spanning ribbons. '
             . 'Click a station, choose Link, and click its destination. Long-distance links require a type and price.</p>'
             . '<link rel="stylesheet" href="' . $base . 'vendor/leaflet/leaflet.css">'
             . '<link rel="stylesheet" href="' . $base . 'css/network-admin.css">'
