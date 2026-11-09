@@ -20,7 +20,7 @@ jobs:
       - name: Lint PHP
         run: find grtransportshipping tests -name '*.php' -print0 | xargs -0 -n1 php -l
       - name: Quote engine tests
-        run: php tests/quote_check_test.php && php tests/quote_page_test.php && php tests/quote_test.php && php tests/demo_quotes_test.php && php tests/route_state_test.php && php tests/route_fields_test.php && php tests/translation_test.php
+        run: php tests/quote_check_test.php && php tests/quote_page_test.php && php tests/network_test.php && php tests/quote_test.php && php tests/demo_quotes_test.php && php tests/route_state_test.php && php tests/route_fields_test.php && php tests/translation_test.php
       - name: Order charged amount adjustment contract
         run: php tests/order_charge_test.php
       - name: Validate demo seed format

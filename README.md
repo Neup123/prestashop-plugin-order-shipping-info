@@ -126,3 +126,12 @@ entry points with local platform doubles, including handling fees and escaped
 notices. The Node test covers map opt-in, terminal plotting, click/drag submission
 and missing Leaflet. These are local contracts; live PrestaShop theme/FAQ
 acceptance remains a separate deployment check.
+
+
+## Network model (0.6.0; issues #64–#70)
+
+A new validated station/leg/transfer dataset and token-scoped JSON/CSV CRUD API are available alongside the original flat Routes. Stations have independently configured normal and extended walking radii, multiple origin hubs, and map coordinates. Directional priced legs may terminate at another station or serve a direct delivery area; explicit priced/free links are required for transfers between different stations. The back-office Leaflet map (assets bundled locally) shows double-ring coverage, mode colors, operator-distinguishable lines and map-based transfer creation. Graph reachability/cheapest-price data come from one shared PHP implementation; the checkout-facing cheapest-path switch is staged in #67 and is **not** activated by this data-model PR alone.
+
+The network is empty by default and **does not replace or rewrite merchant flat Routes**. Existing installations must run **Module Manager → Upgrade** to create the new tables. For staff procedures and API token use see the [English operator guide](docs/admin-guide-grtransportshipping.md); for migration and disposable-rig acceptance see [Install and acceptance](docs/INSTALL-AND-ACCEPTANCE.md). Tokens are administered only in PrestaShop back office and can be rotated to revoke them. The network schema, like flat Routes, is installation-global in multistore installations.
+
+Parcel status notifications (#74) and station hours/phone (#75) are explicitly post-first-release, not part of this feature series.

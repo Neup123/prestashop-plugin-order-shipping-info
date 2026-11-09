@@ -1,0 +1,146 @@
+<?php
+/**
+ * Shared network-data contract for API, map editor, importer and quote engine.
+ * Prices are EUR. Coordinates are WGS84, radii are kilometres.
+ */
+final class GrTransportNetworkFields
+{
+    public const ENTITIES = ['stations', 'legs', 'transfers'];
+    public const TABLES = ['stations'=>'grtrans_station', 'legs'=>'grtrans_leg', 'transfers'=>'grtrans_transfer'];
+    public const IDS = ['stations'=>'id_station', 'legs'=>'id_leg', 'transfers'=>'id_transfer'];
+
+    public static function fields(string $entity): array
+    {
+        switch ($entity) {
+            case 'stations':
+                return [
+                    'name'=>['text',190], 'type'=>['choice',['bus','ferry','airport','other']],
+                    'address_text'=>['text',500], 'lat'=>['latitude'], 'lng'=>['longitude'],
+                    'inner_radius_km'=>['range',0,500], 'outer_radius_km'=>['range',0,500],
+                    'is_origin_hub'=>['bool'],
+                ];
+            case 'legs':
+                return [
+                    'from_station_id'=>['id'], 'to_station_id'=>['nullable_id'],
+                    'mode'=>['choice',['bus','ferry','flight','other']],
+                    'operator_label'=>['text',190], 'price'=>['range',0,100000],
+                    'bidirectional'=>['bool'],
+                    'area_name'=>['text',190], 'area_lat'=>['nullable_latitude'],
+                    'area_lng'=>['nullable_longitude'], 'area_radius_km'=>['range',0,500],
+                ];
+            case 'transfers':
+                return [
+                    'from_station_id'=>['id'], 'to_station_id'=>['id'],
+                    'connection_type'=>['text',64], 'price'=>['range',0,100000],
+                ];
+        }
+        throw new InvalidArgumentException('Unknown network entity');
+    }
+
+    public static function defaults(string $entity): array
+    {
+        switch ($entity) {
+            case 'stations': return [
+                'name'=>'', 'type'=>'bus', 'address_text'=>'', 'lat'=>null, 'lng'=>null,
+                'inner_radius_km'=>1, 'outer_radius_km'=>5, 'is_origin_hub'=>0,
+            ];
+            case 'legs': return [
+                'from_station_id'=>0, 'to_station_id'=>null, 'mode'=>'bus',
+                'operator_label'=>'', 'price'=>0, 'bidirectional'=>0,
+                'area_name'=>'', 'area_lat'=>null, 'area_lng'=>null, 'area_radius_km'=>0,
+            ];
+            case 'transfers': return [
+                'from_station_id'=>0, 'to_station_id'=>0, 'connection_type'=>'walk', 'price'=>0,
+            ];
+        }
+        throw new InvalidArgumentException('Unknown network entity');
+    }
+
+    public static function normalize(string $entity, array $input): array
+    {
+        $fields = self::fields($entity);
+        $extra = array_diff(array_keys($input), array_keys($fields));
+        if ($extra) {
+            throw new InvalidArgumentException('Unexpected network fields: ' . implode(', ', $extra));
+        }
+        $output = [];
+        foreach ($fields as $key=>$spec) {
+            if (!array_key_exists($key,$input)) {
+                throw new InvalidArgumentException('Missing network field: ' . $key);
+            }
+            $value=$input[$key];
+            $type=$spec[0];
+            if ($type==='text') {
+                if (!is_string($value) && !is_numeric($value)) throw new InvalidArgumentException('Invalid ' . $key);
+                $text=trim((string)$value);
+                $length=function_exists('mb_strlen') ? mb_strlen($text,'UTF-8') : strlen($text);
+                if ($length>$spec[1]) throw new InvalidArgumentException($key . ' is too long');
+                $output[$key]=$text;
+            } elseif ($type==='choice') {
+                if (!is_string($value) || !in_array($value,$spec[1],true)) throw new InvalidArgumentException('Invalid ' . $key);
+                $output[$key]=$value;
+            } elseif ($type==='bool') {
+                if (!in_array($value,[0,1,'0','1',false,true],true)) throw new InvalidArgumentException('Invalid ' . $key);
+                $output[$key]=(int)$value;
+            } elseif ($type==='id' || $type==='nullable_id') {
+                if ($type==='nullable_id' && ($value===null || $value==='' || $value==='0' || $value===0)) {
+                    $output[$key]=null;
+                } else {
+                    if (!is_scalar($value) || !preg_match('/^[1-9][0-9]*$/D',(string)$value) || (float)$value>2147483647) {
+                        throw new InvalidArgumentException('Invalid station ID: ' . $key);
+                    }
+                    $output[$key]=(int)$value;
+                }
+            } else {
+                $nullable=str_starts_with($type,'nullable_');
+                if ($nullable && ($value===null || $value==='')) {
+                    $output[$key]=null;
+                    continue;
+                }
+                if (!is_scalar($value) || $value==='' || !is_numeric(str_replace(',','.',(string)$value))) {
+                    throw new InvalidArgumentException('Invalid number: ' . $key);
+                }
+                $number=(float)str_replace(',','.',(string)$value);
+                if (!is_finite($number)) throw new InvalidArgumentException('Nonfinite number: ' . $key);
+                if (str_contains($type,'latitude')) {
+                    if ($number< -90 || $number>90) throw new InvalidArgumentException('Latitude out of bounds');
+                    $output[$key]=round($number,7);
+                } elseif (str_contains($type,'longitude')) {
+                    if ($number< -180 || $number>180) throw new InvalidArgumentException('Longitude out of bounds');
+                    $output[$key]=round($number,7);
+                } else {
+                    if ($number<$spec[1] || $number>$spec[2]) throw new InvalidArgumentException('Outside allowed range: ' . $key);
+                    $output[$key]=round($number,2);
+                }
+            }
+        }
+        if ($entity==='stations') {
+            if ($output['name']==='' || $output['lat']===null || $output['lng']===null) {
+                throw new InvalidArgumentException('Station name and map coordinates are required');
+            }
+            if ($output['outer_radius_km']<$output['inner_radius_km'] || $output['outer_radius_km']<=0) {
+                throw new InvalidArgumentException('Outer station radius must be positive and at least the inner radius');
+            }
+        } elseif ($entity==='legs') {
+            if ($output['to_station_id']!==null) {
+                if ($output['to_station_id']===$output['from_station_id']) throw new InvalidArgumentException('A leg must connect distinct stations');
+                if ($output['area_lat']!==null || $output['area_lng']!==null || $output['area_radius_km']>0) {
+                    throw new InvalidArgumentException('A station leg cannot also be a direct area service');
+                }
+            } elseif ($output['area_lat']===null || $output['area_lng']===null || $output['area_radius_km']<=0) {
+                throw new InvalidArgumentException('Direct service requires area centre and coverage radius');
+            }
+        } elseif ($output['from_station_id']===$output['to_station_id']) {
+            throw new InvalidArgumentException('A transfer must connect distinct stations');
+        }
+        return $output;
+    }
+
+    public static function distanceKm(float $lat1,float $lon1,float $lat2,float $lon2): float
+    {
+        $a=sin(deg2rad($lat2-$lat1)/2)**2
+            + cos(deg2rad($lat1))*cos(deg2rad($lat2))
+            *sin(deg2rad($lon2-$lon1)/2)**2;
+        return 6371.0088*2*asin(sqrt(min(1,max(0,$a))));
+    }
+}
