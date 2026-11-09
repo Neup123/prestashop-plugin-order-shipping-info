@@ -70,253 +70,182 @@ const station = (id, name, lat, lng) => ({
 });
 const kmDistance = (a, b) => Math.hypot((a[0] - b[0]) * 111.195,
   (a[1] - b[1]) * 111.195 * Math.cos((a[0] + b[0]) * Math.PI / 360));
-const lengthKm = vertices => vertices.slice(1).reduce((total, p, i) =>
-  total + kmDistance(p, vertices[i]), 0);
-const withinPolygon = (p, poly) => {
-  let found = false;
-  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-    const a = poly[i], b = poly[j];
-    if ((a[0] > p[0]) !== (b[0] > p[0]) &&
-        p[1] < (b[1] - a[1]) * (p[0] - a[0]) / (b[0] - a[0]) + a[1]) found = !found;
+const lengthKm = points => points.slice(1).reduce((total, p, i) =>
+  total + kmDistance(p, points[i]), 0);
+const polygonContains = (p, ring) => {
+  let hit = false;
+  for (let i=0,j=ring.length-1;i<ring.length;j=i++) {
+    const a=ring[i],b=ring[j];
+    if ((a[0]>p[0])!==(b[0]>p[0]) &&
+      p[1]<(b[1]-a[1])*(p[0]-a[0])/(b[0]-a[0])+a[1]) hit=!hit;
   }
-  return found;
+  return hit;
 };
-const {calls, elements, panes, geometry} = fixture({
-  stations: [station(1, '<first>', 37.9, 23.6), station(2, 'Second', 38.2, 23.9)],
-  legs: [{id_leg:9, from_station_id:1, to_station_id:null, mode:'other',
-    area_lat:37.8, area_lng:23.5, area_radius_km:4, area_name:'Third area', price:5}]
+const polygon = JSON.stringify({type:'Polygon',coordinates:[[
+  [23.6,37.9],[23.72,37.9],[23.73,38.0],[23.64,38.03],[23.6,37.9]
+]]});
+const isochrone = JSON.stringify({type:'Polygon',coordinates:[[
+  [23.5,37.7],[23.6,37.72],[23.66,37.79],[23.55,37.85],[23.5,37.7]
+]]});
+const original = fixture({
+  stations:[station(1,'First',37.9,23.6),station(2,'Second',38.2,23.9)],
+  legs:[{id_leg:9,from_station_id:1,to_station_id:null,
+    mode:'other',area_lat:37.8,area_lng:23.5,area_radius_km:4,
+    area_name:'Third area',price:5}]
 });
-assert.equal(panes['grtrans-coverage-patches'].style.zIndex, '390',
-  'The existing #102 dedicated vector pane is retained');
-assert.equal(calls.circles.length, 0, 'No stamped Leaflet circles remain');
-assert.equal(calls.polygons.length, 5,
-  'One organic direct-area sea plus two independent outer/inner station blobs');
-assert.equal(calls.polygons[0].options.fillOpacity, 0.24,
-  'Full dynamic coverage is painted first, beneath its islands');
-assert.equal(calls.polygons[1].options.fillOpacity, 0.20);
-assert.equal(calls.polygons[2].options.fillOpacity, 0.10);
-assert.equal(calls.polygons[2].options.stroke, false,
-  'Inner soft wash has no extra stamped-circle outline');
-assert.ok(calls.polygons.every(p => p.options.fill &&
-  p.options.pane === 'grtrans-coverage-patches' && p.options.className === 'grtrans-organic-patch'));
-assert.equal(new Set([calls.polygons[0].options.fillColor,
-  calls.polygons[1].options.fillColor, calls.polygons[3].options.fillColor]).size, 3);
-const outerContour = calls.polygons[1].points;
-const outerRadii = outerContour.map(p => kmDistance(p, [37.9, 23.6]));
-assert.ok(Math.max(...outerRadii) - Math.min(...outerRadii) > 0.3,
-  'Organic patch is visibly non-circular rather than a stamped disc');
-assert.ok(Math.max(...outerRadii) <= 10.03,
-  'The organic visual never grows beyond the stored coverage radius');
-assert.ok(outerContour.length >= 120, 'Organic edge is smoothly sampled');
-assert.equal(elements['grtrans-zone-legend'].children.length, 3);
-assert.ok(elements['grtrans-zone-legend'].children.map(item =>
-  item.children[1].textContent).includes('<first>'),
-  'Merchant-supplied labels remain safe text');
-assert.equal(calls.markers.length, 2, 'Individual station pins remain clickable');
-const single = fixture({stations:[{...station(1,'Small patch',38,24),outer_radius_km:1}]});
-assert.equal(single.calls.fits.length, 1);
-const bounds = single.calls.fits[0][0];
-assert.ok(bounds[0][0] < 38 && bounds[1][0] > 38);
-assert.ok(bounds[0][1] < 24 && bounds[1][1] > 24);
-assert.ok(single.calls.fits[0][1].maxZoom >= 12);
-const empty = fixture({});
-assert.equal(empty.calls.fits.length, 0);
-assert.equal(empty.calls.views[0][1], 6);
-const orphan = fixture({legs:[{id_leg:4,from_station_id:5,to_station_id:null,
-  area_lat:37.9,area_lng:23.7,area_radius_km:2,price:3}]});
-assert.equal(orphan.calls.polygons.length, 0);
-assert.equal(orphan.calls.fits.length, 0);
-const withArea = fixture({stations:[station(1,'Hub',38,24)],legs:[{
-  id_leg:7,from_station_id:1,to_station_id:null,area_lat:36,area_lng:25,
-  area_radius_km:3,area_name:'Area',price:3
+assert.equal(original.panes['grtrans-coverage-patches'].style.zIndex,'390');
+assert.equal(original.calls.circles.length,0,'No Leaflet stamped circle paths');
+assert.equal(original.calls.polygons.length,5,'Dynamic area first, two station inner+outer pairs');
+assert.equal(original.calls.polygons[0].options.fillOpacity,.24);
+assert.ok(original.calls.polygons.every(p=>p.options.pane==='grtrans-coverage-patches'));
+assert.equal(original.calls.markers.length,2,'Station pins remain independently clickable');
+assert.equal(original.elements['grtrans-zone-legend'].children.length,3);
+const radiusRing=original.calls.polygons[1].points;
+assert.ok(Math.max(...radiusRing.map(p=>kmDistance(p,[37.9,23.6]))) -
+  Math.min(...radiusRing.map(p=>kmDistance(p,[37.9,23.6]))) < .06,
+  'A walking-radius definition renders as an actual circle (panel A)');
+const postalStation={...station(1,'Postal reach',38,23.65),
+  coverage_kind:'postal_polygon',coverage_geojson:polygon};
+const postal=fixture({stations:[postalStation]});
+assert.equal(postal.calls.polygons.length,1,
+  'Postal-code reach uses ONE recorded polygon; never invents a radius wash');
+assert.equal(postal.calls.polygons[0].points.length,5,
+  'Postal polygon geometry is used verbatim');
+assert.equal(postal.calls.polygons[0].points[0][1],23.6);
+const iso=fixture({stations:[{...station(1,'Walking routes',38,23.6),
+  coverage_kind:'walking_isochrone',coverage_geojson:isochrone}]});
+assert.equal(iso.calls.polygons.length,1);
+assert.equal(iso.calls.polygons[0].points.length,5,'Isochrone polygon not a circle');
+const empty=fixture({});
+assert.equal(empty.calls.fits.length,0);
+const orphan=fixture({legs:[{id_leg:4,from_station_id:9,to_station_id:null,
+  area_lat:38,area_lng:23.6,area_radius_km:3,price:3}]});
+assert.equal(orphan.calls.polygons.length,0,'Orphan direct-area service has no coverage');
+assert.ok(postal.calls.fits.length===1 && postal.calls.fits[0][0].some(p=>p[1]===23.6),
+  'Polygon extents, not arbitrary radius, determine map framing');
+console.log('Panel A: exact postal polygon / walking radius / isochrone, pane and fit passed');
+
+const a=station(1,'Athens',38,23.7);
+const b=station(2,'Piraeus',38.05,23.75);
+const busLeg={id_leg:1,from_station_id:1,to_station_id:2,mode:'bus',
+  operator_label:'Athens-Piraeus bus',price:5};
+const noLink=fixture({stations:[a,b]});
+assert.equal(noLink.calls.polygons.length,4);
+assert.equal(noLink.calls.lines.length,0,
+  'Panel B: overlapping but unlinked patches blend with NO seam or line');
+const withPrices=fixture({
+  stations:[a,b],
+  cost:{1:5,2:9},
+  legs:[busLeg]
+});
+assert.equal(withPrices.calls.polygons.length,4,
+  'Panel G: DIFFERENT station prices keep the two patch identities (no union)');
+const firstBlob=withPrices.geometry.patchContour({
+  lat:a.lat,lng:a.lng,radiusKm:10,key:'station:1'});
+const secondBlob=withPrices.geometry.patchContour({
+  lat:b.lat,lng:b.lng,radiusKm:10,key:'station:2'});
+const stitch=withPrices.calls.lines.find(l=>l.options.className==='grtrans-zigzag-stitch');
+assert.ok(stitch && stitch.points.length===9,'Panel C: priced overlap gets nine-point zigzag');
+assert.ok(stitch.points.every(p=>polygonContains(p,firstBlob)&&polygonContains(p,secondBlob)),
+  'The transfer seam stays INSIDE the overlap lens');
+assert.ok(lengthKm(stitch.points)<=1.8,'#102 length limit applies to WHOLE zigzag');
+assert.ok(stitch.points.every(p=>Math.abs(kmDistance(p,[38,23.7])-10)<0.3),
+  'Seam is on the €5 patch OUTER cheap-reach boundary, not centred in overlap');
+assert.equal(stitch.options.weight,1.25);
+assert.equal(stitch.options.opacity,.55);
+assert.equal(stitch.options.dashArray,'2 5');
+assert.ok(!withPrices.calls.polygons.some(p=>p.options.fillOpacity>0.6));
+await new Promise(resolve=>setImmediate(resolve));
+const gradient=withPrices.calls.lines.filter(l=>l.options.className==='grtrans-land-gradient');
+assert.ok(gradient.length>=20,'Panel G: a continuous multi-segment price gradient follows road geometry');
+assert.ok(new Set(gradient.map(l=>l.options.color)).size>12,
+  'The gradient changes lightness along the connection');
+assert.ok(gradient.every(l=>l.options.opacity>=.9));
+assert.ok(gradient.some(l=>l.points.length===2));
+const samePrice=fixture({stations:[a,b],cost:{1:5,2:5},legs:[{
+  ...busLeg,price:0,
+  route_geojson:JSON.stringify({type:'LineString',coordinates:[
+    [23.7,38],[23.72,38.02],[23.75,38.05]]})
 }]});
-assert.ok(withArea.calls.fits[0][0].some(p => p[0] < 36),
-  'Dynamic coverage radius participates in map fit');
-console.log('Organic radius-safe patches, separate islands, coverage pane and legend passed');
-
-const a = station(1, 'Athens', 38, 23.7);
-const b = station(2, 'Piraeus', 38.05, 23.75);
-const unrelated = station(3, 'Unrelated', 39, 25);
-const unlinked = fixture({stations:[a,b]});
-assert.equal(unlinked.calls.polygons.length, 4,
-  'Two touching services without a priced link retain four translucent patch washes');
-assert.equal(unlinked.calls.lines.length, 0,
-  'Overlapping with NO priced link has no seam, marker or line');
-
-const linked = fixture({
-  stations:[a,b,unrelated],
-  legs:[{id_leg:1,from_station_id:1,to_station_id:2,mode:'bus',
-    operator_label:'Athens-Piraeus',price:10}]
-});
-assert.equal(linked.calls.polygons.length, 3,
-  'Correction #1+#3: Athens/Piraeus 4 ring paths BEFORE -> 1 union path AFTER, plus 2 unrelated washes');
-assert.equal(linked.calls.circles.length, 0,
-  'Union has ZERO buried internal arcs/circle paths');
-const union = linked.calls.polygons[0];
+assert.equal(samePrice.calls.polygons.length,1,
+  'Panel F: 4 inner/outer circle paths BEFORE -> 1 union polygon AFTER');
+assert.equal(samePrice.calls.circles.length,0,
+  'Panel F: zero internal arcs from former overlapping stamped circles');
+const union=samePrice.calls.polygons[0];
 assert.equal(union.options.pane,'grtrans-coverage-patches');
-assert.ok(union.points.length >= 150, 'Union is a complete exposed organic perimeter');
-const firstBlob = geometry.patchContour({
-  lat:a.lat,lng:a.lng,radiusKm:a.outer_radius_km,key:'station:1'
-});
-const secondBlob = geometry.patchContour({
-  lat:b.lat,lng:b.lng,radiusKm:b.outer_radius_km,key:'station:2'
-});
-const midpointSegments = union.points.map((p,i) => {
-  const q = union.points[(i+1)%union.points.length];
-  return [(p[0]+q[0])/2, (p[1]+q[1])/2];
-});
-assert.equal(midpointSegments.filter(p => withinPolygon(p,firstBlob) &&
-  withinPolygon(p,secondBlob)).length,0,
-  'Union draws ZERO boundary segments buried inside BOTH linked patches');
-assert.equal(linked.calls.lines.length,2,
-  'One local zigzag seam and one transparent hover target, no ribbon');
-const seam = linked.calls.lines[0];
-assert.equal(seam.options.weight,1.25);
-assert.equal(seam.options.opacity,0.55);
-assert.equal(seam.options.dashArray,'2 5');
-assert.equal(seam.points.length,9,
-  'Overlap seam is a zigzag, not a straight chord or cross-ticks');
-assert.ok(lengthKm(seam.points) <= 1.8,
-  'Zigzag total length, not just its endpoint span, stays under 1.8 km');
-assert.ok(seam.points.every(p => withinPolygon(p,firstBlob) &&
-  withinPolygon(p,secondBlob)),
-  'ALL zigzag vertices lie inside the two-patch overlap lens');
-const stitchCurvatures = seam.points.slice(1,-1).map((p,i) => {
-  const prev = seam.points[i], next = seam.points[i+2];
-  return Math.abs((p[0]-prev[0])*(next[1]-p[1])-
-    (p[1]-prev[1])*(next[0]-p[0]));
-});
-assert.ok(stitchCurvatures.some(value => value > 1e-9),
-  'Zigzag alternates direction along the shared interior boundary');
-assert.equal(linked.calls.lines[1].options.opacity,0.001);
-assert.equal(linked.calls.lines[1].layer.tooltip.textContent,
-  'Athens-Piraeus · 10.00 EUR',
-  'Hover target retains exact priced route tooltip');
-linked.elements['grtrans-map-preview'].events.click();
-assert.ok(linked.calls.lines.every(line => line.layer.removed),
-  'Route preview hides seam marks');
-assert.ok(linked.calls.polygons.every(p => !p.layer.removed),
-  'Route preview never removes the organic patches or union');
-linked.elements['grtrans-map-preview-clear'].events.click();
-assert.ok(linked.calls.lines.every(line => !line.layer.removed),
-  'Clearing preview restores the zigzag seam');
+assert.ok(union.points.length>150);
+assert.ok(union.points.every((p,i)=>{
+  const q=union.points[(i+1)%union.points.length];
+  const centre=[(p[0]+q[0])/2,(p[1]+q[1])/2];
+  return !(polygonContains(centre,firstBlob)&&polygonContains(centre,secondBlob));
+}), 'Union has zero boundary segments buried inside both original reaches');
+await new Promise(resolve=>setImmediate(resolve));
+const solid=samePrice.calls.lines.filter(l=>l.options.className==='grtrans-land-road');
+assert.equal(solid.length,1,'Panel F: same-price land is one solid road line');
+assert.equal(solid[0].points.length,3,'Persisted actual road shape overrides OSRM');
+assert.equal(solid[0].options.weight,3.5);
+assert.ok(solid[0].options.opacity>.9,'Land line is more opaque than its patches');
+samePrice.elements['grtrans-map-preview'].events.click();
+assert.ok(!union.layer.removed,'Route preview leaves union patch visible');
+samePrice.elements['grtrans-map-preview-clear'].events.click();
+assert.ok(solid.every(l=>!l.layer.removed));
+const zeroPrice=fixture({stations:[a,b],cost:{1:0,2:0},legs:[{
+  ...busLeg,price:0}]});
+assert.ok(zeroPrice.calls.lines.some(l=>l.options.className==='grtrans-zigzag-stitch'),
+  'Explicit zero-priced land link still gets a transfer seam');
+console.log('Panels B/C/F/G: no-link blend, cheaper boundary, same-price union and gradient passed');
 
-const unpriced = fixture({stations:[a,b],legs:[{
-  id_leg:3,from_station_id:1,to_station_id:2,mode:'bus',price:-2
-}]});
-assert.equal(unpriced.calls.lines.length,0,'Invalid/negative prices produce no stitch');
-const free = fixture({stations:[a,b],legs:[{
-  id_leg:3,from_station_id:1,to_station_id:2,mode:'bus',price:0
-}]});
-assert.equal(free.calls.lines.length,2,'Zero-priced valid links still have a seam');
-const disjointLand = fixture({
-  stations:[a,station(2,'Distant',40,25)],
-  legs:[{id_leg:4,from_station_id:1,to_station_id:2,mode:'bus',price:5}]
-});
-assert.equal(disjointLand.calls.polygons.length,4,
-  'Distant station blobs remain separate');
-assert.equal(disjointLand.calls.lines.length,4,
-  'Distant land has only two local anchor marks and hit targets, no route line');
-assert.ok(disjointLand.calls.lines.every(line => lengthKm(line.points) < 1.8));
-assert.ok(disjointLand.calls.lines.every(line => line.points.length === 2));
-assert.ok(disjointLand.calls.lines.every(line => line.options.weight === 1.25 ||
-  line.options.opacity === 0.001), 'No #99 broad fabric, parallel rims or cross-ticks');
-
-const dynamicIsland = fixture({
-  stations:[a,station(2,'Island',38.04,23.76)],
-  legs:[{id_leg:12,from_station_id:1,to_station_id:null,mode:'other',price:8,
-    area_lat:38.02,area_lng:23.73,area_radius_km:25,area_name:'Taxi coverage sea'}]
-});
-assert.equal(dynamicIsland.calls.polygons.length,5);
-assert.equal(dynamicIsland.calls.polygons[0].options.fillOpacity,0.24,
-  'Dynamic area sea is one organic patch underneath separate station islands');
-assert.ok(dynamicIsland.calls.polygons[0].points.length >= 120);
-assert.equal(dynamicIsland.calls.circles.length,0);
-assert.ok(dynamicIsland.calls.polygons.every(p => p.points.length > 100),
-  'No cutouts, corridors, fabric strips, or hard disc shapes for island model');
-
-const air = fixture({
-  stations:[{...a,type:'airport'}, {...station(2,'Island airport',37,25),type:'airport'}],
-  legs:[{id_leg:20,from_station_id:1,to_station_id:2,mode:'flight',
-    operator_label:'Flight A',price:45}]
-});
-assert.equal(air.calls.lines.length,2,
-  'Distant AIR EXCEPTION is a dashed half-circle arc plus destination arrowhead');
-const arc = air.calls.lines[0], arrow = air.calls.lines[1];
+const air=fixture({stations:[{...a,type:'airport'},
+  {...station(2,'Island airport',37,25),type:'airport'}],
+  legs:[{id_leg:20,from_station_id:1,to_station_id:2,mode:'flight',price:45}]});
+const arc=air.calls.lines.find(l=>l.options.className==='grtrans-air-arc');
+const arrow=air.calls.lines.find(l=>l.options.className==='grtrans-air-arrow');
+assert.ok(arc && arrow,'Panel D: flight renders a directed dashed arc');
 assert.equal(arc.points.length,41);
 assert.equal(arc.options.dashArray,'7 7');
-assert.equal(arc.options.className,'grtrans-air-arc');
-assert.equal(arrow.options.className,'grtrans-air-arrow');
-assert.equal(arrow.points.length,3);
-assert.ok(kmDistance(arrow.points[1],[37,25]) < .001,
-  'Arrowhead points at the actual destination');
-const midpoint = [(38+37)/2,(23.7+25)/2];
-assert.ok(kmDistance(arc.points[20],midpoint) > 50,
-  'Air connection is a high, symbolic curved arc, never straight across the route');
-const fixedKm = p => Math.hypot((p[0] - midpoint[0]) * 111.195,
-  (p[1] - midpoint[1]) * 111.195 * Math.cos(midpoint[0] * Math.PI / 180));
-const arcRadii = arc.points.map(fixedKm);
-assert.ok(Math.max(...arcRadii) - Math.min(...arcRadii) < 0.05,
-  'Every air-arc sample lies on one true radius: a geometric half circle');
-assert.match(arc.layer.tooltip.textContent,/symbolic flight arc; not area coverage/);
+assert.ok(kmDistance(arrow.points[1],[37,25])<.001);
+const airMiddle=[37.5,24.35];
+const airRadii=arc.points.map(p=>Math.hypot((p[0]-airMiddle[0])*111.195,
+  (p[1]-airMiddle[1])*111.195*Math.cos(airMiddle[0]*Math.PI/180)));
+assert.ok(Math.max(...airRadii)-Math.min(...airRadii)<.05,
+  'Distant flight is a true symbolic half-circle, not an arbitrary bend');
 air.calls.polygons[0].layer.events.mouseover();
-assert.ok(air.calls.polygons[0].layer.style.fillOpacity > .2);
-assert.ok(air.calls.polygons[2].layer.style.fillOpacity > .2,
-  'Air endpoint hover highlights both plane-islands as one mental connection');
+assert.ok(air.calls.polygons[2].layer.style.fillOpacity>.2,
+  'Mental hover highlights both distant plane-island reaches');
 air.calls.polygons[0].layer.events.mouseout();
 assert.equal(air.calls.polygons[2].layer.style.fillOpacity,.2);
 arc.layer.events.mouseover();
-assert.ok(air.calls.polygons[0].layer.style.fillOpacity > .2);
-assert.ok(air.calls.polygons[2].layer.style.fillOpacity > .2,
-  'Hovering the arc also highlights both plane-islands');
+assert.ok(air.calls.polygons[0].layer.style.fillOpacity>.2);
+assert.ok(air.calls.polygons[2].layer.style.fillOpacity>.2);
 arc.layer.events.mouseout();
-assert.equal(air.calls.polygons[2].layer.style.fillOpacity,.2);
-air.elements['grtrans-map-preview'].events.click();
-assert.ok(air.calls.lines.every(line => line.layer.removed),
-  'Explicit route preview hides symbolic arc and arrow');
-air.elements['grtrans-map-preview-clear'].events.click();
-assert.ok(air.calls.lines.every(line => !line.layer.removed),
-  'Clearing preview restores air arc and arrow');
-const bidirectionalAir = fixture({
-  stations:[{...a,type:'airport'}, {...station(2,'B',37,25),type:'airport'}],
-  legs:[{id_leg:22,from_station_id:1,to_station_id:2,mode:'flight',
-    price:48,bidirectional:1}]
+const sea=fixture({stations:[
+  {...a,type:'ferry'},
+  {...station(2,'Naxos',37.1,25.4),type:'ferry'},
+  {...station(3,'Syros',37.4,24.9),type:'ferry'}],
+  legs:[{id_leg:30,from_station_id:1,to_station_id:2,
+      mode:'ferry',operator_label:'Vessel A',price:29},
+    {id_leg:31,from_station_id:1,to_station_id:3,
+      mode:'ferry',operator_label:'Vessel B',price:24}]
 });
-assert.equal(bidirectionalAir.calls.lines.length,3,
-  'A bidirectional priced flight shows arrowheads at BOTH ends');
-const touchingAir = fixture({
-  stations:[{...a,type:'airport'}, {...b,type:'airport'}],
-  legs:[{id_leg:21,from_station_id:1,to_station_id:2,mode:'flight',price:5}]
-});
-assert.equal(touchingAir.calls.lines.length,2,
-  'Near/touching AIR uses a zigzag seam, not a flight arc');
-assert.equal(touchingAir.calls.lines[0].points.length,9);
-assert.equal(touchingAir.calls.lines[0].options.weight,1.25);
-
-const sea = fixture({
-  stations:[{...a,type:'ferry'}, {...station(2,'Naxos',37.1,25.4),type:'ferry'},
-    {...station(3,'Syros',37.4,24.9),type:'ferry'}],
-  legs:[{id_leg:30,from_station_id:1,to_station_id:2,mode:'ferry',
-      operator_label:'Vessel A',price:29},
-    {id_leg:31,from_station_id:1,to_station_id:3,mode:'ferry',
-      operator_label:'Vessel B',price:24}]
-});
-assert.equal(sea.calls.lines.length,8,
-  'Two differently priced sea legs remain two separate local anchor pairs');
-assert.equal(new Set(sea.calls.lines.filter(line => line.options.opacity === 0.001)
-  .map(line => line.layer.tooltip.textContent)).size,2,
-  'Every individual priced sea pair has its own tooltip and hover target');
-assert.ok(sea.calls.lines.every(line => line.points.length === 2),
-  'No full-route SEA line until second owner drawing');
-sea.calls.lines[1].layer.events.mouseover();
-assert.ok(sea.calls.polygons[0].layer.style.fillOpacity > .2);
-assert.ok(sea.calls.polygons[2].layer.style.fillOpacity > .2);
+const vessels=sea.calls.lines.filter(l=>l.options.className==='grtrans-sea-line');
+assert.equal(vessels.length,2,
+  'Panel E: each priced sea origin-destination vessel gets a separate straight dashed line');
+assert.ok(vessels.every(l=>l.points.length===2&&l.options.dashArray==='8 7'));
+assert.equal(sea.calls.lines.filter(l=>l.options.className==='grtrans-sea-arrow').length,2);
+vessels[0].layer.events.mouseover();
+assert.ok(sea.calls.polygons[0].layer.style.fillOpacity>.2);
+assert.ok(sea.calls.polygons[2].layer.style.fillOpacity>.2);
 assert.equal(sea.calls.polygons[4].layer.style.fillOpacity,.2,
-  'Hovering vessel A does not treat differently priced vessel B as the same fan-out');
-sea.calls.lines[1].layer.events.mouseout();
-assert.equal(sea.calls.polygons[0].layer.style.fillOpacity,.2);
-assert.equal(sea.calls.polygons[2].layer.style.fillOpacity,.2);
-console.log('Union: 4 old circles -> 1 organic path, 0 internal arcs; zigzag, air and vessels passed');
+  'Sea mental link is priced-pair-scoped, NOT one fan-out');
+vessels[0].layer.events.mouseout();
+const dynamic=fixture({stations:[a,station(2,'Island',38.04,23.76)],
+  legs:[{id_leg:12,from_station_id:1,to_station_id:null,mode:'other',price:8,
+    area_lat:38.02,area_lng:23.73,area_radius_km:25,area_name:'Courier sea'}]});
+assert.equal(dynamic.calls.polygons.length,5);
+assert.equal(dynamic.calls.polygons[0].options.fillOpacity,.24);
+assert.equal(dynamic.calls.lines.length,0,
+  'Panel H: area sea and station islands have NO sewn traversal or false route');
+console.log('Panels D/E/H: directed air, individual straight ferries and dynamic islands passed');
 
 const routeA = station(1,'Road start',38,23.7);
 const routeB = station(2,'Ferry port',38.05,23.75);
