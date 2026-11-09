@@ -353,10 +353,36 @@
   };
   // Fallback for distant, unresolved land/sea links: only two small, local,
   // facing-patch marks, with a fully empty interstation gap.
-  const stitches = (first, second, lane = 0, costs = null) => {
-    const cheap = costs && costs[0] > costs[1] ? second : first;
-    const pricey = cheap === first ? second : first;
-    const insideLens = zigzagSeam(cheap, pricey, lane);
+  // Resolution is deliberately an INPUT to seam geometry. This module
+  // only supplies today's default cheapest-reachable resolver; a later
+  // override-aware resolver may provide boundaryOwner and boundaryShape.
+  const defaultResolutions = (legs, transfers, costs) => {
+    const output = {};
+    const add = (key, from, to) => {
+      if (!Object.hasOwn(costs, from) || !Object.hasOwn(costs, to)) return;
+      const fromCost = Number(costs[from]), toCost = Number(costs[to]);
+      if (!Number.isFinite(fromCost) || !Number.isFinite(toCost)) return;
+      output[key] = {
+        boundaryOwner: 'station:' + (fromCost <= toCost ? from : to),
+        rule: 'cheapest-reachable'
+      };
+    };
+    legs.forEach(leg => {
+      if (leg.to_station_id != null)
+        add('leg:' + leg.id_leg, leg.from_station_id, leg.to_station_id);
+    });
+    transfers.forEach(transfer =>
+      add('transfer:' + transfer.id_transfer,
+        transfer.from_station_id, transfer.to_station_id));
+    return output;
+  };
+  const stitches = (first, second, lane = 0, resolution = null) => {
+    const boundary = resolution?.boundaryShape ||
+      (resolution?.boundaryOwner === first.key ? first :
+        resolution?.boundaryOwner === second.key ? second : null);
+    const other = boundary === first ? second : first;
+    // No winner / boundary result means no fabricated transfer seam.
+    const insideLens = boundary ? zigzagSeam(boundary, other, lane) : null;
     if (insideLens) return [insideLens];
     if (overlaps(first, second) || !isValid(first) || !isValid(second)) return [];
     const projection = projector([[first.lat, first.lng], [second.lat, second.lng]]);
@@ -501,7 +527,7 @@
   };
   global.GrtransCoverage = Object.freeze({
     kind, patchContour, patchPaths, leafletPaths, coverageTiers, overlaps, stationGroups, unionContours,
-    zigzagSeam, stitches, airArc, seaLine, routePaths,
+    zigzagSeam, stitches, defaultResolutions, airArc, seaLine, routePaths,
     containsPatch, islandStitchRings
   });
 }(window));
