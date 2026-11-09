@@ -40,7 +40,8 @@ final class GrTransportNetworkGraph
             $edge=['kind'=>'leg','id'=>(int)$leg['id_leg'],'from'=>$from,'to'=>$to,
                 'mode'=>(string)$leg['mode'],'operator'=>(string)$leg['operator_label'],
                 'price'=>(float)$leg['price']];
-            foreach (['tariff_min','tariff_max','tariff_estimate','tariff_missing_data','tariff_basis'] as $field) {
+            foreach (['tariff_min','tariff_max','tariff_estimate','tariff_missing_data','tariff_basis',
+                'lead_hours','preparation_hours','transit_min_hours','transit_max_hours'] as $field) {
                 if (isset($leg[$field])) $edge[$field]=$leg[$field];
             }
             if ($edge['price']<0) continue;
