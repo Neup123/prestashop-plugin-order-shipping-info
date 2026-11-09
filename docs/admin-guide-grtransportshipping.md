@@ -165,3 +165,13 @@ Open **Module Manager → Greek public transport shipping → Configure → Tran
 The **extended pickup notice** is separately editable, with a built-in safe English message if left blank. Existing PrestaShop **handling fees** use PrestaShop's own carrier/handling settings; there is no duplicated module default to configure. An individual leg's price, transfer fee and an individual station's radii are merchant **record values**, not global defaults.
 
 Technical constants remain fixed: WGS84 latitude/longitude bounds, Haversine Earth radius 6371.0088 km, JSON/CSV request size and 1,000-row import caps, field lengths/DB numeric precision, price-rounding tolerance, and 100-record quote cleanup batches are protocol, resource or correctness safeguards. Visual map opacity/color is presentation, not merchant service policy.
+
+## Delivery-time windows per leg (#73)
+
+In **Transport network → Legs**, set **Preparation hours** (the shop's parcel handling before hand-in), **Lead hours** (the operator's advance notice / delay before departure), and **Transit min / max hours** (estimated time in transit). Enter both transit values as positive hours, maximum at least minimum. A leg with the default zero transit values is **not timed**; it never produces a false exact arrival estimate.
+
+The route quote sums each selected leg's preparation + lead + minimum transit for the earliest estimate and preparation + lead + maximum transit for the latest. Checkout, the public customer price-check page, the admin simulator and order confirmation all show the same quoted time window. A confirmed order retains the original window in its frozen snapshot; changing the live leg later changes *new* quotes, not the historical snapshot.
+
+For example, a bus with 2 h preparation, 3 h lead and 4–6 h transit, followed by a ferry with 1 h preparation, 2 h lead and 8–10 h transit, gives **20–24 hours**. A connection type/price without an explicitly modelled transfer duration is labelled *transfer travel time not included*: do not interpret the range as a guaranteed delivery deadline.
+
+To switch off time information, go to **Transport network operating defaults → Show delivery-time windows**, enter **0** (off), and save. The default is **1** (on), with an initial per-leg time of zero so untimed services simply show price. Disabling hides all time information on current quote, customer quote page, simulator and historical order notice without deleting stored timing data. The maximum individual time input is configurable (`GRTRANS_MAX_LEG_HOURS`, default **168 hours**); enter a higher limit before saving unusually long journeys.
