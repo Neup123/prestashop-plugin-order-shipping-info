@@ -47,14 +47,48 @@ final class GrTransportNetworkRepository
             `price` DECIMAL(12,2) NOT NULL DEFAULT 0,
             `verified_at` DATETIME NULL,
             INDEX `transfer_from` (`from_station_id`), INDEX `transfer_to` (`to_station_id`)
+        ) ENGINE={$engine} DEFAULT CHARSET=utf8mb4")
+        && $db->execute("CREATE TABLE IF NOT EXISTS `{$prefix}grtrans_branch` (
+            `id_branch` INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            `id_shop` INT UNSIGNED NOT NULL,
+            `name` VARCHAR(190) NOT NULL,
+            `origin_station_id` INT UNSIGNED NOT NULL,
+            INDEX `branch_shop` (`id_shop`),
+            INDEX `branch_origin` (`origin_station_id`)
+        ) ENGINE={$engine} DEFAULT CHARSET=utf8mb4")
+        && $db->execute("CREATE TABLE IF NOT EXISTS `{$prefix}grtrans_branch_stock` (
+            `id_branch_stock` INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            `id_shop` INT UNSIGNED NOT NULL,
+            `id_branch` INT UNSIGNED NOT NULL,
+            `id_product` INT UNSIGNED NOT NULL,
+            `id_product_attribute` INT UNSIGNED NOT NULL DEFAULT 0,
+            `quantity` INT UNSIGNED NOT NULL DEFAULT 0,
+            UNIQUE KEY `branch_product_combination` (`id_branch`, `id_product`, `id_product_attribute`),
+            INDEX `stock_shop` (`id_shop`, `id_product`, `id_product_attribute`)
         ) ENGINE={$engine} DEFAULT CHARSET=utf8mb4");
+    }
+
+    /** Separate physical branches are scoped to the current PrestaShop shop. */
+    public static function shopId(): int
+    {
+        if (!class_exists('Context',false)) return 1;
+        $id=(int)(Context::getContext()->shop->id ?? 0);
+        if ($id<=0) throw new RuntimeException('A shop context is required for branch inventory');
+        return $id;
+    }
+
+    private static function isShopScoped(string $entity): bool
+    {
+        return in_array($entity,['branches','branch_stock'],true);
     }
 
     public static function all(string $entity): array
     {
         $table=self::table($entity);
         $id=GrTransportNetworkFields::IDS[$entity];
-        $rows=Db::getInstance()->executeS('SELECT * FROM `' . _DB_PREFIX_ . $table . '` ORDER BY `' . $id . '` ASC');
+        $where=self::isShopScoped($entity) ? ' WHERE id_shop = '.self::shopId() : '';
+        $rows=Db::getInstance()->executeS('SELECT * FROM `' . _DB_PREFIX_ . $table . '`'
+            . $where . ' ORDER BY `' . $id . '` ASC');
         if (!is_array($rows)) throw new RuntimeException('Network read failed: ' . $entity);
         return $rows;
     }
@@ -64,7 +98,9 @@ final class GrTransportNetworkRepository
         if ($id<=0) return null;
         $table=self::table($entity);
         $pk=GrTransportNetworkFields::IDS[$entity];
-        $row=Db::getInstance()->getRow('SELECT * FROM `' . _DB_PREFIX_ . $table . '` WHERE `' . $pk . '` = ' . $id);
+        $where=self::isShopScoped($entity) ? ' AND id_shop = '.self::shopId() : '';
+        $row=Db::getInstance()->getRow('SELECT * FROM `' . _DB_PREFIX_ . $table
+            . '` WHERE `' . $pk . '` = ' . $id . $where);
         return is_array($row) ? $row : null;
     }
 
@@ -83,6 +119,28 @@ final class GrTransportNetworkRepository
                 }
             }
         }
+        if ($entity==='branches') {
+            $origin=self::find('stations',(int)$normalized['origin_station_id']);
+            if (!$origin || empty($origin['is_origin_hub'])) {
+                throw new InvalidArgumentException('Branch origin must be a marked origin hub');
+            }
+        }
+        if ($entity==='branch_stock') {
+            if (!self::find('branches',(int)$normalized['id_branch'])) {
+                throw new InvalidArgumentException('Unknown branch in this shop');
+            }
+            if (class_exists('Product',false)) {
+                $product=new Product((int)$normalized['id_product']);
+                if (!Validate::isLoadedObject($product)) throw new InvalidArgumentException('Unknown product');
+                if ($normalized['id_product_attribute']>0) {
+                    $combination=new Combination((int)$normalized['id_product_attribute']);
+                    if (!Validate::isLoadedObject($combination)
+                        || (int)$combination->id_product!==(int)$normalized['id_product']) {
+                        throw new InvalidArgumentException('Combination does not belong to product');
+                    }
+                }
+            }
+        }
         $row=[];
         foreach ($normalized as $name=>$value) {
             $row[$name]=is_string($value) ? pSQL($value) : $value;
@@ -90,9 +148,12 @@ final class GrTransportNetworkRepository
         if ($entity==='legs' || $entity==='transfers') {
             $row['verified_at']=gmdate('Y-m-d H:i:s');
         }
+        if (self::isShopScoped($entity)) $row['id_shop']=self::shopId();
         $db=Db::getInstance();
+        $where=GrTransportNetworkFields::IDS[$entity].' = '.$id
+            . (self::isShopScoped($entity) ? ' AND id_shop = '.self::shopId() : '');
         $ok=$id
-            ? $db->update(self::table($entity),$row,GrTransportNetworkFields::IDS[$entity] . ' = ' . $id)
+            ? $db->update(self::table($entity),$row,$where)
             : $db->insert(self::table($entity),$row);
         if (!$ok) throw new RuntimeException('Network write failed: ' . $entity);
         return $id ?: (int)$db->Insert_ID();
