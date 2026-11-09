@@ -17,6 +17,16 @@ final class GrTransportNetworkAdmin
         }
         try {
             $action=(string)$_POST['grtrans_network_action'];
+            if ($action==='save_extended_notice') {
+                $notice=$_POST['extended_notice'] ?? '';
+                if (!is_string($notice) || mb_strlen($notice, 'UTF-8')>1200) {
+                    throw new InvalidArgumentException('Extended pickup notice must contain at most 1200 characters');
+                }
+                if (!Configuration::updateValue('GRTRANS_EXTENDED_NOTICE',trim($notice))) {
+                    throw new RuntimeException('Cannot save extended pickup notice');
+                }
+                return '<div class="alert alert-success">Extended pickup notice saved.</div>';
+            }
             if ($action==='rotate_read' || $action==='rotate_write') {
                 $scope=$action==='rotate_read' ? 'read' : 'write';
                 $token=GrTransportNetworkApi::rotate($scope);
@@ -166,6 +176,13 @@ final class GrTransportNetworkAdmin
         }
         $out.='<button class="btn btn-primary" name="grtrans_network_submit" value="1">'
             . ($selected ? 'Save changes' : 'Create record') . '</button></form></div>';
+        $out.='<h4>Extended pickup notice</h4><p>This warning is displayed at checkout when a destination is served only by a station outer ring.</p>'
+            . '<form method="post" action="' . $url . '#grtrans-network">'
+            . '<input type="hidden" name="token" value="' . $csrf . '">'
+            . '<input type="hidden" name="grtrans_network_action" value="save_extended_notice">'
+            . '<textarea class="form-control" name="extended_notice" maxlength="1200" rows="3">'
+            . self::esc(Configuration::get('GRTRANS_EXTENDED_NOTICE')) . '</textarea>'
+            . '<button class="btn btn-primary">Save extended pickup notice</button></form>';
         $out.='<h4>Programmatic API credentials</h4><p>Issue two independently revocable tokens. '
             . 'Write tokens grant network administration through the API; read tokens cannot mutate data. '
             . 'The plaintext token is shown once after rotation; store it securely.</p>';
