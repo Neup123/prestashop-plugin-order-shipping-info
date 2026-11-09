@@ -31,22 +31,40 @@ class GrtransportshippingQuoteModuleFrontController extends ModuleFrontControlle
             $input, $isPin ? [Tools::getValue('lat'), Tools::getValue('lng')] : null
         ) : null;
         $quote = $result['quote'] ?? null;
-        $stations = $quote ? GrTransportQuoteCheck::routeStations($quote) : [];
+        // The map receives only the customer's own selected coordinates.
+        // The pricing adapter still resolves the pin against the existing catalogue.
+        $lat = Tools::getValue('lat', '');
+        $lng = Tools::getValue('lng', '');
+        $validPin = $isPin && is_scalar($lat) && is_scalar($lng)
+            && is_numeric($lat) && is_numeric($lng)
+            && is_finite((float)$lat) && is_finite((float)$lng)
+            && abs((float)$lat) <= 90 && abs((float)$lng) <= 180;
         $map = [
-            'stations' => $stations,
             'zoomIn' => $this->module->l('Zoom in', 'quote'),
             'zoomOut' => $this->module->l('Zoom out', 'quote'),
             'marker' => $this->module->l('Destination pin', 'quote'),
             'attribution' => $this->module->l('© OpenStreetMap contributors', 'quote'),
             'leafletImagePath' => _MODULE_DIR_ . $this->module->name . '/views/vendor/leaflet/images/',
         ];
-        $station = $result['station'] ?? null;
-        if ($station) {
-            $map['pin'] = [$station['lat'], $station['lng']];
+        if ($validPin) {
+            $map['pin'] = [(float)$lat, (float)$lng];
+        }
+        // Notes are display-only context for this quote, never pricing inputs
+        // or an order field. Escape at the Smarty output boundary.
+        $note = Tools::getValue('note', '');
+        $note = is_string($note) ? trim($note) : '';
+        if (function_exists('mb_substr')) {
+            $note = mb_substr($note, 0, 500, 'UTF-8');
+        } else {
+            $note = substr($note, 0, 500);
         }
         $this->context->smarty->assign([
             'quote_action' => $this->context->link->getModuleLink($this->module->name, 'quote'),
             'quote_destination' => $input,
+            'quote_is_pin' => $isPin,
+            'quote_lat' => $validPin ? (string)$lat : '',
+            'quote_lng' => $validPin ? (string)$lng : '',
+            'quote_note' => $note,
             'quote_submitted' => $submitted,
             'quote_route' => $quote,
             'quote_carrier' => $result['carrier'] ?? '',
@@ -58,7 +76,6 @@ class GrtransportshippingQuoteModuleFrontController extends ModuleFrontControlle
                 )) : '',
             'quote_notice' => $quote ? $this->module->customerQuoteNotice($quote) : '',
             'quote_message' => $result ? $this->module->customerQuoteMessage($result['status']) : '',
-            'quote_pin_radius' => GrTransportQuoteCheck::pinRadiusKm(),
             'quote_map' => json_encode($map, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT),
         ]);
         $this->setTemplate('module:grtransportshipping/views/templates/front/quote.tpl');

@@ -10,9 +10,23 @@
     <input type="hidden" name="fc" value="module">
     <input type="hidden" name="module" value="grtransportshipping">
     <input type="hidden" name="controller" value="quote">
-    <label for="grtransport-destination">{l s='Postcode or city' mod='grtransportshipping'}</label>
+    <input type="hidden" name="pin" id="grtransport-is-pin" value="{if $quote_is_pin}1{else}0{/if}">
+    <input type="hidden" name="lat" id="grtransport-pin-lat" value="{$quote_lat|escape:'htmlall':'UTF-8'}">
+    <input type="hidden" name="lng" id="grtransport-pin-lng" value="{$quote_lng|escape:'htmlall':'UTF-8'}">
+    <label for="grtransport-destination">{l s='Postcode, city or pinned address' mod='grtransportshipping'}</label>
     <input class="form-control" id="grtransport-destination" name="destination" type="text" maxlength="128" value="{$quote_destination|escape:'htmlall':'UTF-8'}" required>
+    <label for="grtransport-note">{l s='Note for this quote (optional)' mod='grtransportshipping'}</label>
+    <textarea class="form-control" id="grtransport-note" name="note" maxlength="500" rows="2">{$quote_note|escape:'htmlall':'UTF-8'}</textarea>
     <button class="btn btn-primary" type="submit">{l s='Check price' mod='grtransportshipping'}</button>
+    <div id="grtransport-map-option" hidden>
+      <button class="btn btn-secondary" type="button" id="grtransport-show-map">{l s='Choose destination on a map' mod='grtransportshipping'}</button>
+      <div id="grtransport-map-panel" hidden>
+        <p>{l s='Drop or drag your destination pin. The location is priced using the configured radius around listed destinations; this does not guarantee home delivery.' mod='grtransportshipping'}</p>
+        <div id="grtransport-map" role="region" aria-label="{l s='Transport destination map' mod='grtransportshipping'}" data-config="{$quote_map|escape:'htmlall':'UTF-8'}"></div>
+        <p id="grtransport-pin-status" role="status" aria-live="polite">{l s='Select a location on the map. Address lookup may be unavailable; coordinates will still be used for the quote.' mod='grtransportshipping'}</p>
+        <button type="submit" class="btn btn-primary" id="grtransport-pin-submit" disabled>{l s='Check pin destination' mod='grtransportshipping'}</button>
+      </div>
+    </div>
   </form>
   {if $quote_submitted}
     <div role="status" aria-live="polite" id="grtransport-quote-result">
@@ -30,23 +44,10 @@
     {else}
       <p class="alert alert-info">{$quote_message|escape:'htmlall':'UTF-8'}</p>
     {/if}
+      {if $quote_note}
+        <p class="grtransport-quote-note"><strong>{l s='Note' mod='grtransportshipping'}:</strong> {$quote_note|escape:'htmlall':'UTF-8'}</p>
+      {/if}
     </div>
   {/if}
-  <div id="grtransport-map-option" hidden>
-    <button class="btn btn-secondary" type="button" id="grtransport-show-map">{l s='Choose destination on a map' mod='grtransportshipping'}</button>
-    <div id="grtransport-map-panel" hidden>
-      <p>{l s='Click the map or drag the pin. The nearest listed destination station within the configured radius is used:' mod='grtransportshipping'} {$quote_pin_radius|escape:'htmlall':'UTF-8'} {l s='km (inclusive boundary). This does not mean home delivery. The line connects terminals and is not a travel itinerary.' mod='grtransportshipping'}</p>
-      <div id="grtransport-map" role="region" aria-label="{l s='Transport destination map' mod='grtransportshipping'}" data-config="{$quote_map|escape:'htmlall':'UTF-8'}"></div>
-      <form method="get" action="{$quote_action|escape:'htmlall':'UTF-8'}" id="grtransport-pin-form">
-        <input type="hidden" name="fc" value="module">
-        <input type="hidden" name="module" value="grtransportshipping">
-        <input type="hidden" name="controller" value="quote">
-        <input type="hidden" name="pin" value="1">
-        <input type="hidden" name="lat" id="grtransport-pin-lat">
-        <input type="hidden" name="lng" id="grtransport-pin-lng">
-        <button type="submit" class="btn btn-primary" id="grtransport-pin-submit" disabled>{l s='Check pin destination' mod='grtransportshipping'}</button>
-      </form>
-    </div>
-  </div>
 </section>
 {/block}
