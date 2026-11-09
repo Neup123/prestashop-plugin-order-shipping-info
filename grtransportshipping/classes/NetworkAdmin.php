@@ -8,7 +8,7 @@ final class GrTransportNetworkAdmin
     public static function handle($module): string
     {
         if (!isset($_POST['grtrans_network_action'])) return '';
-        $employeeId=(int)($module->context->employee->id ?? 0);
+        $employeeId=(int)(Context::getContext()->employee->id ?? 0);
         $container=\PrestaShop\PrestaShop\Adapter\SymfonyContainer::getInstance();
         $manager=$container ? $container->get(\PrestaShopBundle\Security\Admin\UserTokenManager::class) : null;
         if ($employeeId<=0 || empty($_POST['token']) || !is_string($_POST['token'])
@@ -56,7 +56,7 @@ final class GrTransportNetworkAdmin
     public static function render($module): string
     {
         $data=GrTransportNetworkRepository::snapshot();
-        $path=$module->context->link->getAdminLink('AdminModules',true,[],[
+        $path=Context::getContext()->link->getAdminLink('AdminModules',true,[],[
             'configure'=>$module->name,'module_name'=>$module->name,
         ]);
         $url=self::esc($path);
@@ -75,7 +75,7 @@ final class GrTransportNetworkAdmin
             if (is_finite($amount)) $cost[(string)$id]=round($amount,2);
         }
         $mapConfig=json_encode($data+['cost'=>$cost],JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_THROW_ON_ERROR);
-        $base=self::esc($module->_path) . 'views/';
+        $base=self::esc((_MODULE_DIR_ . $module->name . '/')) . 'views/';
         $out='<section class="panel" id="grtrans-network">'
             . '<h3>Transport network · coverage map</h3>'
             . '<p>Stations have a strong inner ring (normal service) and a lighter outer ring (long walk). '
