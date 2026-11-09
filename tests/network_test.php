@@ -54,7 +54,7 @@ $legs=[
     ['id_leg'=>12,'from_station_id'=>5,'to_station_id'=>4,'mode'=>'ferry','operator_label'=>'Expensive','price'=>40,'bidirectional'=>0],
     ['id_leg'=>13]+$direct,
 ];
-$graph=GrTransportNetworkGraph::routes($stations,$legs,[]);
+$graph=GrTransportNetworkGraph::routes($stations,$legs,[],[]);
 testAssert(GrTransportNetworkGraph::path($graph,4)===null,'No eligible origin, no route');
 $graph=GrTransportNetworkGraph::routes($stations,$legs,[],[1]);
 testAssert(GrTransportNetworkGraph::path($graph,4)===null,
