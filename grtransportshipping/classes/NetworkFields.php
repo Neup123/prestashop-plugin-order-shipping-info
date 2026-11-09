@@ -98,6 +98,14 @@ final class GrTransportNetworkFields
         if ($extra) {
             throw new InvalidArgumentException('Unexpected network fields: ' . implode(', ', $extra));
         }
+        // Existing API, CSV and test payloads predate the optional map geometry
+        // fields. They must keep the exact legacy radius semantics.
+        if ($entity==='stations') {
+            $input += ['coverage_kind'=>'radius','coverage_geojson'=>''];
+        } elseif ($entity==='legs') {
+            $input += ['area_coverage_kind'=>'radius','area_coverage_geojson'=>'',
+                'route_geojson'=>''];
+        }
         $output = [];
         foreach ($fields as $key=>$spec) {
             if (!array_key_exists($key,$input)) {
