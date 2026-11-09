@@ -22,7 +22,7 @@ final class GrTransportNetworkSimulator
 
     public static function render($module): string
     {
-        $url=$module->context->link->getAdminLink('AdminModules',true,[],[
+        $url=Context::getContext()->link->getAdminLink('AdminModules',true,[],[
             'configure'=>$module->name,'module_name'=>$module->name,
         ]);
         $esc=static function ($value): string {
