@@ -227,6 +227,7 @@ final class GrTransportNetworkAdmin
         }
         $out.=GrTransportNetworkSettings::render($url,$csrf);
         $out.='<script src="' . $base . 'vendor/leaflet/leaflet.js"></script>'
+            . '<script src="' . $base . 'js/coverage-geometry.js"></script>'
             . '<script src="' . $base . 'js/network-admin.js"></script></section>';
         return $out;
     }
