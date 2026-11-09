@@ -109,6 +109,13 @@ final class GrTransportNetworkSimulator
             } else {
                 $form.='<p>Manual flat Route or origin station pickup; no travel legs.</p>';
             }
+            if (!empty($quote['delivery_window_hours'])) {
+                $window=$quote['delivery_window_hours'];
+                $form.='<p>Estimated delivery: ' . $esc($window['min_hours'])
+                    . '–' . $esc($window['max_hours']) . ' hours'
+                    . (!empty($window['transfer_time_unknown']) ? ' (transfer travel time not included)' : '')
+                    . '</p>';
+            }
             $form.='<p>Parcel measurements entered: ' . $esc($data['weight'] ?: 'not specified')
                 . ' kg, ' . $esc($data['volume'] ?: 'not specified') . ' m³. '
                 . 'Per-weight and per-volume tariffs use these values; missing measurements trigger the configured flat fallback.</p>';
