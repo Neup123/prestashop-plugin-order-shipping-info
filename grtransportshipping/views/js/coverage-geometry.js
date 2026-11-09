@@ -1,12 +1,13 @@
-/* Geometry for the admin coverage map. Local kilometre projection; no external map service.
- * Circle-union boundaries contain ONLY exposed circular arcs, never internal rims.
- * This is a display model: it does not extend the quote engine's delivery geography. */
+/* Pure, bundled geometry for the admin visual map.
+ * The stored radius is authoritative for pricing; soft blobs are visual hints
+ * clipped INSIDE that radius. Union contours include only exposed blob edges. */
 (function (global) {
   'use strict';
   const KM = 111.195;
   const TAU = 2 * Math.PI;
-  const EPS = 1e-7;
-  const radians = degrees => degrees * Math.PI / 180;
+  const SAMPLES = 144;
+  const EPS = 1e-8;
+  const radians = angle => angle * Math.PI / 180;
   const kind = (value, directArea) => {
     if (directArea) return 'dynamic';
     const mode = String(value || '').trim().toLowerCase();
@@ -18,169 +19,276 @@
   };
   const projector = coordinates => {
     const lat = coordinates.reduce((sum, c) => sum + Number(c[0]), 0) / coordinates.length;
-    const sx = KM * Math.max(0.01, Math.cos(radians(lat)));
+    const scale = KM * Math.max(0.01, Math.cos(radians(lat)));
     return {
-      xy: point => ({x: Number(point[1]) * sx, y: Number(point[0]) * KM}),
-      ll: point => [point.y / KM, point.x / sx]
+      xy: p => ({x: Number(p[1]) * scale, y: Number(p[0]) * KM}),
+      ll: p => [p.y / KM, p.x / scale]
     };
   };
-  const circleDistance = (a, b) => {
-    const projection = projector([[a.lat, a.lng], [b.lat, b.lng]]);
-    const p = projection.xy([a.lat, a.lng]), q = projection.xy([b.lat, b.lng]);
-    return Math.hypot(p.x - q.x, p.y - q.y);
+  const length = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+  const cross = (a, b) => a.x * b.y - a.y * b.x;
+  const difference = (a, b) => ({x: a.x - b.x, y: a.y - b.y});
+  const move = (a, b, factor) => ({x: a.x + b.x * factor, y: a.y + b.y * factor});
+  const seed = record => {
+    const token = String(record.key ?? (record.lat + ':' + record.lng));
+    let hash = 2166136261;
+    for (let i = 0; i < token.length; i++) {
+      hash = Math.imul(hash ^ token.charCodeAt(i), 16777619) >>> 0;
+    }
+    return hash / 4294967296 * TAU;
   };
-  const intersects = (a, b) =>
-    circleDistance(a, b) < Number(a.radiusKm) + Number(b.radiusKm) - EPS;
-
-  // A shared transport kind is not itself proof of one service. Merge only
-  // overlapping stations explicitly joined by a priced station-bound leg.
-  // An absent service identity in the stored schema must not merge unrelated lines.
-  const stationGroups = (stations, legs) => {
-    const lookup = new Map(stations.map(s => [Number(s.id_station), s]));
-    const parent = new Map([...lookup.keys()].map(id => [id, id]));
-    const find = id => {
-      let root = id;
-      while (parent.get(root) !== root) root = parent.get(root);
-      let cursor = id;
-      while (parent.get(cursor) !== root) {
-        const next = parent.get(cursor); parent.set(cursor, root); cursor = next;
-      }
-      return root;
-    };
-    for (const leg of legs) {
-      if (kind(leg.mode, false) !== 'station-bound' || !Number.isFinite(Number(leg.price)) ||
-          Number(leg.price) < 0) continue;
-      const a = lookup.get(Number(leg.from_station_id));
-      const b = lookup.get(Number(leg.to_station_id));
-      if (!a || !b || a.type !== b.type || !intersects({
-        lat: a.lat, lng: a.lng, radiusKm: a.outer_radius_km
-      }, {lat: b.lat, lng: b.lng, radiusKm: b.outer_radius_km})) continue;
-      const ra = find(Number(a.id_station)), rb = find(Number(b.id_station));
-      if (ra !== rb) parent.set(rb, ra);
-    }
-    const groups = new Map();
-    for (const station of stations) {
-      const id = Number(station.id_station);
-      const root = find(id);
-      if (!groups.has(root)) groups.set(root, []);
-      groups.get(root).push(station);
-    }
-    return [...groups.values()];
-  };
-  const normalizedAngle = angle => ((angle % TAU) + TAU) % TAU;
-
-  // Exact union topology of circles, with exposed arcs sampled for Leaflet's
-  // polygon renderer. Each connected component is ONE polygon ring; arcs
-  // buried inside any other circle are excluded before the path is assembled.
-  const unionContours = input => {
-    const usable = input.filter(c => Number(c.radiusKm) > 0 &&
-      Number.isFinite(Number(c.lat)) && Number.isFinite(Number(c.lng)));
-    if (!usable.length) return [];
-    const projection = projector(usable.map(c => [c.lat, c.lng]));
-    const circles = [];
-    for (const record of usable) {
-      const p = projection.xy([record.lat, record.lng]);
-      const r = Number(record.radiusKm);
-      if (!circles.some(c => Math.hypot(c.x - p.x, c.y - p.y) < EPS &&
-          Math.abs(c.r - r) < EPS)) circles.push({...p, r});
-    }
-    const visibleArcs = [];
-    for (let i = 0; i < circles.length; i++) {
-      const c = circles[i];
-      const cuts = [0, TAU];
-      for (let j = 0; j < circles.length; j++) {
-        if (i === j) continue;
-        const other = circles[j];
-        const dx = other.x - c.x, dy = other.y - c.y;
-        const d = Math.hypot(dx, dy);
-        if (d <= Math.abs(c.r - other.r) + EPS || d >= c.r + other.r - EPS) continue;
-        const base = Math.atan2(dy, dx);
-        const delta = Math.acos(Math.max(-1, Math.min(1,
-          (c.r * c.r + d * d - other.r * other.r) / (2 * c.r * d))));
-        cuts.push(normalizedAngle(base - delta), normalizedAngle(base + delta));
-      }
-      cuts.sort((a, b) => a - b);
-      for (let n = 1; n < cuts.length; n++) {
-        const start = cuts[n - 1], end = cuts[n];
-        if (end - start < 1e-10) continue;
-        const middle = (start + end) / 2;
-        const x = c.x + c.r * Math.cos(middle), y = c.y + c.r * Math.sin(middle);
-        if (circles.some((other, j) => j !== i &&
-          Math.hypot(x - other.x, y - other.y) < other.r - EPS)) continue;
-        const count = Math.max(1, Math.ceil((end - start) / (Math.PI / 90)));
-        const points = Array.from({length: count + 1}, (_, index) => {
-          const angle = start + (end - start) * index / count;
-          return {x: c.x + c.r * Math.cos(angle), y: c.y + c.r * Math.sin(angle)};
-        });
-        visibleArcs.push(points);
-      }
-    }
-    const key = p => Math.round(p.x * 1e5) + ':' + Math.round(p.y * 1e5);
-    const starts = new Map();
-    visibleArcs.forEach((arc, index) => {
-      const id = key(arc[0]);
-      if (!starts.has(id)) starts.set(id, []);
-      starts.get(id).push(index);
+  const isValid = record => Number(record.radiusKm) > 0 &&
+    Number.isFinite(Number(record.lat)) && Number.isFinite(Number(record.lng));
+  // Three low-frequency harmonics provide gentle paint-like scallops. Their
+  // combined amplitude stays below the radius: we never assert new coverage.
+  const blobRadius = (radius, angle, phase) => Number(radius) * (
+    0.964 + 0.018 * Math.sin(3 * angle + phase) +
+    0.011 * Math.sin(5 * angle + 2.3 * phase) +
+    0.006 * Math.sin(8 * angle - 1.7 * phase));
+  const shapeXY = (record, projection) => {
+    const centre = projection.xy([record.lat, record.lng]);
+    const phase = seed(record);
+    return Array.from({length: SAMPLES}, (_, i) => {
+      const angle = TAU * i / SAMPLES;
+      const radius = blobRadius(record.radiusKm, angle, phase);
+      return {x: centre.x + Math.cos(angle) * radius,
+        y: centre.y + Math.sin(angle) * radius};
     });
-    const unused = new Set(visibleArcs.map((_, index) => index));
+  };
+  const patchContour = record => {
+    if (!isValid(record)) return [];
+    const projection = projector([[record.lat, record.lng]]);
+    return shapeXY(record, projection).map(projection.ll);
+  };
+  const inside = (p, poly) => {
+    let contained = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const a = poly[i], b = poly[j];
+      if ((a.y > p.y) !== (b.y > p.y) &&
+          p.x < (b.x - a.x) * (p.y - a.y) / (b.y - a.y) + a.x) contained = !contained;
+    }
+    return contained;
+  };
+  const intersection = (p, q, a, b) => {
+    const r = difference(q, p), s = difference(b, a);
+    const denom = cross(r, s);
+    if (Math.abs(denom) < EPS) return null;
+    const offset = difference(a, p);
+    const t = cross(offset, s) / denom;
+    const u = cross(offset, r) / denom;
+    return t >= -EPS && t <= 1 + EPS && u >= -EPS && u <= 1 + EPS ? t : null;
+  };
+  const nearby = (a, b, projection) => {
+    const p = projection.xy([a.lat, a.lng]), q = projection.xy([b.lat, b.lng]);
+    return length(p, q) < Number(a.radiusKm) + Number(b.radiusKm);
+  };
+  const overlaps = (a, b) => {
+    if (!isValid(a) || !isValid(b)) return false;
+    const projection = projector([[a.lat, a.lng], [b.lat, b.lng]]);
+    if (!nearby(a, b, projection)) return false;
+    const first = shapeXY(a, projection), second = shapeXY(b, projection);
+    if (inside(first[0], second) || inside(second[0], first)) return true;
+    for (let i = 0; i < first.length; i++) {
+      const p = first[i], q = first[(i + 1) % first.length];
+      for (let j = 0; j < second.length; j++) {
+        if (intersection(p, q, second[j], second[(j + 1) % second.length]) !== null) return true;
+      }
+    }
+    return false;
+  };
+  // Union of sampled organic polygons: split each boundary at all intersections,
+  // drop every piece contained by any other patch, then link exposed pieces.
+  // This is NOT overpainting full station discs: no buried boundary survives.
+  const unionContours = input => {
+    const records = input.filter(isValid);
+    if (!records.length) return [];
+    if (records.length === 1) return [patchContour(records[0])];
+    const projection = projector(records.map(record => [record.lat, record.lng]));
+    const shapes = records.map(record => shapeXY(record, projection));
+    const exposed = [];
+    for (let i = 0; i < shapes.length; i++) {
+      const poly = shapes[i];
+      const neighbours = records.map((other, j) => j).filter(j => j !== i &&
+        nearby(records[i], records[j], projection));
+      for (let n = 0; n < poly.length; n++) {
+        const a = poly[n], b = poly[(n + 1) % poly.length];
+        const cuts = [0, 1];
+        for (const j of neighbours) {
+          const other = shapes[j];
+          for (let k = 0; k < other.length; k++) {
+            const t = intersection(a, b, other[k], other[(k + 1) % other.length]);
+            if (t !== null && t > EPS && t < 1 - EPS) cuts.push(t);
+          }
+        }
+        cuts.sort((x, y) => x - y);
+        for (let k = 1; k < cuts.length; k++) {
+          if (cuts[k] - cuts[k - 1] < EPS) continue;
+          const from = move(a, difference(b, a), cuts[k - 1]);
+          const to = move(a, difference(b, a), cuts[k]);
+          const midpoint = {x: (from.x + to.x) / 2, y: (from.y + to.y) / 2};
+          if (neighbours.some(j => inside(midpoint, shapes[j]))) continue;
+          exposed.push({from, to});
+        }
+      }
+    }
+    const id = p => Math.round(p.x * 1e5) + ':' + Math.round(p.y * 1e5);
+    const starts = new Map();
+    exposed.forEach((edge, index) => {
+      const key = id(edge.from);
+      if (!starts.has(key)) starts.set(key, []);
+      starts.get(key).push(index);
+    });
+    const unused = new Set(exposed.map((_, index) => index));
     const rings = [];
     while (unused.size) {
-      const startIndex = unused.values().next().value;
-      const firstKey = key(visibleArcs[startIndex][0]);
-      const coords = [];
-      let cursor = startIndex, closed = false;
+      const initial = unused.values().next().value;
+      const firstKey = id(exposed[initial].from);
+      const points = [exposed[initial].from];
+      let cursor = initial, closed = false;
       while (unused.has(cursor)) {
         unused.delete(cursor);
-        const arc = visibleArcs[cursor];
-        coords.push(...arc.slice(coords.length ? 1 : 0));
-        const endKey = key(arc[arc.length - 1]);
-        if (endKey === firstKey) { closed = true; break; }
-        const next = (starts.get(endKey) || []).find(index => unused.has(index));
+        const edge = exposed[cursor];
+        if (id(edge.to) === firstKey) {closed = true; break;}
+        points.push(edge.to);
+        const next = (starts.get(id(edge.to)) || []).find(index => unused.has(index));
         if (next === undefined) break;
         cursor = next;
       }
-      if (closed && coords.length > 3) {
-        if (key(coords[0]) === key(coords[coords.length - 1])) coords.pop();
-        rings.push(coords.map(projection.ll));
-      }
+      if (closed && points.length >= 3) rings.push(points.map(projection.ll));
     }
     return rings;
   };
+  // Only an explicit priced station-bound link can establish same-service
+  // membership. Shared mode labels alone NEVER merge separate operators.
+  const stationGroups = (stations, legs) => {
+    const lookup = new Map(stations.map(s => [Number(s.id_station), s]));
+    const parents = new Map([...lookup.keys()].map(id => [id, id]));
+    const root = id => {
+      let cursor = id;
+      while (parents.get(cursor) !== cursor) cursor = parents.get(cursor);
+      const result = cursor;
+      cursor = id;
+      while (parents.get(cursor) !== result) {
+        const next = parents.get(cursor); parents.set(cursor, result); cursor = next;
+      }
+      return result;
+    };
+    for (const leg of legs) {
+      if (kind(leg.mode, false) !== 'station-bound' ||
+          !Number.isFinite(Number(leg.price)) || Number(leg.price) < 0) continue;
+      const from = lookup.get(Number(leg.from_station_id));
+      const to = lookup.get(Number(leg.to_station_id));
+      if (!from || !to || from.type !== to.type) continue;
+      if (!overlaps(
+        {lat: from.lat, lng: from.lng, radiusKm: from.outer_radius_km, key: 'station:' + from.id_station},
+        {lat: to.lat, lng: to.lng, radiusKm: to.outer_radius_km, key: 'station:' + to.id_station})) continue;
+      const a = root(Number(from.id_station)), b = root(Number(to.id_station));
+      if (a !== b) parents.set(b, a);
+    }
+    const groups = new Map();
+    for (const station of stations) {
+      const id = root(Number(station.id_station));
+      if (!groups.has(id)) groups.set(id, []);
+      groups.get(id).push(station);
+    }
+    return [...groups.values()];
+  };
 
-  // Stitches never cross an uncovered gap. For overlapping patches the mark
-  // sits at their lens joining point; for disjoint patches each facing rim
-  // receives its own short mark, never a connecting ribbon or line.
-  const stitches = (from, to, fromRadius, toRadius, lane = 0) => {
-    const projection = projector([from, to]);
-    const a = projection.xy(from), b = projection.xy(to);
-    const dx = b.x - a.x, dy = b.y - a.y;
-    const d = Math.hypot(dx, dy);
-    const ux = d > EPS ? dx / d : 1, uy = d > EPS ? dy / d : 0;
-    const tx = -uy, ty = ux;
-    const ra = Math.max(0, Number(fromRadius) || 0);
-    const rb = Math.max(0, Number(toRadius) || 0);
-    if (!ra || !rb) return [];
-    const stroke = (centre, radius) => {
-      const half = Math.min(0.85, radius * 0.23);
-      const shift = Math.max(-0.3, Math.min(0.3, lane * 0.18));
+  // Short zigzag follows the shared interior boundary perpendicular to the
+  // station axis, and every vertex is guaranteed to lie INSIDE both blobs.
+  const zigzagSeam = (first, second, lane = 0) => {
+    if (!overlaps(first, second)) return null;
+    const projection = projector([[first.lat, first.lng], [second.lat, second.lng]]);
+    const A = projection.xy([first.lat, first.lng]);
+    const B = projection.xy([second.lat, second.lng]);
+    const differenceAB = difference(B, A);
+    const d = length(A, B);
+    const unit = d > EPS ? {x: differenceAB.x / d, y: differenceAB.y / d} : {x: 1, y: 0};
+    const tangent = {x: -unit.y, y: unit.x};
+    const a = shapeXY(first, projection), b = shapeXY(second, projection);
+    const common = [];
+    for (let i = 0; i <= 160; i++) {
+      const centre = move(A, unit, d * i / 160);
+      if (inside(centre, a) && inside(centre, b)) common.push(d * i / 160);
+    }
+    if (!common.length) return null;
+    const interval = (common[0] + common[common.length - 1]) / 2;
+    const offset = Math.max(-0.18, Math.min(0.18, lane * 0.08));
+    const centre = move(A, unit, interval + offset);
+    let half = Math.min(0.52, Number(first.radiusKm) * 0.14,
+      Number(second.radiusKm) * 0.14);
+    for (let retry = 0; retry < 12; retry++) {
+      const amp = Math.min(0.065, half * 0.22);
+      const vertices = Array.from({length: 9}, (_, i) => {
+        const along = half * (i / 4 - 1);
+        const across = (i % 2 ? -amp : amp);
+        return move(move(centre, tangent, along), unit, across);
+      });
+      const pathLength = vertices.slice(1).reduce((sum, point, i) =>
+        sum + length(point, vertices[i]), 0);
+      if (pathLength <= 1.75 && vertices.every(point =>
+        inside(point, a) && inside(point, b))) return vertices.map(projection.ll);
+      half *= 0.7;
+    }
+    return null;
+  };
+  // Fallback for distant, unresolved land/sea links: only two small, local,
+  // facing-patch marks, with a fully empty interstation gap.
+  const stitches = (first, second, lane = 0) => {
+    const insideLens = zigzagSeam(first, second, lane);
+    if (insideLens) return [insideLens];
+    if (overlaps(first, second) || !isValid(first) || !isValid(second)) return [];
+    const projection = projector([[first.lat, first.lng], [second.lat, second.lng]]);
+    const a = projection.xy([first.lat, first.lng]);
+    const b = projection.xy([second.lat, second.lng]);
+    const delta = difference(b, a);
+    const dist = length(a, b);
+    const unit = dist > EPS ? {x: delta.x / dist, y: delta.y / dist} : {x: 1, y: 0};
+    const tangent = {x: -unit.y, y: unit.x};
+    const stroke = (record, centre, direction) => {
+      const radius = Number(record.radiusKm);
+      const half = Math.min(0.75, radius * 0.19);
+      const shift = Math.min(0.2, lane * 0.07);
+      const origin = move(centre, unit, direction * radius * 0.70 + shift);
       return [
-        projection.ll({x: centre.x + tx * (shift - half), y: centre.y + ty * (shift - half)}),
-        projection.ll({x: centre.x + tx * (shift + half), y: centre.y + ty * (shift + half)})
+        projection.ll(move(origin, tangent, -half)),
+        projection.ll(move(origin, tangent, half))
       ];
     };
-    if (d < ra + rb - EPS && d > Math.abs(ra - rb) + EPS) {
-      const along = (ra * ra - rb * rb + d * d) / (2 * d);
-      return [stroke({x: a.x + ux * along, y: a.y + uy * along}, Math.min(ra, rb))];
-    }
-    if (d <= Math.abs(ra - rb) + EPS) {
-      const smaller = ra <= rb ? a : b;
-      return [stroke(smaller, Math.min(ra, rb))];
-    }
-    const at = (origin, direction, radius) => ({
-      x: origin.x + direction * ux * radius * 0.75,
-      y: origin.y + direction * uy * radius * 0.75
-    });
-    return [stroke(at(a, 1, ra), ra), stroke(at(b, -1, rb), rb)];
+    return [stroke(first, a, 1), stroke(second, b, -1)];
   };
-  global.GrtransCoverage = Object.freeze({kind, stationGroups, unionContours, stitches});
+  const airArc = (from, to, bidirectional = false) => {
+    const projection = projector([from, to]);
+    const a = projection.xy(from), b = projection.xy(to);
+    const delta = difference(b, a);
+    const dist = length(a, b);
+    if (dist < 0.1) return null;
+    const unit = {x: delta.x / dist, y: delta.y / dist};
+    const perpendicular = {x: -unit.y, y: unit.x};
+    const radius = dist / 2;
+    const sample = t => move(move(a, unit, dist * t),
+      perpendicular, radius * Math.sin(Math.PI * t));
+    const curve = Array.from({length: 41}, (_, i) => sample(i / 40));
+    const size = Math.min(14, Math.max(2.5, dist * 0.04));
+    const tip = (end, tangent) => {
+      const tangentLength = Math.hypot(tangent.x, tangent.y);
+      const forward = {x: tangent.x / tangentLength, y: tangent.y / tangentLength};
+      const side = {x: -forward.y, y: forward.x};
+      const rear = move(end, forward, -size);
+      return [projection.ll(move(rear, side, size * 0.40)),
+        projection.ll(end),
+        projection.ll(move(rear, side, -size * 0.40))];
+    };
+    const towardEnd = difference(curve[40], curve[39]);
+    const towardStart = difference(curve[0], curve[1]);
+    return {
+      points: curve.map(projection.ll),
+      arrow: tip(curve[40], towardEnd),
+      reverseArrow: bidirectional ? tip(curve[0], towardStart) : null
+    };
+  };
+  global.GrtransCoverage = Object.freeze({
+    kind, patchContour, overlaps, stationGroups, unionContours,
+    zigzagSeam, stitches, airArc
+  });
 }(window));
