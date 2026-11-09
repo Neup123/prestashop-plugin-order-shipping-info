@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/QuoteEngine.php';
 require_once __DIR__ . '/NetworkGraph.php';
+require_once __DIR__ . '/NetworkTariff.php';
 
 /**
  * Single cheapest-total resolver for checkout, customer quote page and simulator.
@@ -13,7 +14,7 @@ final class GrTransportNetworkQuote
         'Extended pickup area: reaching the collection station may require a long walk. Consider this before choosing this delivery method.';
 
     public static function resolve(array $flatRoutes,array $network,string $postcode,string $city,
-        ?array $coords=null,?array $originIds=null,string $extendedNotice=''): array
+        ?array $coords=null,?array $originIds=null,string $extendedNotice='',?array $parcel=null): array
     {
         $manual=GrTransportQuoteEngine::resolve($flatRoutes,$postcode,$city);
         if ($manual['status']==='quoted' || in_array($manual['status'],['suspended','ambiguous'],true)) {
@@ -23,7 +24,7 @@ final class GrTransportNetworkQuote
         $location=self::validLocation($coords);
         if ($location===null) return $manual;
         $stations=$network['stations'] ?? [];
-        $legs=$network['legs'] ?? [];
+        $legs=GrTransportNetworkTariff::apply($network['legs'] ?? [],$parcel ?? []);
         $transfers=$network['transfers'] ?? [];
         if (!$stations || !isset($stations[0]['id_station'])) return $manual;
         $graph=GrTransportNetworkGraph::routes($stations,$legs,$transfers,$originIds);
@@ -39,7 +40,7 @@ final class GrTransportNetworkQuote
             $choices[]=self::choice($path,(string)$station['name'],
                 $end ? (string)$end['mode'] : (string)$station['type'],
                 (string)$graph['stations'][$path['origin_hub_id']]['name'],1,
-                $notice,$candidate['ring'],$id,1);
+                $notice,$candidate['ring'],$id,1,$parcel ?? []);
         }
         foreach (GrTransportNetworkGraph::directAreas($legs,$location[0],$location[1]) as $service) {
             $id=(int)$service['from_station_id'];
@@ -49,6 +50,9 @@ final class GrTransportNetworkQuote
                 'mode'=>(string)$service['mode'],'operator'=>(string)$service['operator_label'],
                 'price'=>(float)$service['price'],'direct_area'=>true,
                 'area_name'=>(string)$service['area_name']];
+            foreach (['tariff_min','tariff_max','tariff_estimate','tariff_missing_data','tariff_basis'] as $field) {
+                if (isset($service[$field])) $edge[$field]=$service[$field];
+            }
             $prefix['edges'][]=$edge;
             $prefix['total']=round($prefix['total']+$edge['price'],2);
             $prefix['destination_station_id']=null;
@@ -57,11 +61,11 @@ final class GrTransportNetworkQuote
                 (string)$service['mode'],
                 (string)$graph['stations'][$prefix['origin_hub_id']]['name'],0,
                 'Direct delivery to your address within the service area.',
-                'direct',null,0);
+                'direct',null,0,$parcel ?? []);
         }
         if (!$choices) return $manual;
         usort($choices,static function ($a,$b) {
-            $byPrice=$a['quote']['price'] <=> $b['quote']['price'];
+            $byPrice=$a['comparison_cost'] <=> $b['comparison_cost'];
             if ($byPrice!==0) return $byPrice;
             $byConvenience=$a['priority'] <=> $b['priority'];
             if ($byConvenience!==0) return $byConvenience;
@@ -72,26 +76,34 @@ final class GrTransportNetworkQuote
     }
 
     /** Simulate one named station rather than silently switching to another overlapping station. */
-    public static function forStation(array $network,int $id,?array $originIds=null): array
+    public static function forStation(array $network,int $id,?array $originIds=null,?array $parcel=null): array
     {
         $graph=GrTransportNetworkGraph::routes($network['stations'] ?? [],
-            $network['legs'] ?? [],$network['transfers'] ?? [],$originIds);
+            GrTransportNetworkTariff::apply($network['legs'] ?? [],$parcel ?? []),
+            $network['transfers'] ?? [],$originIds);
         $path=GrTransportNetworkGraph::path($graph,$id);
         if ($path===null) return ['status'=>'unmatched','quote'=>null,'route_id'=>0];
         $station=$graph['stations'][$id];
         $end=$path['edges'] ? end($path['edges']) : null;
         $choice=self::choice($path,(string)$station['name'],
             $end ? (string)$end['mode'] : (string)$station['type'],
-            (string)$graph['stations'][$path['origin_hub_id']]['name'],1,'','inner',$id,1);
+            (string)$graph['stations'][$path['origin_hub_id']]['name'],1,'','inner',$id,1,$parcel ?? []);
         return ['status'=>'quoted','quote'=>$choice['quote'],'route_id'=>0];
     }
 
     private static function choice(array $path,string $stationName,string $mode,string $originName,
-        int $pickup,string $notice,string $ring,?int $stationId,int $priority): array
+        int $pickup,string $notice,string $ring,?int $stationId,int $priority,array $parcel=[]): array
     {
+        $tariff=GrTransportNetworkTariff::totals($path['edges']);
         $quote=[
             'mode'=>$mode,'origin_name'=>$originName,'station_name'=>$stationName,
-            'price'=>round((float)$path['total'],2),'pickup_only'=>$pickup,
+            'price'=>$tariff['estimate'] ? 0.0 : round((float)$path['total'],2),
+            'estimate'=>$tariff['estimate'] ? 1 : 0,
+            'estimate_min'=>$tariff['estimate'] ? $tariff['min'] : null,
+            'estimate_max'=>$tariff['estimate'] ? $tariff['max'] : null,
+            'tariff_missing_data'=>$tariff['missing_data'] ? 1 : 0,
+            'tariff_inputs'=>$parcel,
+            'pickup_only'=>$pickup,
             'notice'=>$notice,'demo'=>0,'ring'=>$ring,
             'extended'=>$ring==='outer' ? 1 : 0,
             'destination_station_id'=>$stationId,
@@ -99,7 +111,7 @@ final class GrTransportNetworkQuote
             'network_path'=>$path,
             'source'=>'network',
         ];
-        return ['priority'=>$priority,'quote'=>$quote];
+        return ['priority'=>$priority,'comparison_cost'=>round((float)$path['total'],2),'quote'=>$quote];
     }
 
     public static function validLocation(array $location): ?array
