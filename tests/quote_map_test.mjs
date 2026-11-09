@@ -18,11 +18,12 @@ function fixture(withLeaflet = true) {
     zoomIn:'Zoom in',zoomOut:'Zoom out',marker:'Destination pin',
     leafletImagePath:'/modules/grtransportshipping/views/vendor/leaflet/images/'
   })};
-  const calls = {tiles:0,markers:[],lines:[],circles:[],events:{},lookups:[]};
+  const calls = {tiles:0,markers:[],lines:[],circles:[],events:{},lookups:[],fits:[]};
   let nextTimer = 0;
   const scheduled = new Map();
   const map = {
     setView() { return this; }, invalidateSize() {},
+    fitBounds(bounds,options) { calls.fits.push({bounds,options}); return this; },
     removeLayer(layer) { layer.removed = true; },
     on(name, fn) { calls.events[name] = fn; }
   };
@@ -73,6 +74,11 @@ assert.equal(elements['grtransport-map-option'].hidden,false);
 assert.equal(calls.tiles,0,'No tile request before customer opt-in');
 elements['grtransport-show-map'].events.click();
 assert.equal(calls.tiles,1);
+assert.equal(calls.fits.length,1,'Initial customer map fits Greece exactly once');
+assert.ok(calls.fits[0].bounds[0][0] <= 35 && calls.fits[0].bounds[1][0] >= 41,
+  'Country framing includes Crete and northern mainland');
+assert.ok(calls.fits[0].bounds[0][1] <= 20 && calls.fits[0].bounds[1][1] >= 29,
+  'Country framing includes western islands and eastern Aegean');
 assert.equal(calls.markers.length,0,'No stations or origin markers on customer map');
 assert.equal(calls.lines.length,0,'No route polyline');
 assert.equal(calls.circles.length,0,'No coverage patches');
