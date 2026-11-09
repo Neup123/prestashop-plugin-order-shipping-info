@@ -179,6 +179,29 @@
       target.on('mouseout', restoreFocus);
     }
   };
+  // Panel H/v7: a priced direct-area leg explicitly joins its boarding
+  // station island to the sea. If that island is fully contained, stitch its
+  // WHOLE outer perimeter; do not invent a seam around an unrelated island.
+  // Unlike the short lens stitch, this full perimeter can exceed 1.8 km.
+  const drawIslandPerimeter = (sea, island, label, stale, owners) => {
+    if (!geometry.containsPatch(sea, island)) return false;
+    const rings = geometry.islandStitchRings(island);
+    if (!rings.length) return false;
+    rings.forEach(ring => {
+      paintSeam(L.polyline(ring, {
+        color: '#ad5165', weight: 1.25, opacity: stale ? 0.22 : 0.55,
+        dashArray: '2 5', interactive: false,
+        className: 'grtrans-linked-island-perimeter'
+      }));
+      paintSeam(L.polyline(ring, {
+        color: '#ad5165', weight: 10, opacity: 0.001, interactive: true,
+        className: 'grtrans-linked-island-perimeter-hover'
+      })).bindTooltip(safeTooltip(label + ' · entire linked island boundary'))
+        .on('mouseover', () => focusExactly(owners))
+        .on('mouseout', restoreFocus);
+    });
+    return true;
+  };
   const drawAirArc = (from, to, label, stale, fromOwner, toOwner, bidirectional) => {
     const arc = geometry.airArc([from.lat, from.lng], [to.lat, to.lng], bidirectional);
     if (!arc) return;
@@ -653,12 +676,29 @@
     const mode = geometry.kind(leg.mode, isArea);
     const a = 'station:' + from.id_station;
     const b = isArea ? 'area:' + leg.id_leg : 'station:' + to.id_station;
-    if (mode === 'air' || mode === 'sea') linkGroup(a, b);
-    renderConnection(mode, stationPatch(from),
-      isArea ? areaPatch(leg) : stationPatch(to),
-      (leg.operator_label || leg.mode) + ' · ' + fmt(leg.price) + ' EUR' + staleLabel(leg),
-      leg._stale, a, b, Number(leg.bidirectional) === 1,
-      mode==='station-bound' && !isArea ? {...leg,fromStation:from,toStation:to} : null);
+    if (mode === 'air' || mode === 'sea' || isArea) linkGroup(a, b);
+    const label=(leg.operator_label || leg.mode) + ' · ' + fmt(leg.price) + ' EUR' + staleLabel(leg);
+    if (isArea) {
+      // A direct-area service is the explicit priced link to its own origin
+      // island, not a link to every unrelated patch that happens to be inside
+      // the same sea. A same-priced station union is ONE island silhouette.
+      const group = groupsByStation.get(Number(from.id_station)) || [from];
+      const island = group.length > 1
+        ? {...stationPatch(from),
+          paths: geometry.unionContours(group.map(stationPatch)).map(ring => [ring])}
+        : stationPatch(from);
+      const linkedOwners = group.map(station => 'station:' + station.id_station).concat(b);
+      if (!drawIslandPerimeter(areaPatch(leg), island, label, leg._stale, linkedOwners)) {
+        // A station at the sea edge is an ordinary short transfer,
+        // not an artificial full ring around an island outside the sea.
+        drawStitch(stationPatch(from), areaPatch(leg), label,
+          leg._stale, a, b, 0);
+      }
+      return;
+    }
+    renderConnection(mode, stationPatch(from), stationPatch(to),
+      label, leg._stale, a, b, Number(leg.bidirectional) === 1,
+      mode==='station-bound' ? {...leg,fromStation:from,toStation:to} : null);
   });
   data.transfers.forEach(transfer => {
     const from = stations.get(Number(transfer.from_station_id));
