@@ -51,6 +51,10 @@ final class GrTransportNetworkApi
             return ['created'=>GrTransportNetworkRepository::bulk($payload)];
         }
         $entity=self::entity($entity);
+        if ($method==='POST' && ($query['confirm'] ?? null)==='1' && $id>0) {
+            GrTransportNetworkRepository::confirm($entity,$id);
+            return ['id'=>$id,'record'=>GrTransportNetworkRepository::find($entity,$id)];
+        }
         if ($method==='POST' && !$id) {
             $id=GrTransportNetworkRepository::save($entity,$payload);
             return ['id'=>$id,'record'=>GrTransportNetworkRepository::find($entity,$id)];
