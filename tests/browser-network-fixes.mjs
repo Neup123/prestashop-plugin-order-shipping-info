@@ -122,7 +122,7 @@ try {
   assert.equal(values.length, 3, 'Route, carrier, and price each have one value');
   assert.equal(values[0], 'Port of Piraeus → Naxos Port', 'Route still identifies both terminals');
   assert.ok(values[1].length > 0, 'Carrier still appears');
-  assert.match(values[2], /\d+[.,]\d{2}\s*(?:EUR|€)/, 'Transport price still appears');
+  assert.match(values[2], /(?:€\s*\d+[.,]\d{2}|\d+[.,]\d{2}\s*(?:EUR|€))/, 'Transport price still appears');
   const pickup = result.locator('.grtransport-pickup');
   assert.ok(await pickup.isVisible(), 'Customer pickup notice stays visible');
   assert.match(await pickup.innerText(), /STATION PICKUP ONLY/, 'Pickup warning remains');
