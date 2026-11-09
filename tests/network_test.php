@@ -24,6 +24,15 @@ fails(static function () use ($station) {
 fails(static function () use ($station) {
     GrTransportNetworkFields::normalize('stations',$station+['admin_token'=>'forged']);
 },'Unknown fields accepted');
+testAssert(GrTransportNetworkFields::normalize('stations',$station)['patch_precedence']==='none',
+    'Pre-existing stations default to no override without extra configuration');
+testAssert(GrTransportNetworkFields::normalize('stations',
+    $station+['patch_precedence'=>'override'])['patch_precedence']==='override',
+    'Patch precedence is a validated stored field');
+fails(static function () use ($station) {
+    GrTransportNetworkFields::normalize('stations',$station+['patch_precedence'=>'force']);
+},'Unexpected patch precedence was accepted');
+
 $direct=GrTransportNetworkFields::defaults('legs');
 $direct=array_replace($direct,[
     'from_station_id'=>1,'to_station_id'=>null,'mode'=>'other','operator_label'=>'Athens courier',
@@ -38,6 +47,19 @@ fails(static function () use ($direct) {
 $transfer=['from_station_id'=>2,'to_station_id'=>3,'connection_type'=>'taxi','price'=>0];
 testAssert(GrTransportNetworkFields::normalize('transfers',$transfer)['price']===0.0,
     'Zero-cost transfer allowed');
+testAssert(GrTransportNetworkFields::normalize('transfers',
+    $transfer+['override_winner'=>'to'])['override_winner']==='to',
+    'Transfer endpoint precedence is validated and persisted');
+fails(static function () use ($transfer) {
+    GrTransportNetworkFields::normalize('transfers',$transfer+['override_winner'=>'somewhere']);
+},'Unrecognized link override was accepted');
+fails(static function () use ($direct) {
+    GrTransportNetworkFields::normalize('legs',array_replace($direct,[
+        'to_station_id'=>4, 'area_lat'=>null, 'area_lng'=>null,
+        'area_radius_km'=>0,'patch_precedence'=>'override'
+    ]));
+},'Station-to-station link cannot impersonate a coverage patch');
+
 fails(static function () use ($transfer) {
     GrTransportNetworkFields::normalize('transfers',array_replace($transfer,['price'=>-1]));
 },'Negative transfer accepted');

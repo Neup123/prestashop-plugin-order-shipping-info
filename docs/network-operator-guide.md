@@ -234,3 +234,81 @@ The existing authenticated network endpoint now accepts `entity=branches` and `e
 The atomic `POST ?bulk=1` importer also handles branch and combination-stock arrays, in one checked transaction. A newly imported station can be referenced from a branch by `origin_ref` pointing at the station's `client_ref`; a newly imported branch can be referenced from stock rows by `branch_ref`. CSV uses the numeric IDs of already saved stations/branches. Invalid shop ownership, foreign combination, nonexistent product, or negative quantity is refused. A branch with stock rows cannot be deleted until those records are removed; a hub with dependent branches cannot be deleted.
 
 This is dispatch availability, not the official inventory ledger. Keep the per-branch quantities synchronized with real stock and test the flow in the disposable shop before selling live.
+
+
+## Advanced link and coverage overrides (issue #107)
+
+The default needs **no configuration**: every reachable network offer competes by total
+cost (and the existing convenience / station-ID tie-break). Only an administrator with
+a valid back-office token, or a privileged network API write token, can configure
+the following. The customer quote page has **no** override input.
+
+### Link creation
+
+Click one station, choose **Link selected station**, then the second station.
+Review the link's mode and price; links that are close enough for a free walk
+**still open the form** instead of silently saving, so **Advanced** is available.
+The Advanced selector stores \`override_winner\` on \`grtrans_transfer\`:
+
+- \`none\` (default): normal cheapest reachable offer.
+- \`from\`: the patch at the source station overrides its destination patch.
+- \`to\`: the destination station's patch overrides the source station's patch.
+
+A station-to-station service leg has the same \`override_winner\` field on
+\`grtrans_leg\` (editable in the Leg editor). Direct-area legs also support it:
+their \`to\` side means the direct delivery **area patch**, not a pickup station.
+Precedence operates **only where both linked patches actually reach** and have
+an eligible path from a dispatch origin. A transfer is never inferred.
+
+**Taxi after train:** configure a directed taxi transfer from the train patch
+to the taxi patch, and set Advanced → **To method overrides from method**.
+Within their overlapping reachable area, the quote traverses the specified
+taxi transfer even when an unrelated cheaper route to the taxi station exists.
+The customer receives a **door-to-door** offer (not the station walking /
+pickup offer). Outside that overlap, normal reachable-patch rules apply.
+
+### Patch creation
+
+In the Station editor, open **Advanced** and set \`patch_precedence\`, stored
+on \`grtrans_station\`. For a direct-delivery area patch, open the corresponding
+Leg editor's Advanced section; the value lives on the direct-area row of
+\`grtrans_leg\`. A station-to-station leg cannot claim patch precedence.
+
+- \`none\` (default): cheapest reachable option.
+- \`override\`: this patch wins overlapping reachable neutral or yielding patches
+  **regardless of price**.
+- \`yield\`: this patch loses to another reachable neutral or overriding patch
+  **regardless of price**, but is still offered if it is the only reachable one.
+
+A link override has higher priority than the general patch precedence.
+When several configured link overrides conflict, the deterministic tie-break
+is link kind and then numeric ID; among equally ranked patches the old
+cheapest/convenience tie-break remains.
+
+### How the map stays in sync
+
+\`GrTransportNetworkResolution::choose()\` is used by customer quotes,
+checkout and the simulator's address flow. The same resolver produces
+\`resolution.links\` (winning patch and its reach radius) and
+\`resolution.paint_order\` for the back-office coverage map. The renderer
+**does not independently choose a price winner**. When two circular reaches
+overlap, the linked seam follows the supplied winning patch's reach boundary.
+Disjoint joins remain schematic and never extend sellable coverage. This
+touchpoint may require reconciliation with in-flight #103 / PR #106 map changes;
+the #107 branch is intentionally based only on current main.
+
+### Data migration
+
+Module version **0.12.0** adds opt-in defaults on fresh installations and
+an idempotent \`upgrade-0.12.0.php\` for existing shops:
+
+| Table | Field | Values / default |
+| --- | --- | --- |
+| \`grtrans_station\` | \`patch_precedence\` | \`none\`, \`override\`, \`yield\` / \`none\` |
+| \`grtrans_leg\` | \`patch_precedence\` | \`none\`, \`override\`, \`yield\` / \`none\` (direct area only) |
+| \`grtrans_leg\` | \`override_winner\` | \`none\`, \`from\`, \`to\` / \`none\` |
+| \`grtrans_transfer\` | \`override_winner\` | \`none\`, \`from\`, \`to\` / \`none\` |
+
+The normal network repository/API and bulk importer use the same validated
+fields. Pre-existing rows keep \`none\`; no customer data or route requires an
+override to continue working.

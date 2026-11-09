@@ -22,6 +22,7 @@ final class GrTransportNetworkFields
                     'is_origin_hub'=>['bool'],
                     'coverage_kind'=>['choice',['radius','postal_polygon','walking_isochrone']],
                     'coverage_geojson'=>['geojson_polygon'],
+                    'patch_precedence'=>['choice',['none','override','yield']],
                 ];
             case 'legs':
                 return [
@@ -41,6 +42,8 @@ final class GrTransportNetworkFields
                     'area_coverage_kind'=>['choice',['radius','postal_polygon','walking_isochrone']],
                     'area_coverage_geojson'=>['geojson_polygon'],
                     'route_geojson'=>['geojson_line'],
+                    'patch_precedence'=>['choice',['none','override','yield']],
+                    'override_winner'=>['choice',['none','from','to']],
                 ];
             case 'branches':
                 return [
@@ -55,6 +58,7 @@ final class GrTransportNetworkFields
                 return [
                     'from_station_id'=>['id'], 'to_station_id'=>['id'],
                     'connection_type'=>['text',64], 'price'=>['range',0,100000],
+                    'override_winner'=>['choice',['none','from','to']],
                 ];
         }
         throw new InvalidArgumentException('Unknown network entity');
@@ -68,6 +72,7 @@ final class GrTransportNetworkFields
                 'inner_radius_km'=>GrTransportNetworkSettings::get('station_inner_km'),
                 'outer_radius_km'=>GrTransportNetworkSettings::get('station_outer_km'), 'is_origin_hub'=>0,
                 'coverage_kind'=>'radius','coverage_geojson'=>'',
+                'patch_precedence'=>'none',
             ];
             case 'legs': return [
                 'from_station_id'=>0, 'to_station_id'=>null, 'mode'=>'bus',
@@ -79,6 +84,7 @@ final class GrTransportNetworkFields
                 'transit_min_hours'=>0, 'transit_max_hours'=>0,
                 'area_name'=>'', 'area_lat'=>null, 'area_lng'=>null, 'area_radius_km'=>0,
                 'area_coverage_kind'=>'radius','area_coverage_geojson'=>'','route_geojson'=>'',
+                'patch_precedence'=>'none','override_winner'=>'none',
             ];
             case 'branches': return ['name'=>'', 'origin_station_id'=>0];
             case 'branch_stock': return [
@@ -86,6 +92,7 @@ final class GrTransportNetworkFields
             ];
             case 'transfers': return [
                 'from_station_id'=>0, 'to_station_id'=>0, 'connection_type'=>'walk', 'price'=>0,
+                'override_winner'=>'none',
             ];
         }
         throw new InvalidArgumentException('Unknown network entity');
@@ -109,7 +116,11 @@ final class GrTransportNetworkFields
         $output = [];
         foreach ($fields as $key=>$spec) {
             if (!array_key_exists($key,$input)) {
-                throw new InvalidArgumentException('Missing network field: ' . $key);
+                if (in_array($key,['patch_precedence','override_winner'],true)) {
+                    $input[$key]='none';
+                } else {
+                    throw new InvalidArgumentException('Missing network field: ' . $key);
+                }
             }
             $value=$input[$key];
             $type=$spec[0];
@@ -190,6 +201,7 @@ final class GrTransportNetworkFields
             }
             if ($output['to_station_id']!==null) {
                 if ($output['to_station_id']===$output['from_station_id']) throw new InvalidArgumentException('A leg must connect distinct stations');
+                if ($output['patch_precedence']!=='none') throw new InvalidArgumentException('Patch precedence requires a direct-area leg');
                 if ($output['area_lat']!==null || $output['area_lng']!==null || $output['area_radius_km']>0 ||
                     $output['area_coverage_geojson']!=='' || $output['area_coverage_kind']!=='radius') {
                     throw new InvalidArgumentException('A station leg cannot also be a direct area service');
