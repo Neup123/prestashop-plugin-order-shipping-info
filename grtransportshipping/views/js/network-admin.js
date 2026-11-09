@@ -102,9 +102,8 @@
     seamLayers.push(layer);
     return layer.addTo(map);
   };
-  // Patches retain their own geometry. A connection is represented ONLY by
-  // short local stitches, never by filled ribbons or an implied end-to-end line.
-  // Air/sea/land route-spanning line exceptions await the owner's decision.
+  // Local organic patch geometry is the base map. Distant air links are the
+  // ONE owner-confirmed symbolic exception; distant land/sea routes stay blank.
   const patchStyles = new Map();
   const mentalLinks = new Map();
   const linkGroup = (a, b) => {
@@ -135,17 +134,22 @@
     layer.on('mouseout', restoreFocus);
     return layer;
   };
+  const stationPatch = station => ({
+    lat: Number(station.lat), lng: Number(station.lng),
+    radiusKm: Number(station.outer_radius_km), key: 'station:' + station.id_station
+  });
+  const areaPatch = (leg) => ({
+    lat: Number(leg.area_lat), lng: Number(leg.area_lng),
+    radiusKm: Number(leg.area_radius_km), key: 'area:' + leg.id_leg
+  });
   const pairLanes = new Map();
-  const drawStitch = (from, to, fromRadius, toRadius, label, stale, fromOwner, toOwner) => {
-    const ends = [fromOwner, toOwner].sort();
-    const key = ends.join('=>');
-    const lane = pairLanes.get(key) || 0;
-    pairLanes.set(key, lane + 1);
-    const pieces = geometry.stitches(point(from), point(to), fromRadius, toRadius, lane);
+  const drawStitch = (from, to, label, stale, fromOwner, toOwner, lane) => {
+    const pieces = geometry.stitches(from, to, lane);
     for (const endpoints of pieces) {
-      const visible = paintSeam(L.polyline(endpoints, {
+      paintSeam(L.polyline(endpoints, {
         color: '#637384', weight: 1.25,
-        opacity: stale ? 0.22 : 0.55, dashArray: '2 5', interactive: false
+        opacity: stale ? 0.22 : 0.55, dashArray: '2 5', interactive: false,
+        className: 'grtrans-zigzag-stitch'
       }));
       const target = paintSeam(L.polyline(endpoints, {
         color: '#637384', weight: 10, opacity: 0.001, interactive: true
@@ -154,6 +158,35 @@
       // multi-vessel origin patch shows its separate, legitimately linked ends.
       target.on('mouseover', () => focusExactly([fromOwner, toOwner]));
       target.on('mouseout', restoreFocus);
+    }
+  };
+  const drawAirArc = (from, to, label, stale, fromOwner, toOwner, bidirectional) => {
+    const arc = geometry.airArc([from.lat, from.lng], [to.lat, to.lng], bidirectional);
+    if (!arc) return;
+    const paintArrow = coords => paintSeam(L.polyline(coords, {
+      color: '#7453a7', weight: 1.85, opacity: stale ? 0.37 : 0.85,
+      interactive: false, className: 'grtrans-air-arrow'
+    }));
+    paintSeam(L.polyline(arc.points, {
+      color: '#7453a7', weight: 1.8, opacity: stale ? 0.35 : 0.78,
+      dashArray: '7 7', interactive: true, className: 'grtrans-air-arc'
+    })).bindTooltip(safeTooltip(label + ' · symbolic flight arc; not area coverage'))
+      .on('mouseover', () => focusExactly([fromOwner, toOwner]))
+      .on('mouseout', restoreFocus);
+    paintArrow(arc.arrow);
+    if (arc.reverseArrow) paintArrow(arc.reverseArrow);
+  };
+  const renderConnection = (mode, from, to, label, stale, fromOwner, toOwner, bidirectional) => {
+    const ends = [fromOwner, toOwner].sort();
+    const key = ends.join('=>');
+    const lane = pairLanes.get(key) || 0;
+    pairLanes.set(key, lane + 1);
+    if (mode === 'air' && !geometry.overlaps(from, to)) {
+      drawAirArc(from, to, label, stale, fromOwner, toOwner, bidirectional);
+    } else {
+      // Touching patches get a zigzag inside their shared lens. Distant
+      // land/sea remain short local anchors: no invented road/sea corridor.
+      drawStitch(from, to, label, stale, fromOwner, toOwner, lane);
     }
   };
   const previewButton = document.getElementById('grtrans-map-preview');
@@ -366,8 +399,8 @@
   if (previewButton && clearButton) {
     previewButton.addEventListener('click', () => {
       clearPreview();
-      // Hide the schematic fabric joins while the operator selects or sees
-      // the routed road/ferry preview, so different geometries never overlap.
+      // Hide symbolic arcs and local stitches during a deliberately requested
+      // route preview; coverage polygons remain visible throughout.
       seamLayers.forEach(layer => map.removeLayer(layer));
       previewSelecting = true;
       previewMessage('Choose a starting point on the map or click a station pin.');
@@ -396,13 +429,12 @@
     const area = {lat: leg.area_lat, lng: leg.area_lng};
     const c = zoneColors.get('area:' + leg.id_leg);
     const style = {
-      pane: 'grtrans-coverage-patches', fill: true,
-      radius: Number(leg.area_radius_km) * 1000,
+      pane: 'grtrans-coverage-patches', fill: true, className: 'grtrans-organic-patch',
       fillColor: c, color: c, fillOpacity: leg._stale ? 0.1 : 0.24,
       opacity: leg._stale ? 0.2 : 0.5, weight: 1
     };
     const owner = 'area:' + leg.id_leg;
-    const layer = L.circle(point(area), style).addTo(map).bindTooltip(
+    const layer = L.polygon(geometry.patchContour(areaPatch(leg)), style).addTo(map).bindTooltip(
       safeTooltip((leg.area_name || 'Direct area') + ' · ' + fmt(leg.price) + ' EUR' + staleLabel(leg)));
     registerPatch([owner], layer, style);
     includeCoverage(point(area), leg.area_radius_km);
@@ -424,13 +456,12 @@
       const groupId = group.map(station => station.id_station).sort((a, b) => a - b).join(',');
       if (paintedGroups.has(groupId)) return;
       paintedGroups.add(groupId);
-      const contours = geometry.unionContours(group.map(station => ({
-        lat: station.lat, lng: station.lng, radiusKm: station.outer_radius_km
-      })));
+      const contours = geometry.unionContours(group.map(stationPatch));
       if (contours.length) {
         const c = zoneColors.get('station:' + group[0].id_station);
         const style = {pane: 'grtrans-coverage-patches', fill: true,
-          fillColor: c, color: c, fillOpacity: 0.20, opacity: 0.7, weight: 1};
+          className: 'grtrans-organic-patch', fillColor: c, color: c,
+          fillOpacity: 0.20, opacity: 0.65, weight: 1};
         const owners = group.map(station => 'station:' + station.id_station);
         const layer = L.polygon(contours.length === 1 ? contours[0] : contours,
           style).addTo(map).bindTooltip(safeTooltip(group.map(station => station.name).join(' + ') +
@@ -454,14 +485,18 @@
       + (Object.prototype.hasOwnProperty.call(costs, s.id_station)
         ? ' · cheapest ' + fmt(costs[s.id_station]) + ' EUR' : ' · no priced path');
     [
-      {radius: Number(s.outer_radius_km) * 1000, opacity: 0.20},
-      {radius: Number(s.inner_radius_km) * 1000, opacity: 0.10}
-    ].forEach(ring => {
+      {radiusKm: Number(s.outer_radius_km), opacity: 0.20, outline: true},
+      {radiusKm: Number(s.inner_radius_km), opacity: 0.10, outline: false}
+    ].filter(ring => ring.radiusKm > 0).forEach(ring => {
       const style = {
-        pane: 'grtrans-coverage-patches', radius: ring.radius, fill: true,
-        fillColor: c, color: c, fillOpacity: ring.opacity, opacity: 0.7, weight: 1
+        pane: 'grtrans-coverage-patches', fill: true, className: 'grtrans-organic-patch',
+        fillColor: c, color: c, fillOpacity: ring.opacity, opacity: ring.outline ? 0.6 : 0,
+        weight: ring.outline ? 1 : 0, stroke: ring.outline
       };
-      const layer = L.circle(pos, style).addTo(map).bindTooltip(safeTooltip(title));
+      const contour = geometry.patchContour({
+        lat: s.lat, lng: s.lng, radiusKm: ring.radiusKm, key: 'station:' + s.id_station
+      });
+      const layer = L.polygon(contour, style).addTo(map).bindTooltip(safeTooltip(title));
       registerPatch(['station:' + s.id_station], layer, style);
       layer.on('click', event => {
         L.DomEvent.stopPropagation(event);
@@ -497,10 +532,10 @@
     const a = 'station:' + from.id_station;
     const b = isArea ? 'area:' + leg.id_leg : 'station:' + to.id_station;
     if (mode === 'air' || mode === 'sea') linkGroup(a, b);
-    drawStitch(from, to, from.outer_radius_km,
-      isArea ? leg.area_radius_km : to.outer_radius_km,
+    renderConnection(mode, stationPatch(from),
+      isArea ? areaPatch(leg) : stationPatch(to),
       (leg.operator_label || leg.mode) + ' · ' + fmt(leg.price) + ' EUR' + staleLabel(leg),
-      leg._stale, a, b);
+      leg._stale, a, b, Number(leg.bidirectional) === 1);
   });
   data.transfers.forEach(transfer => {
     const from = stations.get(Number(transfer.from_station_id));
@@ -510,9 +545,9 @@
     const mode = geometry.kind(transfer.connection_type, false);
     const a = 'station:' + from.id_station, b = 'station:' + to.id_station;
     if (mode === 'air' || mode === 'sea') linkGroup(a, b);
-    drawStitch(from, to, from.outer_radius_km, to.outer_radius_km,
+    renderConnection(mode, stationPatch(from), stationPatch(to),
       transfer.connection_type + ' transfer · ' + fmt(transfer.price) + ' EUR' + staleLabel(transfer),
-      transfer._stale, a, b);
+      transfer._stale, a, b, false);
   });
   map.on('click', event => {
     if (previewSelecting) { addPreviewPin(event.latlng); return; }
