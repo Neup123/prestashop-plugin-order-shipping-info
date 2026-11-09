@@ -42,7 +42,7 @@ The issue does not specify a numerical near/far threshold. Using overlapping inn
 
 ## Visual coverage map (#68)
 
-The back-office map uses locally bundled **Leaflet** and OpenStreetMap tiles. Every station is shown by two mode-colored concentric discs: the inner is approximately two-thirds opaque and the outer one-third opaque. Legs have labeled connecting lines, distinct color shades for different operators, and price tooltips. Transfers are separate dashed connections with their connection type and price. Direct-area services appear as their own coverage discs.
+The back-office map uses locally bundled **Leaflet** and OpenStreetMap tiles. Its default view shows filled, translucent inner/outer coverage patches (approximately 0.1/0.2 fill opacity), plus direct-area patches, in a distinct colour for each zone. The colour-matched legend identifies each station/area; the underlying place labels remain visible. On load the map fits the **full coverage circles**, including their radii, with a small margin, so small patches are readable without manually zooming. Only an empty map with no coverage starts on the full-Greece view. Service legs and transfers currently use labelled connections; their patch-join presentation is described in the next map rework PR.
 
 Station coverage is drawn in descending reachable-price order so cheaper service is visually above more expensive coverage. The costs come from the shared directed graph used by the quote system, not manually entered map prices. Unreachable station discs are editing aids, not promised delivery coverage. No disc means no network-geography coverage.
 
