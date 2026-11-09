@@ -75,9 +75,9 @@
 <g>
   <rect x="640" y="870" width="580" height="370" rx="12" fill="#fafafa" stroke="#ddd"/>
   <text x="660" y="902" font-size="19" font-weight="bold" fill="#222">F. Land, SAME price — merge + solid line</text>
-  <path d="M690,1100 C800,1060 950,1050 1160,1085" fill="none" stroke="#e3e3e3" stroke-width="16"/>
+  <path d="M675,1082 C740,1052 770,1044 812,1038 C870,1031 935,1032 992,1034 C1055,1036 1120,1052 1175,1070" fill="none" stroke="#e3e3e3" stroke-width="16"/>
   <path d="M718,972 C782,940 862,956 902,1002 C946,954 1040,948 1082,998 C1122,1046 1096,1112 1032,1126 C982,1137 936,1112 908,1078 C876,1114 800,1132 746,1102 C692,1072 668,1012 718,972 Z" fill="#a8d8b9" fill-opacity="0.55"/>
-  <path d="M690,1100 C800,1060 950,1050 1160,1085" fill="none" stroke="#5da271" stroke-width="5"/>
+  <path d="M675,1082 C740,1052 770,1044 812,1038 C870,1031 935,1032 992,1034 C1055,1036 1120,1052 1175,1070" fill="none" stroke="#5da271" stroke-width="5"/>
   <circle cx="812" cy="1038" r="6" fill="#2e6b3e"/>
   <circle cx="992" cy="1034" r="6" fill="#2e6b3e"/>
   <text x="930" y="1185" font-size="16" text-anchor="middle" fill="#444">continuous line in the patches' colour, MORE opaque,</text>
