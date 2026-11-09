@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/NetworkApi.php';
 require_once __DIR__ . '/NetworkGraph.php';
+require_once __DIR__ . '/NetworkFreshness.php';
 
 /** Operator interface over the exact NetworkRepository/NetworkApi contract. */
 final class GrTransportNetworkAdmin
@@ -17,6 +18,10 @@ final class GrTransportNetworkAdmin
         }
         try {
             $action=(string)$_POST['grtrans_network_action'];
+            if ($action==='save_operational_settings') {
+                GrTransportNetworkSettings::save($_POST);
+                return '<div class="alert alert-success">Network operating defaults saved.</div>';
+            }
             if ($action==='save_extended_notice') {
                 $notice=$_POST['extended_notice'] ?? '';
                 if (!is_string($notice) || mb_strlen($notice, 'UTF-8')>1200) {
@@ -48,6 +53,8 @@ final class GrTransportNetworkAdmin
                     if (str_starts_with($definition[0],'nullable_') && $data[$key]==='') $data[$key]=null;
                 }
                 GrTransportNetworkRepository::save($entity,$data,(int)$id);
+            } elseif ($action==='verify') {
+                GrTransportNetworkRepository::confirm($entity,(int)$id);
             } elseif ($action==='link') {
                 GrTransportNetworkRepository::save('transfers',[
                     'from_station_id'=>$_POST['from_station_id'] ?? null,
@@ -56,7 +63,9 @@ final class GrTransportNetworkAdmin
                     'price'=>$_POST['price'] ?? 0,
                 ]);
             } else throw new InvalidArgumentException('Unknown network action');
-            return '<div class="alert alert-success" role="status">Network record updated.</div>';
+            $message=($action==='link' || ($action==='save' && $id===0))
+                ? 'Network record created.' : 'Network record updated.';
+            return '<div class="alert alert-success" role="status">' . $message . '</div>';
         } catch (Throwable $error) {
             return '<div class="alert alert-danger" role="alert">Network action failed: '
                 . self::esc($error->getMessage()) . '</div>';
@@ -66,6 +75,8 @@ final class GrTransportNetworkAdmin
     public static function render($module): string
     {
         $data=GrTransportNetworkRepository::snapshot();
+        $data['legs']=GrTransportNetworkFreshness::mapRecords($data['legs']);
+        $data['transfers']=GrTransportNetworkFreshness::mapRecords($data['transfers']);
         $path=Context::getContext()->link->getAdminLink('AdminModules',true,[],[
             'configure'=>$module->name,'module_name'=>$module->name,
         ]);
@@ -84,7 +95,9 @@ final class GrTransportNetworkAdmin
         foreach ($route['cost'] as $id=>$amount) {
             if (is_finite($amount)) $cost[(string)$id]=round($amount,2);
         }
-        $mapConfig=json_encode($data+['cost'=>$cost],JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_THROW_ON_ERROR);
+        $mapData=array_intersect_key($data,array_flip(['stations','legs','transfers']));
+        $mapConfig=json_encode($mapData+['cost'=>$cost,'nearbyGapKm'=>GrTransportNetworkSettings::get('nearby_gap_km'),
+            'leafletImagePath'=>_MODULE_DIR_ . $module->name . '/views/vendor/leaflet/images/'],JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_THROW_ON_ERROR);
         $base=self::esc((_MODULE_DIR_ . $module->name . '/')) . 'views/';
         $out='<section class="panel" id="grtrans-network">'
             . '<h3>Transport network · coverage map</h3>'
@@ -113,19 +126,23 @@ final class GrTransportNetworkAdmin
         $out.='<div class="grtrans-network-toolbar"><strong>Manage:</strong> ';
         foreach (GrTransportNetworkFields::ENTITIES as $choice) {
             $out.='<a class="btn btn-default" href="' . $url . '&amp;network_entity='
-                . $choice . '#grtrans-network-editor">' . ucfirst($choice) . '</a> ';
+                . $choice . '#grtrans-network-editor">' . ucwords(str_replace('_',' ',$choice)) . '</a> ';
         }
         $out.='</div>';
         foreach (GrTransportNetworkFields::ENTITIES as $collection) {
-            $out.='<h4>' . ucfirst($collection) . '</h4>'
+            $out.='<h4>' . ucwords(str_replace('_',' ',$collection)) . '</h4>'
                 . '<div class="table-responsive"><table class="table table-striped"><thead><tr><th>ID</th>';
             $names=array_keys(GrTransportNetworkFields::fields($collection));
             foreach ($names as $name) $out.='<th>' . self::esc(str_replace('_',' ',$name)) . '</th>';
+            if ($collection==='legs' || $collection==='transfers') $out.='<th>Last verified (UTC)</th>';
             $out.='<th>Actions</th></tr></thead><tbody>';
             foreach ($data[$collection] as $record) {
                 $id=(int)$record[GrTransportNetworkFields::IDS[$collection]];
                 $out.='<tr><td>' . $id . '</td>';
                 foreach ($names as $name) $out.='<td>' . self::esc($record[$name] ?? '—') . '</td>';
+                if ($collection==='legs' || $collection==='transfers') {
+                    $out.='<td>' . self::esc($record['verified_at'] ?: 'Not yet verified') . '</td>';
+                }
                 $out.='<td><a class="btn btn-default btn-sm" href="' . $url . '&amp;network_entity='
                     . $collection . '&amp;network_edit=' . $id . '#grtrans-network-editor">Edit</a>'
                     . '<form method="post" action="' . $url . '#grtrans-network" class="grtrans-network-inline">'
@@ -134,7 +151,14 @@ final class GrTransportNetworkAdmin
                     . '<input type="hidden" name="network_entity" value="' . $collection . '">'
                     . '<input type="hidden" name="network_id" value="' . $id . '">'
                     . '<button class="btn btn-danger btn-sm" onclick="return confirm(\'Delete network record?\')">Delete</button>'
-                    . '</form></td></tr>';
+                    . '</form>'
+                    . (($collection==='legs' || $collection==='transfers')
+                        ? '<form method="post" action="' . $url . '#grtrans-network" class="grtrans-network-inline">'
+                            . '<input type="hidden" name="token" value="' . $csrf . '">'
+                            . '<input type="hidden" name="network_entity" value="' . $collection . '">'
+                            . '<input type="hidden" name="network_id" value="' . $id . '">'
+                            . '<button class="btn btn-default btn-sm" type="submit" name="grtrans_network_action" value="verify">Confirm current</button></form>'
+                        : '') . '</td></tr>';
             }
             $out.='</tbody></table></div>';
         }
@@ -150,11 +174,16 @@ final class GrTransportNetworkAdmin
             $out.='<div class="form-group"><label for="grtrans-network-field-' . $key . '">'
                 . self::esc(ucfirst(str_replace('_',' ',$key))) . '</label>';
             $value=$values[$key] ?? '';
-            if ($type==='choice' || $type==='bool' || $type==='id' || $type==='nullable_id') {
+            if ($type==='choice' || $type==='bool'
+                || ($type==='id' && $key!=='id_product') || $type==='nullable_id') {
                 $choices=$type==='choice' ? array_combine($definition[1],$definition[1])
                     : ($type==='bool' ? [0=>'No',1=>'Yes'] : []);
                 if ($type==='nullable_id') $choices['']='Direct area (no pickup station)';
-                if ($type==='id' || $type==='nullable_id') {
+                if ($key==='id_branch') {
+                    foreach ($data['branches'] as $branch) {
+                        $choices[(int)$branch['id_branch']]=$branch['name'];
+                    }
+                } elseif ($type==='id' || $type==='nullable_id') {
                     foreach ($data['stations'] as $station) {
                         $choices[(int)$station['id_station']]=$station['name'];
                     }
@@ -170,7 +199,7 @@ final class GrTransportNetworkAdmin
                 $out.='<input class="form-control" id="grtrans-network-field-' . $key . '" name="' . $key . '"'
                     . ' value="' . self::esc($value) . '"'
                     . ($type==='text' ? ' maxlength="' . (int)$definition[1] . '"' : '')
-                    . ($type!=='text' ? ' type="number" step="any"' : '') . '>';
+                    . ($type!=='text' ? ' type="number" step="any" min="0"' : '') . '>';
             }
             $out.='</div>';
         }
@@ -192,6 +221,7 @@ final class GrTransportNetworkAdmin
                 . '<button name="grtrans_network_action" value="rotate_' . $scope
                 . '" class="btn btn-warning">Generate / revoke ' . $scope . ' token</button></form> ';
         }
+        $out.=GrTransportNetworkSettings::render($url,$csrf);
         $out.='<script src="' . $base . 'vendor/leaflet/leaflet.js"></script>'
             . '<script src="' . $base . 'js/network-admin.js"></script></section>';
         return $out;

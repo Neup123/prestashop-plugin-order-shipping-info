@@ -38,6 +38,7 @@ class GrtransportshippingQuoteModuleFrontController extends ModuleFrontControlle
             'zoomOut' => $this->module->l('Zoom out', 'quote'),
             'marker' => $this->module->l('Destination pin', 'quote'),
             'attribution' => $this->module->l('© OpenStreetMap contributors', 'quote'),
+            'leafletImagePath' => _MODULE_DIR_ . $this->module->name . '/views/vendor/leaflet/images/',
         ];
         $station = $result['station'] ?? null;
         if ($station) {
@@ -49,11 +50,15 @@ class GrtransportshippingQuoteModuleFrontController extends ModuleFrontControlle
             'quote_submitted' => $submitted,
             'quote_route' => $quote,
             'quote_carrier' => $result['carrier'] ?? '',
-            'quote_price' => $quote ? $this->context->currentLocale->formatPrice(
-                GrTransportOrderCharge::expectedShipping($quote), $this->context->currency->iso_code
-            ) : '',
+            'quote_price' => $quote ? (!empty($quote['estimate'])
+                ? $this->context->currentLocale->formatPrice((float)$quote['estimate_min'], $this->context->currency->iso_code)
+                    . ' – ' . $this->context->currentLocale->formatPrice((float)$quote['estimate_max'], $this->context->currency->iso_code)
+                : $this->context->currentLocale->formatPrice(
+                    GrTransportOrderCharge::expectedShipping($quote), $this->context->currency->iso_code
+                )) : '',
             'quote_notice' => $quote ? $this->module->customerQuoteNotice($quote) : '',
             'quote_message' => $result ? $this->module->customerQuoteMessage($result['status']) : '',
+            'quote_pin_radius' => GrTransportQuoteCheck::pinRadiusKm(),
             'quote_map' => json_encode($map, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT),
         ]);
         $this->setTemplate('module:grtransportshipping/views/templates/front/quote.tpl');

@@ -15,7 +15,8 @@ function fixture(withLeaflet = true) {
     stations: [
       { name: 'Origin <unsafe>', lat: 37.94, lng: 23.63 },
       { name: 'Destination', lat: 37.10, lng: 25.37 }
-    ], zoomIn: 'Zoom in', zoomOut: 'Zoom out', marker: 'Destination pin'
+    ], zoomIn: 'Zoom in', zoomOut: 'Zoom out', marker: 'Destination pin',
+    leafletImagePath: '/modules/grtransportshipping/views/vendor/leaflet/images/'
   }) };
   const calls = { tiles: 0, markers: [], lines: [], events: {} };
   const map = {
@@ -25,6 +26,7 @@ function fixture(withLeaflet = true) {
     invalidateSize() {}
   };
   const L = {
+    Icon: { Default: {} },
     map() { return map; },
     control: { zoom() { return { addTo() {} }; } },
     tileLayer() { calls.tiles++; return { addTo() {} }; },
@@ -50,11 +52,13 @@ function fixture(withLeaflet = true) {
       createElement() { return { href: '', textContent: '', outerHTML: '<a>Map attribution</a>' }; }
     }
   });
-  return { elements, calls };
+  return { elements, calls, iconPath: L.Icon.Default.imagePath };
 }
 const absent = fixture(false);
 assert.equal(absent.elements['grtransport-map-option'].hidden, true, 'Unavailable Leaflet leaves text form independent');
-const { elements, calls } = fixture();
+const { elements, calls, iconPath } = fixture();
+assert.equal(iconPath, '/modules/grtransportshipping/views/vendor/leaflet/images/',
+  'Leaflet marker assets must load from the module, not the controller URL');
 assert.equal(elements['grtransport-map-option'].hidden, false);
 assert.equal(calls.tiles, 0, 'No OSM request before map opt-in');
 elements['grtransport-show-map'].events.click();

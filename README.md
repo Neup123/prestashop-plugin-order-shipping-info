@@ -135,3 +135,10 @@ A new validated station/leg/transfer dataset and token-scoped JSON/CSV CRUD API 
 The network is empty by default and **does not replace or rewrite merchant flat Routes**. Existing installations must run **Module Manager → Upgrade** to create the new tables. For staff procedures and API token use see the [English operator guide](docs/admin-guide-grtransportshipping.md); for migration and disposable-rig acceptance see [Install and acceptance](docs/INSTALL-AND-ACCEPTANCE.md). Tokens are administered only in PrestaShop back office and can be rotated to revoke them. The network schema, like flat Routes, is installation-global in multistore installations.
 
 Parcel status notifications (#74) and station hours/phone (#75) are explicitly post-first-release, not part of this feature series.
+
+
+## Parcel-dependent tariffs and frozen estimated freight (0.7.0)
+
+Station service legs support flat, EUR/kg and EUR/m³ freight rates with a positive flat fallback when product measurements are absent. Estimated legs carry configurable low/high multipliers; cheapest-path comparison uses the conservative upper bound. Any estimated selected path is **not charged as an exact fare at checkout**: the carrier returns zero shipping and shows the indicative EUR range and separate-payment notice. The complete selected route, per-edge tariffs and parcel inputs are frozen into the order's `route_snapshot` JSON.
+
+A separate administrator action records a **real external** freight payment receipt after the customer has approved the actual amount. **This module does not capture card/payment gateway funds**; merchants must use their supported payment processor separately and only then record a real receipt. A gateway-specific authorization/capture integration remains necessary for automatic second-step debit. See the [operator guide](docs/admin-guide-grtransportshipping.md) and [acceptance procedure](docs/INSTALL-AND-ACCEPTANCE.md). Existing flat-route shipping/handling and free-shipping voucher behavior remain separate and tested.

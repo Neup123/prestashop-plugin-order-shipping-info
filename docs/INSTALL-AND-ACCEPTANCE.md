@@ -141,3 +141,75 @@ The module now routes its built-in route editor strings and customer pickup/no-q
 9. After network setup, test an existing flat Route in checkout. The addition of network tables must not change flat-route prices or existing order snapshots before the dedicated cheapest-path integration PR (#67).
 
 **Acceptance boundary:** Pure PHP 8.2/8.4 tests cover station/leg/transfer validation, graph topology, direct-area inclusion, API token scopes/rotation and CSV parsing. The map/editor are not yet covered by a real authenticated PrestaShop browser acceptance test; verify steps 3–8 on the disposable PrestaShop 9.2 rig before declaring this feature production-ready. Real parcel tariffs, pickup agreements, and live route feasibility are operator obligations. Issues #74 and #75 remain post-first-release.
+
+
+## Cheapest-path quote / simulator acceptance (0.6.1; #67, #77)
+
+1. In a disposable PrestaShop 9.2 shop, set up two origins, two overlapping destination station rings, and alternative priced paths. Supply a verified WGS84 destination coordinate (the standard address class alone has none). Confirm the cheaper **complete** path is quoted even if the destination station is slightly farther away.
+2. Add a strictly cheaper service leg; after the cart's existing 30-minute quote expires or a new address is used, confirm the displayed price changes. A pinned quote/order must not be silently rewritten.
+3. Place a bus terminal and port near each other but do not add a transfer link. Assert the network cannot quote across the gap. Explicitly add the connection with its price; check both the per-edge simulator breakdown and checkout price.
+4. Test the overlap of a free direct-area courier with a station route in Athens. The complete free route should win; an island address must never receive a courier-to-ferry concatenation without a real link.
+5. Test a customer destination in the inner station ring, another in the outer-only ring, and an uncovered area. Outer-only renders **EXTENDED PICKUP AREA — LONG WALK** plus the configurable text; uncovered uses the pre-existing flat-route fallback or hides the carrier.
+6. Open the **Network quote simulator**, enter station ID or postcode/city with known coordinates and the same parcel inputs as checkout, and verify hub, station, ring, edge list, per-edge cost and final total agree.
+7. Confirm flat Routes remain deliberate overrides and suspended/ambiguous destinations never silently bypass their safety state via network matching.
+
+**Important integration limitation:** PrestaShop's standard address stores city and postcode, not coordinates. The network engine does not use an undocumented external geocoder; without a trusted coordinate, ordinary checkout retains flat-route pricing. The customer quote-page map pin can supply coordinates. Do not claim full postcode-to-coverage parity on a standard address-only shop until the owner supplies a verified coordinate source. This limitation is explicit in the PR and operator guide.
+
+
+## Variable tariff and estimated freight verification (0.7.0; #71/#72)
+
+1. Create flat, weight-per-kg and cubic-metre legs with verified base prices. In the disposable shop use two products of distinct weight/dimensions and different quantities; calculate the expected sum by hand. **Shop product dimensions must be in centimetres** for this iteration's m³ conversion. Check that missing weight or one missing dimension causes a conspicuous flat-fallback warning; with no positive fallback the leg must not quote.
+2. Mark one leg an **estimate** with a meaningful noncollapsed low/high factor; check the chosen complete path's upper bound drives selection, and both lower and upper estimates include every service leg and transfer. It must not be presented as an exact quote.
+3. With a real PrestaShop test cart and payment-method stub, select the estimated carrier: **the actual shipping charge must be €0, including handling fee**. Carrier extra content must explain the range and clearly say the final freight is **not charged at checkout**. Do not interpret the native €0 carrier label as free freight.
+4. Place an order in the disposable shop. Verify the order's `grtrans_order.route_snapshot` JSON has the complete origin, destination station/area, each service/transfer, its values and measurement inputs, plus `estimate_min`, `estimate_max` and pending state. Edit every underlying leg, station and tariff afterward and verify both admin/customer original journey displays remain identical.
+5. Confirm a separate external payment in the disposable environment, then provide its transaction reference, final EUR amount and explicit customer approval in the admin order view. Verify the stored settlement status, amount, ref and audit log. Repeating the same receipt must be idempotent; a different receipt must be rejected; a settled estimate must not be regenerated.
+6. If the confirmed actual amount exceeds the original max, reject the receipt pending fresh approval. Never record a payment unless an actual external processor has confirmed capture. The carrier module **does not capture funds itself**, and a gateway-specific integration remains necessary to do so in-store.
+7. For an exact flat tariff, verify checkout still charges the historical amount with its eligible handling fee and all previous order charge-divergence and free-shipping voucher tests continue to pass.
+
+The pure PHP `network_tariff_test.php` covers rates, ranges, cart dimensions, missing measurements, snapshot JSON and separate-payment validation. The real PrestaShop 9.2 CI job checks existing exact-shipping behavior; **a complete external second-payment capture is not simulated or claimed.**
+
+## Configurable defaults and customer map radius upgrade (0.7.1)
+
+1. Upgrade to module 0.7.1 and confirm all eleven new `GRTRANS_...` settings get their documented defaults without visiting Configure. Re-running the upgrade must preserve saved operator values.
+2. In Configure change **Customer map-pin matching radius** from 25 km to 10 km. On the customer quote-check page, verify the help text displays 10 km, a pin just inside the radius returns the nearest catalogue station, a pin just outside does not, and equal-distance tie ordering remains the same. Reset to 25 km, verify the original boundary.
+3. Change inner/outer station **form defaults** and confirm new records prefill them, but existing station records do not move. Verify an invalid outer smaller than inner is refused.
+4. Set an extra nearby-link gap and verify the map's walk-link shortcut honors the gap, while far-apart stations still require an explicit priced/type popup. An ordinary missing link must never be guessed by the quote graph.
+5. Change an estimate multiplier, product-unit conversion or quote hold in the disposable shop; check new rates and new holds follow the setting, with already consumed quote/order history preserved. Restore defaults.
+6. Invalid bounds, noninteger hold minutes, lower factor ≥ upper, or radius defaults greater than the allowed maximum must be rejected server-side with no partial configuration save.
+
+These tests are separate from the original #62 static quote-page acceptance. The same changes are covered by `tests/network_settings_test.php` on both PHP CI versions, but the real PrestaShop browser/admin checks remain part of post-merge shop acceptance.
+
+## Leg delivery-time window acceptance (0.8.0; #73)
+
+1. Upgrade to 0.8.0; confirm four new fields (`lead_hours`, `preparation_hours`, `transit_min_hours`, `transit_max_hours`) exist on `grtrans_leg`, default to zero, and migrate without changing prices or historical orders. Repeated upgrade must succeed.
+2. Define a two-leg route with a preparation, lead and min–max transit time on both legs; confirm each field appears and is editable through the same API and admin forms as other leg attributes.
+3. In the admin simulator verify the total earliest/latest hours. Verify exactly the same window accompanies the fare at checkout, on the customer quote page and on order confirmation.
+4. Edit a leg's lead hours; a fresh quote must change its delivery window without changing its price. Previously placed order snapshot and time must not change.
+5. Disable **Show delivery-time windows (0=off)**; all storefront/order/simulator notices must hide the window. Price and preserved history remain the same. Re-enable to restore new quote timing.
+6. Unconfigured zero transit must not make a misleading zero-hour delivery promise. If the quoted path includes transfers whose time is not recorded by #73, show **Transfer travel time not included** as a limitation.
+
+Pure regression checks are in `tests/network_timing_test.php` and the PHP 8.2/8.4 CI matrix. Manual real-shop browser testing is required for visual acceptance on the merchant's theme.
+
+## Data verification/staleness upgrade and acceptance (0.9.0; #76)
+
+1. Upgrade from 0.8.0 to 0.9.0. Check nullable `verified_at` on both leg and transfer tables. Unverified old rows remain NULL, not stamped with a fabricated upgrade date; retrying migration is safe.
+2. Create a leg and transfer through the admin and API. Check automatic current UTC timestamp. Modify the price/details and confirm the timestamp refreshes. Use **Confirm current** for an unchanged record; check the same via write-token `POST ?entity=legs&id=N&confirm=1` and read-token rejection.
+3. Set **Stale after months** to a small value, use a date older than the threshold in the disposable test database, and check the coverage line/area fades with an explicit stale tooltip. Newly confirmed services remain vivid; exactly-on-threshold timestamps are not stale.
+4. Disable **Show stale map markings** (0). Every faded style/STALE label disappears from the map, but original dates and prices must remain identical in data/API.
+5. Confirm historical order snapshots and checkout prices are unaffected by the visualization settings.
+
+`tests/network_freshness_test.php` covers missing/old/fresh timestamps, calendar-month threshold, turn-off, and explicit confirmation without changing other data. Browser appearance verification remains a separate real-Shop acceptance step.
+
+## Optional branch stock / cart origins (0.10.0; #78)
+
+1. Upgrade the module to 0.10.0. Verify the new `grtrans_branch` and `grtrans_branch_stock` tables and their indexes; existing PrestaShop `stock_available` and existing route/order data must remain unchanged. Reinstall/upgrade retry is safe and creates **zero** branches by default.
+2. Before configuring branches, test the same known network cart/address; its cheapest origin and price remain exactly as before.
+3. Mark two station records as origin hubs. Create *Athens* and *Thessaloniki* branches, each linked to one hub, in the module's Branches admin editor. Both must belong to the **current shop**. A non-hub station ID must be rejected.
+4. Enter product A quantity 5 in Athens and product B combination X quantity 3 in Thessaloniki, both under Branch Stock. Verify new stock entries are visible via `GET ?entity=branch_stock` and CSV, and that the read-token cannot modify them.
+5. Quote A-only and B-only carts. The selected path must begin at the corresponding branch station and the computed amounts should differ when the two hub paths have different prices. The admin simulator using the same **Cart ID** must return the same origin/price. The placed order snapshot must include branch ID/name.
+6. Quote a cart with A+B where no single branch has both. The network carrier must not offer a route, but manually priced flat Routes/other carriers remain unaffected. No automatic split shipments.
+7. Verify exact `id_product_attribute`, not the product's combined stock: a different combination or insufficient quantity must make the branch ineligible. Changing the cart's items or quantities must invalidate its old pinned quote fingerprint.
+8. In a second shop under the same PrestaShop installation, confirm the first shop's branches/quantities are invisible and that empty branch configuration retains the availability-blind origin model. The shared stations/legs themselves remain installation-wide.
+9. Use the JSON bulk API to import a branch with `client_ref` and a stock row using `branch_ref`; verify all-or-nothing handling of an invalid row, including cross-shop record IDs. Confirm branch inventory is a separate record system and is **not** deducted by PrestaShop core on sale.
+
+The pure regression suite `tests/network_branch_test.php` exercises distinct products/combinations, full-cart eligibility, changing cheapest origin, no splits, fallback and simulator parity. Additional real PrestaShop 9.2 rig tests are required for admin forms/API/whole-cart checkout and multistore isolation.

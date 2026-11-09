@@ -24,11 +24,12 @@ fails(static function () use ($station) {
 fails(static function () use ($station) {
     GrTransportNetworkFields::normalize('stations',$station+['admin_token'=>'forged']);
 },'Unknown fields accepted');
-$direct=[
+$direct=GrTransportNetworkFields::defaults('legs');
+$direct=array_replace($direct,[
     'from_station_id'=>1,'to_station_id'=>null,'mode'=>'other','operator_label'=>'Athens courier',
     'price'=>0,'bidirectional'=>0,'area_name'=>'Athens','area_lat'=>37.98,
     'area_lng'=>23.72,'area_radius_km'=>6,
-];
+]);
 testAssert(GrTransportNetworkFields::normalize('legs',$direct)['price']===0.0,
     'Free direct-area courier must be valid');
 fails(static function () use ($direct) {

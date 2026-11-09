@@ -40,6 +40,10 @@ final class GrTransportOrderCharge
 
     public static function expectedShipping(array $quote): float
     {
+        // Estimates are never represented as a chargeable fare or a "free"
+        // verified shipping service. The carrier's extra-content notice
+        // must display the estimated range and separate-payment requirement.
+        if (!empty($quote['estimate'])) return 0.0;
         return round((float) $quote['price'] + (float) ($quote['handling_fee'] ?? 0), 2);
     }
 
