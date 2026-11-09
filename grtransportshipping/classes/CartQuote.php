@@ -1,8 +1,9 @@
 <?php
+require_once __DIR__ . '/NetworkSettings.php';
 /**
  * Persisted checkout quote lifecycle. A cart's price and pickup text are
  * pinned together, never recomputed separately between render, charge and
- * order snapshot; a new delivery address or a 30-minute expiry re-quotes.
+ * order snapshot; a new delivery address or a configurable expiry re-quotes.
  *
  * absent -> pinned (first successful quote) -> consumed (order validation).
  * A consumed quote is immutable; it can be read for auditing but never reset.
@@ -14,6 +15,11 @@ final class GrTransportCartQuote
     public const PINNED = 'pinned';
     public const CONSUMED = 'consumed';
     public const TTL_SECONDS = 1800;
+    public static function ttlSeconds(): int
+    {
+        return (int)(GrTransportNetworkSettings::get('quote_ttl_minutes') * 60);
+    }
+
     // Each checkout-triggered cleanup is bounded and indexed.
     public const PRUNE_BATCH_SIZE = 100;
     public const PRUNE_INDEX = 'quote_prune_expired';
@@ -30,7 +36,7 @@ final class GrTransportCartQuote
      */
     public static function pruneExpired(): void
     {
-        $cutoff = gmdate('Y-m-d H:i:s', time() - self::TTL_SECONDS);
+        $cutoff = gmdate('Y-m-d H:i:s', time() - self::ttlSeconds());
         if (!Db::getInstance()->delete('grtrans_cart_quote',
             "quote_status = '" . self::PINNED . "' AND created_at < '" . $cutoff . "'",
             self::PRUNE_BATCH_SIZE, false)) {
