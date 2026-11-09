@@ -70,7 +70,7 @@
   const zoneColors = new Map(zones.map((zone, index) => [zone.key, palette[index]]));
   // Only a priced, station-bound leg between overlapping compatible stations
   // establishes shared service. Identical station-type labels alone do not.
-  const stationGroups = geometry.stationGroups(data.stations, data.legs);
+  const stationGroups = geometry.stationGroups(data.stations, data.legs, costs);
   const groupsByStation = new Map();
   stationGroups.forEach(group => {
     const sharedColor = zoneColors.get('station:' + group[0].id_station);
@@ -98,9 +98,11 @@
   // Keep seam layers separate from the route preview (#96), which can hide
   // schematic joins to expose actual travel paths without touching coverage.
   const seamLayers = [];
+  let previewActive = false;
   const paintSeam = layer => {
     seamLayers.push(layer);
-    return layer.addTo(map);
+    if (!previewActive) layer.addTo(map);
+    return layer;
   };
   // Local organic patch geometry is the base map. Distant air links are the
   // ONE owner-confirmed symbolic exception; distant land/sea routes stay blank.
@@ -136,15 +138,22 @@
   };
   const stationPatch = station => ({
     lat: Number(station.lat), lng: Number(station.lng),
-    radiusKm: Number(station.outer_radius_km), key: 'station:' + station.id_station
+    radiusKm: Number(station.outer_radius_km), key: 'station:' + station.id_station,
+    coverage_kind: station.coverage_kind, coverage_geojson: station.coverage_geojson
   });
   const areaPatch = (leg) => ({
     lat: Number(leg.area_lat), lng: Number(leg.area_lng),
-    radiusKm: Number(leg.area_radius_km), key: 'area:' + leg.id_leg
+    radiusKm: Number(leg.area_radius_km), key: 'area:' + leg.id_leg,
+    area_coverage_kind: leg.area_coverage_kind,
+    area_coverage_geojson: leg.area_coverage_geojson
   });
   const pairLanes = new Map();
   const drawStitch = (from, to, label, stale, fromOwner, toOwner, lane) => {
-    const pieces = geometry.stitches(from, to, lane);
+    const ca = costs[fromOwner.replace('station:', '')];
+    const cb = costs[toOwner.replace('station:', '')];
+    const priceOrder = Number.isFinite(Number(ca)) && Number.isFinite(Number(cb)) &&
+      ca !== undefined && cb !== undefined ? [Number(ca), Number(cb)] : null;
+    const pieces = geometry.stitches(from, to, lane, priceOrder);
     for (const endpoints of pieces) {
       paintSeam(L.polyline(endpoints, {
         color: '#637384', weight: 1.25,
@@ -176,17 +185,106 @@
     paintArrow(arc.arrow);
     if (arc.reverseArrow) paintArrow(arc.reverseArrow);
   };
-  const renderConnection = (mode, from, to, label, stale, fromOwner, toOwner, bidirectional) => {
+  // A sea vessel is an individual priced pair, not a fan-out unit.
+  const drawSeaLink = (from, to, label, stale, fromOwner, toOwner) => {
+    const sea=geometry.seaLine(from,to);
+    if (!sea) return;
+    const shade = '#168ca2';
+    paintSeam(L.polyline(sea.points, {
+      color: shade, dashArray: '8 7', opacity: stale ? 0.32 : 0.8,
+      weight: 2.2, interactive: true, className: 'grtrans-sea-line'
+    })).bindTooltip(safeTooltip(label + ' · vessel connection; NOT maritime coverage'))
+      .on('mouseover', () => focusExactly([fromOwner, toOwner]))
+      .on('mouseout', restoreFocus);
+    paintSeam(L.polyline(sea.arrow, {
+      color: shade, opacity: stale ? 0.4 : 0.9,
+      weight: 1.7, interactive: false, className: 'grtrans-sea-arrow'
+    }));
+  };
+  const interpolatePath = (points, slices = 20) => {
+    const lengths=points.slice(1).map((p,i)=>distance(p,points[i]));
+    const total=lengths.reduce((a,b)=>a+b,0);
+    if (!total) return [points[0],points[points.length-1]];
+    const pointAt = fraction => {
+      let remaining = fraction * total;
+      for(let i=0;i<lengths.length;i++) {
+        if (remaining <= lengths[i] || i===lengths.length-1) {
+          const t=lengths[i] ? Math.max(0,Math.min(1,remaining/lengths[i])) : 0;
+          return [points[i][0]+t*(points[i+1][0]-points[i][0]),
+            points[i][1]+t*(points[i+1][1]-points[i][1])];
+        }
+        remaining-=lengths[i];
+      }
+      return points[points.length-1];
+    };
+    return Array.from({length:slices+1},(_,i)=>pointAt(i/slices));
+  };
+  const routeColor = (base, t) => {
+    // Keep the same service hue; use progressively darker lightness at the
+    // higher-priced station. Path color is MORE opaque than the patch fill.
+    const parts=/hsl\(([\d.]+)\s+(\d+)%\s+(\d+)%\)/.exec(base);
+    const h=parts ? Number(parts[1]) : 210;
+    return 'hsl(' + h + ' 67% ' + (54 - 27 * t).toFixed(1) + '%)';
+  };
+  const drawLandPath = (path, priceFrom, priceTo, from, to, stale) => {
+    const segments = Array.isArray(path[0]?.[0]) ? path : [path];
+    const a=zoneColors.get('station:'+from.id_station);
+    const cheaper=Number(priceFrom)<Number(priceTo);
+    const different=Number.isFinite(priceFrom)&&Number.isFinite(priceTo)&&Math.abs(priceFrom-priceTo)>.005;
+    const startingFromCheap=!different || cheaper;
+    const base=zoneColors.get('station:'+(startingFromCheap?from.id_station:to.id_station));
+    for(const segment of segments) {
+      if (!Array.isArray(segment) || segment.length<2) continue;
+      if(!different) {
+        paintSeam(L.polyline(segment,{color:a,weight:3.5,opacity:stale?.42:.92,
+          interactive:false,className:'grtrans-land-road'}));
+        continue;
+      }
+      const points=interpolatePath(segment,24);
+      for(let k=0;k<points.length-1;k++){
+        const t=(k+.5)/(points.length-1);
+        const priceProgress=startingFromCheap ? t : 1-t;
+        paintSeam(L.polyline([points[k],points[k+1]],{
+          color:routeColor(base,priceProgress),weight:4.2,
+          opacity:stale?.4:.94,interactive:false,
+          className:'grtrans-land-gradient'
+        }));
+      }
+    }
+  };
+  const roadCache = new Map();
+  const drawLandLink = (fromStation,toStation,leg,label,stale) => {
+    const stored=geometry.routePaths(leg.route_geojson);
+    const ca=Object.hasOwn(costs,fromStation.id_station)?Number(costs[fromStation.id_station]):NaN;
+    const cb=Object.hasOwn(costs,toStation.id_station)?Number(costs[toStation.id_station]):NaN;
+    const from={lat:Number(fromStation.lat),lng:Number(fromStation.lng)};
+    const to={lat:Number(toStation.lat),lng:Number(toStation.lng)};
+    const key=[from.lat,from.lng,to.lat,to.lng].join(':');
+    const points=stored.length?Promise.resolve(stored):
+      (roadCache.get(key) || (()=>{
+        const task=roadGeometry(from,to).then(pts=>[pts]).catch(()=>[[point(from),point(to)]]);
+        roadCache.set(key,task);return task;
+      })());
+    points.then(paths => drawLandPath(paths,ca,cb,fromStation,toStation,stale));
+  };
+  const renderConnection = (mode, from, to, label, stale, fromOwner, toOwner, bidirectional, leg = null) => {
     const ends = [fromOwner, toOwner].sort();
     const key = ends.join('=>');
     const lane = pairLanes.get(key) || 0;
     pairLanes.set(key, lane + 1);
+    // All kind-specific lines are TRANSPORT ONLY, never coverage polygons.
+    // Touching priced patches additionally get the cheap-boundary transfer
+    // stitch, regardless of kind.
     if (mode === 'air' && !geometry.overlaps(from, to)) {
       drawAirArc(from, to, label, stale, fromOwner, toOwner, bidirectional);
-    } else {
-      // Touching patches get a zigzag inside their shared lens. Distant
-      // land/sea remain short local anchors: no invented road/sea corridor.
+    } else if (mode === 'sea' && !geometry.overlaps(from, to)) {
+      drawSeaLink(from, to, label, stale, fromOwner, toOwner);
+    } else if (mode !== 'station-bound' || !leg) {
       drawStitch(from, to, label, stale, fromOwner, toOwner, lane);
+    }
+    if (mode === 'station-bound' && leg) {
+      if (geometry.overlaps(from,to)) drawStitch(from,to,label,stale,fromOwner,toOwner,lane);
+      drawLandLink(leg.fromStation,leg.toStation,leg,label,stale);
     }
   };
   const previewButton = document.getElementById('grtrans-map-preview');
@@ -206,7 +304,8 @@
     previewLayers = [];
     previewPoints = [];
     previewSelecting = false;
-    // Restore schematic seams only after the routed preview is cleared.
+    previewActive = false;
+    // Restore transport lines and local seams after the preview is cleared.
     seamLayers.forEach(layer => layer.addTo(map));
   };
   const select = station => {
@@ -402,6 +501,7 @@
       // Hide symbolic arcs and local stitches during a deliberately requested
       // route preview; coverage polygons remain visible throughout.
       seamLayers.forEach(layer => map.removeLayer(layer));
+      previewActive = true;
       previewSelecting = true;
       previewMessage('Choose a starting point on the map or click a station pin.');
     });
@@ -434,7 +534,8 @@
       opacity: leg._stale ? 0.2 : 0.5, weight: 1
     };
     const owner = 'area:' + leg.id_leg;
-    const layer = L.polygon(geometry.patchContour(areaPatch(leg)), style).addTo(map).bindTooltip(
+    const layer = L.polygon(geometry.leafletPaths(geometry.patchPaths(areaPatch(leg))),
+      style).addTo(map).bindTooltip(
       safeTooltip((leg.area_name || 'Direct area') + ' · ' + fmt(leg.price) + ' EUR' + staleLabel(leg)));
     registerPatch([owner], layer, style);
     includeCoverage(point(area), leg.area_radius_km);
@@ -493,10 +594,10 @@
         fillColor: c, color: c, fillOpacity: ring.opacity, opacity: ring.outline ? 0.6 : 0,
         weight: ring.outline ? 1 : 0, stroke: ring.outline
       };
-      const contour = geometry.patchContour({
-        lat: s.lat, lng: s.lng, radiusKm: ring.radiusKm, key: 'station:' + s.id_station
-      });
-      const layer = L.polygon(contour, style).addTo(map).bindTooltip(safeTooltip(title));
+      const contour = geometry.patchPaths({...stationPatch(s),radiusKm:ring.radiusKm,
+        coverage_geojson: ring.outline ? s.coverage_geojson : ''});
+      const layer = L.polygon(geometry.leafletPaths(contour),
+        style).addTo(map).bindTooltip(safeTooltip(title));
       registerPatch(['station:' + s.id_station], layer, style);
       layer.on('click', event => {
         L.DomEvent.stopPropagation(event);
@@ -535,7 +636,8 @@
     renderConnection(mode, stationPatch(from),
       isArea ? areaPatch(leg) : stationPatch(to),
       (leg.operator_label || leg.mode) + ' · ' + fmt(leg.price) + ' EUR' + staleLabel(leg),
-      leg._stale, a, b, Number(leg.bidirectional) === 1);
+      leg._stale, a, b, Number(leg.bidirectional) === 1,
+      mode==='station-bound' && !isArea ? {...leg,fromStation:from,toStation:to} : null);
   });
   data.transfers.forEach(transfer => {
     const from = stations.get(Number(transfer.from_station_id));
