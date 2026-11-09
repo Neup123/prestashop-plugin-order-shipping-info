@@ -2,6 +2,7 @@
 require_once __DIR__ . '/NetworkApi.php';
 require_once __DIR__ . '/NetworkGraph.php';
 require_once __DIR__ . '/NetworkFreshness.php';
+require_once __DIR__ . '/NetworkResolution.php';
 
 /** Operator interface over the exact NetworkRepository/NetworkApi contract. */
 final class GrTransportNetworkAdmin
@@ -61,6 +62,7 @@ final class GrTransportNetworkAdmin
                     'to_station_id'=>$_POST['to_station_id'] ?? null,
                     'connection_type'=>$_POST['connection_type'] ?? 'walk',
                     'price'=>$_POST['price'] ?? 0,
+                    'override_winner'=>$_POST['override_winner'] ?? 'none',
                 ]);
             } else throw new InvalidArgumentException('Unknown network action');
             $message=($action==='link' || ($action==='save' && $id===0))
@@ -96,6 +98,7 @@ final class GrTransportNetworkAdmin
             if (is_finite($amount)) $cost[(string)$id]=round($amount,2);
         }
         $mapData=array_intersect_key($data,array_flip(['stations','legs','transfers']));
+        $mapData['resolution']=GrTransportNetworkResolution::mapPlan($mapData,$route['cost']);
         $mapConfig=json_encode($mapData+['cost'=>$cost,'nearbyGapKm'=>GrTransportNetworkSettings::get('nearby_gap_km'),
             'leafletImagePath'=>_MODULE_DIR_ . $module->name . '/views/vendor/leaflet/images/'],JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_THROW_ON_ERROR);
         $base=self::esc((_MODULE_DIR_ . $module->name . '/')) . 'views/';
@@ -129,6 +132,13 @@ final class GrTransportNetworkAdmin
             . '<input id="grtrans-link-type" name="connection_type" maxlength="64" value="taxi" required>'
             . '<label for="grtrans-link-price">Transfer price EUR (0 = free)</label>'
             . '<input id="grtrans-link-price" name="price" type="number" step="0.01" min="0" max="100000" value="0" required>'
+            . '<details class="grtrans-network-advanced"><summary>Advanced · override handover</summary>'
+            . '<label for="grtrans-link-override">Winner inside the linked patches’ overlap</label>'
+            . '<select class="form-control" id="grtrans-link-override" name="override_winner">'
+            . '<option value="none">No override (cheapest that reaches)</option>'
+            . '<option value="from">From method overrides to method</option>'
+            . '<option value="to">To method overrides from method</option></select>'
+            . '</details>'
             . '<button class="btn btn-primary" type="submit">Save transfer link</button>'
             . '<button class="btn btn-default" type="button" id="grtrans-link-cancel">Cancel</button>'
             . '</div></form>';
@@ -178,7 +188,16 @@ final class GrTransportNetworkAdmin
             . '<input type="hidden" name="grtrans_network_action" value="save">'
             . '<input type="hidden" name="network_entity" value="' . $entity . '">'
             . '<input type="hidden" name="network_id" value="' . ($selected ? $edit : 0) . '">';
+        $advancedOpen=false;
         foreach (GrTransportNetworkFields::fields($entity) as $key=>$definition) {
+            if (in_array($key,['patch_precedence','override_winner'],true) && !$advancedOpen) {
+                $out.='<details class="grtrans-network-advanced"><summary>Advanced · coverage and link overrides</summary>'
+                    . '<p>Only applies where both eligible patches reach the address; without overrides the cheaper option wins.</p>';
+                $advancedOpen=true;
+            } elseif (!in_array($key,['patch_precedence','override_winner'],true) && $advancedOpen) {
+                $out.='</details>';
+                $advancedOpen=false;
+            }
             $type=$definition[0];
             $out.='<div class="form-group"><label for="grtrans-network-field-' . $key . '">'
                 . self::esc(ucfirst(str_replace('_',' ',$key))) . '</label>';
@@ -187,6 +206,16 @@ final class GrTransportNetworkAdmin
                 || ($type==='id' && $key!=='id_product') || $type==='nullable_id') {
                 $choices=$type==='choice' ? array_combine($definition[1],$definition[1])
                     : ($type==='bool' ? [0=>'No',1=>'Yes'] : []);
+                if ($key==='patch_precedence') $choices=[
+                    'none'=>'No override (cheapest wins)',
+                    'override'=>'This patch overrides other overlapping patches',
+                    'yield'=>'This patch yields to other overlapping patches',
+                ];
+                if ($key==='override_winner') $choices=[
+                    'none'=>'No override (cheapest wins)',
+                    'from'=>'From method overrides to method',
+                    'to'=>'To method overrides from method',
+                ];
                 if ($type==='nullable_id') $choices['']='Direct area (no pickup station)';
                 if ($key==='id_branch') {
                     foreach ($data['branches'] as $branch) {
@@ -217,6 +246,7 @@ final class GrTransportNetworkAdmin
             }
             $out.='</div>';
         }
+        if ($advancedOpen) $out.='</details>';
         $out.='<button class="btn btn-primary" name="grtrans_network_submit" value="1">'
             . ($selected ? 'Save changes' : 'Create record') . '</button></form></div>';
         $out.='<h4>Extended pickup notice</h4><p>This warning is displayed at checkout when a destination is served only by a station outer ring.</p>'

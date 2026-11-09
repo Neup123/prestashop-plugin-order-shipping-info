@@ -9,6 +9,7 @@
     return;
   }
   const data = JSON.parse(root.dataset.config);
+  const resolution = data.resolution || null;
   const geometry = window.GrtransCoverage;
   if (!geometry) {
     status.textContent = 'The bundled coverage geometry library is unavailable. Network tables remain usable.';
@@ -65,11 +66,8 @@
   const staleLabel = record => record._stale ? ' · STALE (last verified ' + (record.verified_at || 'unknown') + ')' : '';
   const point = s => [Number(s.lat), Number(s.lng)];
   const costs = data.cost || {};
-  // Map renderer receives an explicit transition resolution result.
-  // Today's adapter uses the shared cheapest-route costs; future #107
-  // may supply winner-boundary data in resolutionByLink without changing
-  // line, seam or patch rendering code.
-  const resolutions = data.resolutionByLink ||
+  // Consume the server's resolution output; retain #106's standalone fallback.
+  const resolutions = (resolution && resolution.links) || data.resolutionByLink ||
     geometry.defaultResolutions(data.legs,data.transfers,costs);
   // A palette with a different hue for every actual zone, including direct areas.
   // Stable IDs make the legend independent of painting order and price changes.
@@ -86,7 +84,9 @@
   const zoneColors = new Map(zones.map((zone, index) => [zone.key, palette[index]]));
   // Only the priced fixed-route LINK (not station-type labels) determines
   // whether equal-cost, overlapping stations share a service silhouette.
-  const stationGroups = geometry.stationGroups(data.stations, data.legs, costs);
+  const stationGroups = geometry.stationGroups(data.stations,
+    data.legs.filter(leg => !['link_override','patch_precedence'].includes(
+      resolutions['leg:' + leg.id_leg]?.reason)), costs);
   const groupsByStation = new Map();
   stationGroups.forEach(group => {
     const sharedColor = zoneColors.get('station:' + group[0].id_station);
@@ -164,8 +164,16 @@
     area_coverage_geojson: leg.area_coverage_geojson
   });
   const pairLanes = new Map();
-  const drawStitch = (from, to, label, stale, fromOwner, toOwner, lane, resolution) => {
-    const pieces = geometry.stitches(from, to, lane, resolution);
+  const drawStitch = (from, to, label, stale, fromOwner, toOwner, lane, decision) => {
+    // Adapt #107's resolved winner/radius to #106's unchanged stitch geometry.
+    const winnerKey = decision?.winner_key || decision?.boundaryOwner;
+    const radius = Number(decision?.reach_boundary_km);
+    const fromShape = winnerKey === fromOwner && Number.isFinite(radius) && radius > 0
+      ? {...from, radiusKm: radius} : from;
+    const toShape = winnerKey === toOwner && Number.isFinite(radius) && radius > 0
+      ? {...to, radiusKm: radius} : to;
+    const geometryDecision = winnerKey ? {...decision, boundaryOwner: winnerKey} : decision;
+    const pieces = geometry.stitches(fromShape, toShape, lane, geometryDecision);
     for (const endpoints of pieces) {
       paintSeam(L.polyline(endpoints, {
         color: '#637384', weight: 3,
@@ -358,14 +366,13 @@
       document.getElementById('grtrans-link-type').value = nearby ? 'walk' : 'taxi';
       document.getElementById('grtrans-link-price').value = '0';
       linking = false;
-      if (nearby) {
-        status.textContent = 'Creating free walk transfer between overlapping inner rings.';
-        linkForm.requestSubmit();
-      } else {
-        linkForm.hidden = false;
-        status.textContent = 'Stations are far apart. Define how the parcel transfers and its cost.';
-        document.getElementById('grtrans-link-type').focus();
-      }
+      linkForm.hidden = false;
+      const override = document.getElementById('grtrans-link-override');
+      if (override) override.value = 'none';
+      status.textContent = nearby
+        ? 'Review the free walk link and its optional Advanced override before saving.'
+        : 'Stations are far apart. Define the transfer and optional Advanced override.';
+      document.getElementById('grtrans-link-type').focus();
       return;
     }
     chosen = station;
@@ -581,8 +588,13 @@
     } else includeCoverage(point(area), leg.area_radius_km);
   });
 
-  // Draw expensive reachable patches first and cheapest ones on top.
+  // Use #107's server paint order; #106 fixture fallback remains unchanged.
+  const paintRank = new Map((resolution?.paint_order || []).map((key, index) => [key, index]));
   const painted = data.stations.slice().sort((a, b) => {
+    if (resolution) {
+      const rank = station => paintRank.get('station:' + station.id_station) ?? -1;
+      return rank(a) - rank(b);
+    }
     const aCost = Object.prototype.hasOwnProperty.call(costs, a.id_station) ? Number(costs[a.id_station]) : Infinity;
     const bCost = Object.prototype.hasOwnProperty.call(costs, b.id_station) ? Number(costs[b.id_station]) : Infinity;
     return bCost - aCost;
@@ -715,7 +727,9 @@
         // A station at the sea edge is an ordinary short transfer,
         // not an artificial full ring around an island outside the sea.
         drawStitch(stationPatch(from), areaPatch(leg), label,
-          leg._stale, a, b, 0, null);
+          leg._stale, a, b, 0,
+          resolutions['leg:' + leg.id_leg]?.reason === 'cheapest' ? null :
+            (resolutions['leg:' + leg.id_leg] || null));
       }
       return;
     }

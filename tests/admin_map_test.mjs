@@ -10,11 +10,11 @@ function fixture(data, options = {}) {
     addEventListener(type, callback) { this.events[type] = callback; },
     appendChild(child) { this.children.push(child); },
     setAttribute(name, value) { this.attrs[name] = value; },
-    focus() {}, requestSubmit() {}
+    focus() {}, requestSubmit() { this.submitted = true; }
   });
   const ids = ['grtrans-network-map','grtrans-map-status','grtrans-zone-legend',
     'grtrans-map-link','grtrans-map-link-form','grtrans-link-cancel',
-    'grtrans-link-from','grtrans-link-to','grtrans-link-type','grtrans-link-price',
+    'grtrans-link-from','grtrans-link-to','grtrans-link-type','grtrans-link-price','grtrans-link-override',
     'grtrans-network-field-lat','grtrans-network-field-lng',
     'grtrans-network-field-area_lat','grtrans-network-field-area_lng',
     'grtrans-map-preview','grtrans-map-preview-clear','grtrans-preview-status'];
@@ -261,6 +261,31 @@ assert.ok(!explicitUnresolved.calls.lines.some(l=>
   l.options.className==='grtrans-zigzag-stitch'),
   'An unresolved winner produces no fabricated handover seam');
 
+/* #107 consumes #106's zigzag-stitch contract without redrawing seam geometry. */
+const overrideBoundary = fixture({
+  stations:[a,b],cost:{1:5,2:9},
+  transfers:[{id_transfer:11,from_station_id:1,to_station_id:2,
+    connection_type:'taxi',price:14,override_winner:'to'}],
+  resolution:{links:{'transfer:11':{
+    winner_key:'station:2',reach_boundary_km:10,reason:'link_override'
+  }},paint_order:['station:1','station:2']}
+});
+const overrideSeam = overrideBoundary.calls.lines.find(l =>
+  l.options.className === 'grtrans-zigzag-stitch');
+assert.ok(overrideSeam,'Override-aware result retains the #106 zigzag stitch');
+assert.ok(overrideSeam.points.every(p => Math.abs(kmDistance(p,[38.05,23.75])-10)<0.3),
+  'Override seam follows resolved taxi reach boundary');
+const advancedEditor=fixture({stations:[station(1,'From',38,23.7),
+  station(2,'To',38.005,23.702)]});
+advancedEditor.calls.markers[0].layer.events.click({});
+advancedEditor.elements['grtrans-map-link'].events.click();
+advancedEditor.calls.markers[1].layer.events.click({});
+assert.equal(advancedEditor.elements['grtrans-map-link-form'].hidden,false,
+  'Nearby links open the Advanced editor');
+assert.notEqual(advancedEditor.elements['grtrans-map-link-form'].submitted,true,
+  'Nearby links cannot auto-submit before choosing override');
+assert.equal(advancedEditor.elements['grtrans-link-override'].value,'none',
+  'New link resets to neutral precedence');
 console.log('Panels B/C/F/G: no-link blend, cheaper boundary, same-price union and gradient passed');
 
 const air=fixture({stations:[{...a,type:'airport'},

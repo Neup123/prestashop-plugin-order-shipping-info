@@ -3,6 +3,7 @@ require_once __DIR__ . '/QuoteEngine.php';
 require_once __DIR__ . '/NetworkGraph.php';
 require_once __DIR__ . '/NetworkTariff.php';
 require_once __DIR__ . '/NetworkTiming.php';
+require_once __DIR__ . '/NetworkResolution.php';
 
 /**
  * Single cheapest-total resolver for checkout, customer quote page and simulator.
@@ -45,7 +46,7 @@ final class GrTransportNetworkQuote
             $choices[]=self::choice($path,(string)$station['name'],
                 $end ? (string)$end['mode'] : (string)$station['type'],
                 (string)$graph['stations'][$path['origin_hub_id']]['name'],1,
-                $notice,$candidate['ring'],$id,1,$parcel ?? [],$branchByOrigin);
+                $notice,$candidate['ring'],$id,1,$parcel ?? [],$branchByOrigin,'station:'.$id);
         }
         foreach (GrTransportNetworkGraph::directAreas($legs,$location[0],$location[1]) as $service) {
             $id=(int)$service['from_station_id'];
@@ -67,18 +68,73 @@ final class GrTransportNetworkQuote
                 (string)$service['mode'],
                 (string)$graph['stations'][$prefix['origin_hub_id']]['name'],0,
                 'Direct delivery to your address within the service area.',
-                'direct',null,0,$parcel ?? [],$branchByOrigin);
+                'direct',null,0,$parcel ?? [],$branchByOrigin,'area:'.(int)$service['id_leg']);
         }
         if (!$choices) return $manual;
-        usort($choices,static function ($a,$b) {
-            $byPrice=$a['comparison_cost'] <=> $b['comparison_cost'];
-            if ($byPrice!==0) return $byPrice;
-            $byConvenience=$a['priority'] <=> $b['priority'];
-            if ($byConvenience!==0) return $byConvenience;
-            return ((int)($a['quote']['destination_station_id'] ?? 0))
-                <=> ((int)($b['quote']['destination_station_id'] ?? 0));
-        });
-        return ['status'=>'quoted','quote'=>$choices[0]['quote'],'route_id'=>0];
+        $selected=GrTransportNetworkResolution::choose($choices,$network);
+        $quote=$selected['choice']['quote'];
+        if ($selected['reason']==='link_override') {
+            // A preferred destination must traverse the configured link, even
+            // when an unrelated cheaper path to that same station exists.
+            if ($selected['link_target']==='to') {
+                $effectiveNetwork=$network;
+                $effectiveNetwork['legs']=$legs; // preserve applied parcel tariffs
+                $forced=self::forcedLinkQuote($selected,$effectiveNetwork,$graph,$parcel ?? [],$branchByOrigin);
+                if ($forced!==null) $quote=$forced;
+            }
+            $quote['resolution']=[
+                'reason'=>'link_override','winner_key'=>$selected['winner_key'],
+                'reach_boundary_km'=>$selected['reach_boundary_km'],
+                'link_kind'=>$selected['link_kind'],'link_id'=>$selected['link_id']
+            ];
+        } elseif ($selected['reason']==='patch_precedence') {
+            $quote['resolution']=['reason'=>'patch_precedence',
+                'winner_key'=>$selected['winner_key'],
+                'reach_boundary_km'=>$selected['reach_boundary_km']];
+        }
+        return ['status'=>'quoted','quote'=>$quote,'route_id'=>0];
+    }
+
+    /** Preserve the actual chosen handover as the final route leg. This is
+     * essential for taxi-after-train: a taxi override cannot return a walking
+     * station offer or a cheaper route that bypasses that taxi transfer.
+     */
+    private static function forcedLinkQuote(array $selected,array $network,array $graph,
+        array $parcel,array $branchByOrigin): ?array
+    {
+        $kind=$selected['link_kind'];
+        $id=(int)$selected['link_id'];
+        $list=$kind==='transfer' ? ($network['transfers'] ?? []) : ($network['legs'] ?? []);
+        $record=null;
+        foreach ($list as $item) {
+            $candidateId=(int)($kind==='transfer' ? ($item['id_transfer'] ?? 0) : ($item['id_leg'] ?? 0));
+            if ($candidateId===$id) { $record=$item; break; }
+        }
+        if ($record===null || ($kind==='leg' && empty($record['to_station_id']))) return null;
+        $from=(int)$record['from_station_id'];
+        $to=(int)$record['to_station_id'];
+        $prefix=GrTransportNetworkGraph::path($graph,$from);
+        if ($prefix===null || !isset($graph['stations'][$to])) return null;
+        $mode=$kind==='transfer' ? (string)$record['connection_type'] : (string)$record['mode'];
+        $edge=['kind'=>$kind,'id'=>$id,'from'=>$from,'to'=>$to,'mode'=>$mode,
+            'operator'=>$kind==='transfer' ? '' : (string)$record['operator_label'],
+            'price'=>(float)$record['price']];
+        foreach (['tariff_min','tariff_max','tariff_estimate','tariff_missing_data','tariff_basis',
+            'lead_hours','preparation_hours','transit_min_hours','transit_max_hours'] as $field) {
+            if (isset($record[$field])) $edge[$field]=$record[$field];
+        }
+        $prefix['edges'][]=$edge;
+        $prefix['total']=round($prefix['total']+$edge['price'],2);
+        $prefix['destination_station_id']=$to;
+        $chosen=$selected['choice']['quote'];
+        $doorToDoor=$kind==='transfer' && in_array(strtolower($mode),['taxi','courier','door-to-door'],true);
+        $choice=self::choice($prefix,(string)$graph['stations'][$to]['name'],$mode,
+            (string)$graph['stations'][$prefix['origin_hub_id']]['name'],
+            $doorToDoor ? 0 : 1,
+            $doorToDoor ? 'Door-to-door transfer to your address.' : (string)$chosen['notice'],
+            $doorToDoor ? 'direct' : (string)$chosen['ring'],
+            $to,$doorToDoor ? 0 : 1,$parcel,$branchByOrigin);
+        return $choice['quote'];
     }
 
     /** Simulate one named station rather than silently switching to another overlapping station. */
@@ -99,7 +155,7 @@ final class GrTransportNetworkQuote
     }
 
     private static function choice(array $path,string $stationName,string $mode,string $originName,
-        int $pickup,string $notice,string $ring,?int $stationId,int $priority,array $parcel=[],array $branchByOrigin=[]): array
+        int $pickup,string $notice,string $ring,?int $stationId,int $priority,array $parcel=[],array $branchByOrigin=[],string $patchKey=''): array
     {
         $tariff=GrTransportNetworkTariff::totals($path['edges']);
         $window=GrTransportNetworkTiming::window($path['edges']);
@@ -125,7 +181,8 @@ final class GrTransportNetworkQuote
             $quote['branch_id']=(int)$branch['id_branch'];
             $quote['branch_name']=(string)$branch['name'];
         }
-        return ['priority'=>$priority,'comparison_cost'=>round((float)$path['total'],2),'quote'=>$quote];
+        return ['priority'=>$priority,'comparison_cost'=>round((float)$path['total'],2),
+            'patch_key'=>$patchKey,'quote'=>$quote];
     }
 
     public static function validLocation(array $location): ?array

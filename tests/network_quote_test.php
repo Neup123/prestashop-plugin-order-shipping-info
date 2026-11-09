@@ -57,4 +57,83 @@ $sim=GrTransportNetworkSimulator::simulate([],$network,[
  'postcode'=>'18500','city'=>'Piraeus','lat'=>$pt[0],'lng'=>$pt[1]]);
 $checkout=GrTransportNetworkQuote::resolve([],$network,'18500','Piraeus',$pt);
 testAssert($sim===$checkout,'Address simulator and checkout quote are bitwise identical');
+
+// #107: the resolver must apply link precedence IN THE ACTUAL OVERLAP, not
+// replace the destination's path with a cheaper bus path that omits the taxi.
+$overlapStations=[
+ ['id_station'=>1,'name'=>'Dispatch hub','type'=>'bus','lat'=>38,'lng'=>23.7,'is_origin_hub'=>1,
+  'inner_radius_km'=>0.1,'outer_radius_km'=>0.3],
+ ['id_station'=>2,'name'=>'Train collection','type'=>'bus','lat'=>38.10,'lng'=>23.7,'is_origin_hub'=>0,
+  'inner_radius_km'=>1,'outer_radius_km'=>2],
+ ['id_station'=>3,'name'=>'Door-to-door taxi','type'=>'other','lat'=>38.1005,'lng'=>23.7,'is_origin_hub'=>0,
+  'inner_radius_km'=>1,'outer_radius_km'=>2],
+];
+$overlapLegs=[
+ ['id_leg'=>31,'from_station_id'=>1,'to_station_id'=>2,'mode'=>'bus',
+  'operator_label'=>'Train feeder','price'=>3,'bidirectional'=>0],
+ ['id_leg'=>32,'from_station_id'=>1,'to_station_id'=>3,'mode'=>'bus',
+  'operator_label'=>'Other route','price'=>8,'bidirectional'=>0],
+];
+$taxi=['id_transfer'=>33,'from_station_id'=>2,'to_station_id'=>3,
+    'connection_type'=>'taxi','price'=>14,'override_winner'=>'none'];
+$overlapNetwork=['stations'=>$overlapStations,'legs'=>$overlapLegs,'transfers'=>[$taxi]];
+$here=[38.10025,23.7];
+$baseline=GrTransportNetworkQuote::resolve([],$overlapNetwork,'','',$here);
+testAssert($baseline['quote']['station_name']==='Train collection' && $baseline['quote']['price']===3.0
+    && $baseline['quote']['pickup_only']===1 && !isset($baseline['quote']['resolution']),
+    'Override OFF: existing cheapest and station pickup behavior stays unchanged');
+$overlapNetwork['transfers'][0]['override_winner']='to';
+$taxiOffer=GrTransportNetworkQuote::resolve([],$overlapNetwork,'','',$here);
+testAssert($taxiOffer['quote']['station_name']==='Door-to-door taxi'
+    && $taxiOffer['quote']['price']===17.0
+    && $taxiOffer['quote']['pickup_only']===0
+    && $taxiOffer['quote']['mode']==='taxi'
+    && $taxiOffer['quote']['ring']==='direct'
+    && $taxiOffer['quote']['network_path']['edges'][1]['kind']==='transfer'
+    && $taxiOffer['quote']['network_path']['edges'][1]['id']===33
+    && $taxiOffer['quote']['resolution']['reason']==='link_override',
+    'Override ON: force the taxi-after-train path; never direct customer to a walking station');
+$overlapNetwork['transfers'][0]['override_winner']='none';
+$overlapNetwork['stations'][2]['patch_precedence']='override';
+$patchOffer=GrTransportNetworkQuote::resolve([],$overlapNetwork,'','',$here);
+testAssert($patchOffer['quote']['station_name']==='Door-to-door taxi'
+    && $patchOffer['quote']['price']===8.0
+    && $patchOffer['quote']['resolution']['reason']==='patch_precedence',
+    'Patch overrides cheaper train even without a transfer override');
+$overlapNetwork['stations'][2]['patch_precedence']='none';
+$overlapNetwork['stations'][1]['patch_precedence']='yield';
+$yieldOffer=GrTransportNetworkQuote::resolve([],$overlapNetwork,'','',$here);
+testAssert($yieldOffer['quote']['station_name']==='Door-to-door taxi'
+    && $yieldOffer['quote']['price']===8.0,
+    'Yielding cheap train patch loses its overlap to a neutral, pricier patch');
+$overlapNetwork['stations'][1]['patch_precedence']='none';
+$overlapNetwork['legs'][]=['id_leg'=>34,'from_station_id'=>1,'to_station_id'=>null,'mode'=>'other',
+    'operator_label'=>'Premium courier','price'=>80,'bidirectional'=>0,
+    'area_name'=>'Premium delivery','area_lat'=>38.10025,'area_lng'=>23.7,'area_radius_km'=>2,
+    'patch_precedence'=>'override','override_winner'=>'none'];
+$directOverride=GrTransportNetworkQuote::resolve([],$overlapNetwork,'','',$here);
+testAssert($directOverride['quote']['station_name']==='Premium delivery'
+    && $directOverride['quote']['price']===80.0 && $directOverride['quote']['pickup_only']===0,
+    'Direct-area patch precedence wins regardless of its higher price');
+$overlapNetwork['legs'][2]['patch_precedence']='yield';
+$directYield=GrTransportNetworkQuote::resolve([],$overlapNetwork,'','',$here);
+testAssert($directYield['quote']['station_name']==='Train collection'
+    && $directYield['quote']['price']===3.0,
+    'Yielding direct-area patch loses to the reachable train station');
+$overlapNetwork['legs'][2]['patch_precedence']='none';
+$overlapNetwork['legs'][2]['from_station_id']=2;
+$overlapNetwork['legs'][2]['override_winner']='to';
+$directLink=GrTransportNetworkQuote::resolve([],$overlapNetwork,'','',$here);
+testAssert($directLink['quote']['station_name']==='Premium delivery'
+    && $directLink['quote']['price']===83.0,
+    'A direct-area link can override its originating station inside the overlap');
+$graph=GrTransportNetworkGraph::routes($overlapNetwork['stations'],$overlapNetwork['legs'],$overlapNetwork['transfers']);
+$plan=GrTransportNetworkResolution::mapPlan($overlapNetwork,$graph['cost']);
+testAssert($plan['links']['leg:34']['winner_key']==='area:34'
+    && $plan['links']['leg:34']['reach_boundary_km']===2.0
+    && in_array('area:34',$plan['paint_order'],true),
+    'Map consumes server-resolved winner and reach boundary, not a separate cheapest rule');
+$outside=GrTransportNetworkQuote::resolve([],$overlapNetwork,'','',[38.13,23.7]);
+testAssert($outside['quote']===null,'Override cannot extend service beyond configured coverage');
+
 echo "Network cheapest path, overrides, coverage, direct-area and simulator tests passed\n";

@@ -19,6 +19,7 @@ final class GrTransportNetworkRepository
             `is_origin_hub` TINYINT(1) NOT NULL DEFAULT 0,
             `coverage_kind` VARCHAR(24) NOT NULL DEFAULT 'radius',
             `coverage_geojson` TEXT NULL,
+            `patch_precedence` VARCHAR(12) NOT NULL DEFAULT 'none',
             INDEX `station_hub` (`is_origin_hub`)
         ) ENGINE={$engine} DEFAULT CHARSET=utf8mb4")
         && $db->execute("CREATE TABLE IF NOT EXISTS `{$prefix}grtrans_leg` (
@@ -43,6 +44,8 @@ final class GrTransportNetworkRepository
             `area_coverage_kind` VARCHAR(24) NOT NULL DEFAULT 'radius',
             `area_coverage_geojson` TEXT NULL,
             `route_geojson` TEXT NULL,
+            `patch_precedence` VARCHAR(12) NOT NULL DEFAULT 'none',
+            `override_winner` VARCHAR(8) NOT NULL DEFAULT 'none',
             INDEX `leg_from` (`from_station_id`), INDEX `leg_to` (`to_station_id`)
         ) ENGINE={$engine} DEFAULT CHARSET=utf8mb4")
         && $db->execute("CREATE TABLE IF NOT EXISTS `{$prefix}grtrans_transfer` (
@@ -50,6 +53,7 @@ final class GrTransportNetworkRepository
             `from_station_id` INT UNSIGNED NOT NULL, `to_station_id` INT UNSIGNED NOT NULL,
             `connection_type` VARCHAR(64) NOT NULL DEFAULT 'walk',
             `price` DECIMAL(12,2) NOT NULL DEFAULT 0,
+            `override_winner` VARCHAR(8) NOT NULL DEFAULT 'none',
             `verified_at` DATETIME NULL,
             INDEX `transfer_from` (`from_station_id`), INDEX `transfer_to` (`to_station_id`)
         ) ENGINE={$engine} DEFAULT CHARSET=utf8mb4")
