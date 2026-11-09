@@ -27,7 +27,9 @@ final class GrTransportBranchAvailability
             $qty=$line['cart_quantity'] ?? $line['quantity'] ?? null;
             if (!is_numeric($product) || (int)$product<=0
                 || !is_numeric($attribute) || (int)$attribute<0
-                || !is_numeric($qty) || (int)$qty<=0 || (int)$qty!==(float)$qty) {
+                || !is_numeric($qty) || (int)$qty<=0 || (float)(int)$qty!==(float)$qty
+                || (float)(int)$product!==(float)$product
+                || (float)(int)$attribute!==(float)$attribute) {
                 return ['origin_ids'=>[],'by_origin'=>[],'branch_ids'=>[]];
             }
             $key=(int)$product.':'.(int)$attribute;
