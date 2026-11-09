@@ -141,3 +141,16 @@ The module now routes its built-in route editor strings and customer pickup/no-q
 9. After network setup, test an existing flat Route in checkout. The addition of network tables must not change flat-route prices or existing order snapshots before the dedicated cheapest-path integration PR (#67).
 
 **Acceptance boundary:** Pure PHP 8.2/8.4 tests cover station/leg/transfer validation, graph topology, direct-area inclusion, API token scopes/rotation and CSV parsing. The map/editor are not yet covered by a real authenticated PrestaShop browser acceptance test; verify steps 3–8 on the disposable PrestaShop 9.2 rig before declaring this feature production-ready. Real parcel tariffs, pickup agreements, and live route feasibility are operator obligations. Issues #74 and #75 remain post-first-release.
+
+
+## Cheapest-path quote / simulator acceptance (0.6.1; #67, #77)
+
+1. In a disposable PrestaShop 9.2 shop, set up two origins, two overlapping destination station rings, and alternative priced paths. Supply a verified WGS84 destination coordinate (the standard address class alone has none). Confirm the cheaper **complete** path is quoted even if the destination station is slightly farther away.
+2. Add a strictly cheaper service leg; after the cart's existing 30-minute quote expires or a new address is used, confirm the displayed price changes. A pinned quote/order must not be silently rewritten.
+3. Place a bus terminal and port near each other but do not add a transfer link. Assert the network cannot quote across the gap. Explicitly add the connection with its price; check both the per-edge simulator breakdown and checkout price.
+4. Test the overlap of a free direct-area courier with a station route in Athens. The complete free route should win; an island address must never receive a courier-to-ferry concatenation without a real link.
+5. Test a customer destination in the inner station ring, another in the outer-only ring, and an uncovered area. Outer-only renders **EXTENDED PICKUP AREA — LONG WALK** plus the configurable text; uncovered uses the pre-existing flat-route fallback or hides the carrier.
+6. Open the **Network quote simulator**, enter station ID or postcode/city with known coordinates and the same parcel inputs as checkout, and verify hub, station, ring, edge list, per-edge cost and final total agree.
+7. Confirm flat Routes remain deliberate overrides and suspended/ambiguous destinations never silently bypass their safety state via network matching.
+
+**Important integration limitation:** PrestaShop's standard address stores city and postcode, not coordinates. The network engine does not use an undocumented external geocoder; without a trusted coordinate, ordinary checkout retains flat-route pricing. The customer quote-page map pin can supply coordinates. Do not claim full postcode-to-coverage parity on a standard address-only shop until the owner supplies a verified coordinate source. This limitation is explicit in the PR and operator guide.
