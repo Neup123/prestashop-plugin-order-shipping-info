@@ -20,6 +20,8 @@ final class GrTransportNetworkSettings
         'quote_ttl_minutes'=>['key'=>'GRTRANS_QUOTE_TTL_MIN','default'=>30.0,'min'=>1,'max'=>1440,'label'=>'Cart shipping quote hold (minutes)'],
         'dimension_to_cm'=>['key'=>'GRTRANS_DIMENSION_TO_CM','default'=>1.0,'min'=>0.0001,'max'=>1000,'label'=>'Product dimension unit multiplier to centimetres'],
         'weight_to_kg'=>['key'=>'GRTRANS_WEIGHT_TO_KG','default'=>1.0,'min'=>0.0001,'max'=>1000,'label'=>'Product weight unit multiplier to kilograms'],
+        'show_stale_map'=>['key'=>'GRTRANS_SHOW_STALE_MAP','default'=>1,'min'=>0,'max'=>1,'label'=>'Show stale leg/transfer markings on map (1=on, 0=off)'],
+        'stale_after_months'=>['key'=>'GRTRANS_STALE_AFTER_MONTHS','default'=>6,'min'=>1,'max'=>120,'label'=>'Mark leg/transfer data stale after months'],
         'show_delivery_time'=>['key'=>'GRTRANS_SHOW_DELIVERY_TIME','default'=>1,'min'=>0,'max'=>1,'label'=>'Show delivery-time windows (1=on, 0=off)'],
         'max_leg_hours'=>['key'=>'GRTRANS_MAX_LEG_HOURS','default'=>168,'min'=>1,'max'=>2160,'label'=>'Maximum entered hours per leg component'],
         'max_freight_eur'=>['key'=>'GRTRANS_MAX_FREIGHT_EUR','default'=>100000.0,'min'=>1,'max'=>9999999,'label'=>'Maximum single leg/receipt amount (EUR)'],
@@ -59,6 +61,14 @@ final class GrTransportNetworkSettings
         }
         if ($checked['estimate_low_factor'] >= $checked['estimate_high_factor']) {
             throw new InvalidArgumentException('Default estimate lower factor must be smaller than upper');
+        }
+        foreach (['show_delivery_time','show_stale_map'] as $toggle) {
+            if (!in_array($checked[$toggle],[0.0,1.0],true)) {
+                throw new InvalidArgumentException('Toggle requires 0 or 1: '.$toggle);
+            }
+        }
+        if (floor($checked['stale_after_months']) !== $checked['stale_after_months']) {
+            throw new InvalidArgumentException('Stale threshold must be whole months');
         }
         if (floor($checked['quote_ttl_minutes']) !== $checked['quote_ttl_minutes']) {
             throw new InvalidArgumentException('Quote hold requires whole minutes');
