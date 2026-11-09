@@ -201,6 +201,11 @@ final class GrTransportNetworkAdmin
                         . self::esc($label) . '</option>';
                 }
                 $out.='</select>';
+            } elseif ($type==='geojson_polygon' || $type==='geojson_line') {
+                $out.='<textarea class="form-control" id="grtrans-network-field-' . $key
+                    . '" name="' . $key . '" maxlength="60000" rows="4"'
+                    . ' placeholder="GeoJSON geometry [lng,lat], validated; leave blank for radius">'
+                    . self::esc($value) . '</textarea>';
             } else {
                 $out.='<input class="form-control" id="grtrans-network-field-' . $key . '" name="' . $key . '"'
                     . ' value="' . self::esc($value) . '"'
