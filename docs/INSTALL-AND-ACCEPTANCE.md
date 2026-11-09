@@ -167,3 +167,14 @@ The module now routes its built-in route editor strings and customer pickup/no-q
 7. For an exact flat tariff, verify checkout still charges the historical amount with its eligible handling fee and all previous order charge-divergence and free-shipping voucher tests continue to pass.
 
 The pure PHP `network_tariff_test.php` covers rates, ranges, cart dimensions, missing measurements, snapshot JSON and separate-payment validation. The real PrestaShop 9.2 CI job checks existing exact-shipping behavior; **a complete external second-payment capture is not simulated or claimed.**
+
+## Configurable defaults and customer map radius upgrade (0.7.1)
+
+1. Upgrade to module 0.7.1 and confirm all eleven new `GRTRANS_...` settings get their documented defaults without visiting Configure. Re-running the upgrade must preserve saved operator values.
+2. In Configure change **Customer map-pin matching radius** from 25 km to 10 km. On the customer quote-check page, verify the help text displays 10 km, a pin just inside the radius returns the nearest catalogue station, a pin just outside does not, and equal-distance tie ordering remains the same. Reset to 25 km, verify the original boundary.
+3. Change inner/outer station **form defaults** and confirm new records prefill them, but existing station records do not move. Verify an invalid outer smaller than inner is refused.
+4. Set an extra nearby-link gap and verify the map's walk-link shortcut honors the gap, while far-apart stations still require an explicit priced/type popup. An ordinary missing link must never be guessed by the quote graph.
+5. Change an estimate multiplier, product-unit conversion or quote hold in the disposable shop; check new rates and new holds follow the setting, with already consumed quote/order history preserved. Restore defaults.
+6. Invalid bounds, noninteger hold minutes, lower factor ≥ upper, or radius defaults greater than the allowed maximum must be rejected server-side with no partial configuration save.
+
+These tests are separate from the original #62 static quote-page acceptance. The same changes are covered by `tests/network_settings_test.php` on both PHP CI versions, but the real PrestaShop browser/admin checks remain part of post-merge shop acceptance.
