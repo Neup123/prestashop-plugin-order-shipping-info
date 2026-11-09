@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/NetworkSettings.php';
 /**
  * Shared network-data contract for API, map editor, importer and quote engine.
  * Prices are EUR. Coordinates are WGS84, radii are kilometres.
@@ -16,20 +17,20 @@ final class GrTransportNetworkFields
                 return [
                     'name'=>['text',190], 'type'=>['choice',['bus','ferry','airport','other']],
                     'address_text'=>['text',500], 'lat'=>['latitude'], 'lng'=>['longitude'],
-                    'inner_radius_km'=>['range',0,500], 'outer_radius_km'=>['range',0,500],
+                    'inner_radius_km'=>['range',0,GrTransportNetworkSettings::get('max_coverage_km')], 'outer_radius_km'=>['range',0,GrTransportNetworkSettings::get('max_coverage_km')],
                     'is_origin_hub'=>['bool'],
                 ];
             case 'legs':
                 return [
                     'from_station_id'=>['id'], 'to_station_id'=>['nullable_id'],
                     'mode'=>['choice',['bus','ferry','flight','other']],
-                    'operator_label'=>['text',190], 'price'=>['range',0,100000],
-                    'tariff_type'=>['choice',['flat','weight','volume']], 'rate_per_unit'=>['range',0,100000],
+                    'operator_label'=>['text',190], 'price'=>['range',0,GrTransportNetworkSettings::get('max_freight_eur')],
+                    'tariff_type'=>['choice',['flat','weight','volume']], 'rate_per_unit'=>['range',0,GrTransportNetworkSettings::get('max_freight_eur')],
                     'estimate'=>['bool'], 'estimate_low_factor'=>['range',0,10],
                     'estimate_high_factor'=>['range',0,10],
                     'bidirectional'=>['bool'],
                     'area_name'=>['text',190], 'area_lat'=>['nullable_latitude'],
-                    'area_lng'=>['nullable_longitude'], 'area_radius_km'=>['range',0,500],
+                    'area_lng'=>['nullable_longitude'], 'area_radius_km'=>['range',0,GrTransportNetworkSettings::get('max_coverage_km')],
                 ];
             case 'transfers':
                 return [
@@ -45,12 +46,14 @@ final class GrTransportNetworkFields
         switch ($entity) {
             case 'stations': return [
                 'name'=>'', 'type'=>'bus', 'address_text'=>'', 'lat'=>null, 'lng'=>null,
-                'inner_radius_km'=>1, 'outer_radius_km'=>5, 'is_origin_hub'=>0,
+                'inner_radius_km'=>GrTransportNetworkSettings::get('station_inner_km'),
+                'outer_radius_km'=>GrTransportNetworkSettings::get('station_outer_km'), 'is_origin_hub'=>0,
             ];
             case 'legs': return [
                 'from_station_id'=>0, 'to_station_id'=>null, 'mode'=>'bus',
                 'operator_label'=>'', 'price'=>0, 'tariff_type'=>'flat','rate_per_unit'=>0,
-                'estimate'=>0,'estimate_low_factor'=>0.9,'estimate_high_factor'=>1.1,
+                'estimate'=>0,'estimate_low_factor'=>GrTransportNetworkSettings::get('estimate_low_factor'),
+                'estimate_high_factor'=>GrTransportNetworkSettings::get('estimate_high_factor'),
                 'bidirectional'=>0,
                 'area_name'=>'', 'area_lat'=>null, 'area_lng'=>null, 'area_radius_km'=>0,
             ];
