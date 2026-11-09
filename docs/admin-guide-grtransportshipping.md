@@ -106,3 +106,40 @@ A network quote is computed from origin hubs across explicitly configured **dire
 **Admin quote simulator:** open **Configure → Network quote simulator**. Select a destination station to test its exact path or supply a destination postcode/city and verified latitude/longitude. Parcel weight/volume inputs are shown for preparation; tariff calculation from these fields arrives in #71. Results show the winning hub, ring, station or direct area, per-leg and per-transfer price, and total EUR. A no-path result is explicit. The simulator calls the same PHP resolver as checkout, so path costs never rely on UI-only logic.
 
 A network quote is pinned in the existing cart quote store with its selected path and handling fee. The historical full-edge snapshot and estimate-handling upgrades arrive in #72. Test customer-facing addresses with the real PrestaShop 9.2 rig, not just the pure PHP tests.
+
+## Parcel tariffs, estimates and frozen order charge (#71, #72)
+
+### Configure tariff types on a service leg
+
+Open **Transport network → Legs → Edit**. Each leg now has:
+
+| Field | Meaning |
+|---|---|
+| `price` | Flat fare in EUR; for variable tariffs, the guaranteed fixed component |
+| `tariff_type` | **flat**, **weight** (kg), or **volume** (cubic metres) |
+| `rate_per_unit` | Additional EUR per kg or per m³ for weight/volume tariffs |
+| `estimate` | Operator has not confirmed an exact freight amount |
+| `estimate_low_factor` | Multiplier for the lower plausible leg cost (default 0.90) |
+| `estimate_high_factor` | Multiplier for the upper plausible leg cost (default 1.10) |
+
+For example, a weight leg with base €4 + €2/kg for a 3 kg parcel is €10. If marked as an estimate with lower factor 0.8 and upper factor 1.2, it contributes **€8–€12**. The graph compares estimate paths conservatively by the **upper bound**, while showing both bounds to the customer. Fixed-price transfers are added to both bounds.
+
+**Product measurements:** the module totals the cart's product weights and uses product width × height × depth × quantity to compute volume. The volume conversion assumes the shop's product dimension unit is **centimetres**; if another unit is configured, these rates must not be enabled before adapting the conversion. If any relevant product is missing weight or dimensions, the incomplete measurement is not treated as zero. The leg uses only its configured positive flat component, marks the quote as a **missing-measurement fallback**, and displays a warning; if there is no positive fallback, that leg is excluded.
+
+### Estimate never becomes a confirmed charge at checkout
+
+If any selected leg is marked estimate, checkout **charges €0 shipping**, and the pickup notice clearly says **SHIPPING ESTIMATE — NOT CHARGED AT CHECKOUT** with the low–high range in EUR. The carrier's native shipping price field can show €0 because PrestaShop requires a scalar price; this is not an assertion that freight is free. The more prominent carrier notice explains separate later freight collection. No invented exact charge or automatic price capture is performed.
+
+The merchant must obtain the **customer's explicit approval** of the confirmed freight amount and use a separately supported payment method to collect it. In the administrator's order view, use **Record confirmed external freight receipt** only after real payment has been confirmed. Enter the exact amount and a genuine external transaction ID, and confirm customer approval. Duplicate/different receipts are rejected; an amount above the original estimated ceiling requires new customer approval and must not be silently recorded. This module only records the external receipt; **it is not itself a payment gateway and cannot capture card funds.** Do not confuse an administrator's receipt entry with a payment action.
+
+### Immutable original dispatch details
+
+When the order is created, the full selected path (origin hub, station/area, service legs and transfers, per-leg price components, parcel inputs, notice and range) is copied from the pinned checkout quote into `grtrans_order.route_snapshot` as JSON. It is never derived from today's merchant-edited network. The order admin and customer details show the **order-time route**. Settlement stores the independently received actual amount, receipt reference and time in separate columns without rewriting the original priced path or checkout amount.
+
+Existing legacy **Regenerate original pickup snapshot** remains available for previous flat-route orders, sourced only from the original cart quote; a **settled estimate** cannot be regenerated. Repair of missing historical data also requires its original pin, never current network tariff values.
+
+### Preconditions before live use
+
+**Do not promise automated payment capture:** the current implementation safely records a verified payment externally, but cannot initiate a second charge through an arbitrary shop payment gateway. To capture the charge inside the shop, a merchant-specific gateway integration and customer authorization flow are required. The exact constraint is recorded in the PR.
+
+Review [installation and acceptance](INSTALL-AND-ACCEPTANCE.md) for the test matrix. Tracking/pickup status notifications (#74) remain post-first-release.
