@@ -266,7 +266,9 @@
     const unit = {x: delta.x / dist, y: delta.y / dist};
     const perpendicular = {x: -unit.y, y: unit.x};
     const radius = dist / 2;
-    const sample = t => move(move(a, unit, dist * t),
+    // True semicircle: every sampled point is radius d/2 from the
+    // midpoint of the stations, rather than a merely sinusoidal arch.
+    const sample = t => move(move(a, unit, radius * (1 - Math.cos(Math.PI * t))),
       perpendicular, radius * Math.sin(Math.PI * t));
     const curve = Array.from({length: 41}, (_, i) => sample(i / 40));
     const size = Math.min(14, Math.max(2.5, dist * 0.04));
