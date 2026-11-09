@@ -600,23 +600,46 @@
       const contours = geometry.unionContours(group.map(stationPatch));
       if (contours.length) {
         const c = zoneColors.get('station:' + group[0].id_station);
-        const style = {pane: 'grtrans-coverage-patches', fill: true,
-          className: 'grtrans-organic-patch', fillColor: c, color: c,
-          fillOpacity: 0.20, opacity: 0.65, weight: 1};
         const owners = group.map(station => 'station:' + station.id_station);
-        const layer = L.polygon(contours.length === 1 ? contours[0] : contours,
-          style).addTo(map).bindTooltip(safeTooltip(group.map(station => station.name).join(' + ') +
-          ' · merged same-service coverage'));
-        registerPatch(owners, layer, style);
-        layer.on('click', event => {
-          L.DomEvent.stopPropagation(event);
-          // The pins still select exact stations; on the union face select
-          // the geographically closest member rather than an arbitrary one.
-          const p = [event.latlng.lat, event.latlng.lng];
-          const nearest = group.reduce((best, station) =>
-            distance(p, point(station)) < distance(p, point(best)) ? station : best, group[0]);
-          select(nearest);
+        const title = safeTooltip(group.map(station => station.name).join(' + ') +
+          ' · merged same-price coverage');
+        const mergedTier = (kind, rings, fillOpacity) => {
+          if (!rings.length) return;
+          const outer = kind === 'far';
+          const style = {pane:'grtrans-coverage-patches',fill:true,
+            className:'grtrans-organic-patch grtrans-tier-'+kind,
+            fillColor:c,color:c,fillOpacity,weight:outer?1:0,
+            stroke:outer,opacity:outer?0.65:0};
+          const latlngs = rings.length === 1 ? rings[0] : rings.map(ring=>[ring]);
+          const layer=L.polygon(latlngs,style).addTo(map).bindTooltip(title);
+          registerPatch(owners,layer,style);
+          layer.on('click',event=>{
+            L.DomEvent.stopPropagation(event);
+            const p=[event.latlng.lat,event.latlng.lng];
+            select(group.reduce((best,station)=>
+              distance(p,point(station))<distance(p,point(best))?station:best,group[0]));
+          });
+        };
+        // Outer silhouette merges as ONE border. Inner tier is also unioned
+        // (without any border) so no old internal station circles reappear.
+        mergedTier('far',contours,0.16);
+        const innerRecords=[];
+        group.forEach(station=>{
+          const inner=geometry.coverageTiers(stationPatch(station),
+            station.inner_radius_km).find(tier=>tier.kind==='normal');
+          if (!inner) return;
+          inner.paths.forEach((poly,index)=>{
+            const coordinates=poly.map(ring=>{
+              const closed=ring.concat([ring[0]]);
+              return closed.map(p=>[p[1],p[0]]);
+            });
+            innerRecords.push({lat:station.lat,lng:station.lng,
+              radiusKm:Number(station.inner_radius_km),
+              key:'normal:'+station.id_station+':'+index,
+              coverage_geojson:JSON.stringify({type:'Polygon',coordinates})});
+          });
         });
+        mergedTier('normal',geometry.unionContours(innerRecords),0.42);
       }
       return;
     }
@@ -625,24 +648,20 @@
     const title = s.name + (s.is_origin_hub == 1 ? ' · Origin hub' : '')
       + (Object.prototype.hasOwnProperty.call(costs, s.id_station)
         ? ' · cheapest ' + fmt(costs[s.id_station]) + ' EUR' : ' · no priced path');
-    (s.coverage_kind !== 'radius' && s.coverage_geojson
-      ? [{radiusKm:Number(s.outer_radius_km),opacity:0.20,outline:true}]
-      : [
-        {radiusKm:Number(s.outer_radius_km),opacity:0.20,outline:true},
-        {radiusKm:Number(s.inner_radius_km),opacity:0.10,outline:false}
-      ]).filter(ring => ring.radiusKm > 0 || (ring.outline && !!s.coverage_geojson))
-      .forEach(ring => {
-      const style = {
-        pane: 'grtrans-coverage-patches', fill: true, className: 'grtrans-organic-patch',
-        fillColor: c, color: c, fillOpacity: ring.opacity, opacity: ring.outline ? 0.6 : 0,
-        weight: ring.outline ? 1 : 0, stroke: ring.outline
+    geometry.coverageTiers(stationPatch(s),s.inner_radius_km).forEach(tier=>{
+      if(!tier.paths.length) return;
+      const style={
+        pane:'grtrans-coverage-patches',fill:true,
+        className:'grtrans-organic-patch grtrans-tier-'+tier.kind,
+        fillColor:c,color:c,fillOpacity:tier.fillOpacity,
+        opacity:tier.outline?0.6:0,weight:tier.outline?1:0,
+        stroke:tier.outline
       };
-      const contour = geometry.patchPaths({...stationPatch(s),radiusKm:ring.radiusKm,
-        coverage_geojson: ring.outline ? s.coverage_geojson : ''});
-      const layer = L.polygon(geometry.leafletPaths(contour),
-        style).addTo(map).bindTooltip(safeTooltip(title));
-      registerPatch(['station:' + s.id_station], layer, style);
-      layer.on('click', event => {
+      const layer=L.polygon(geometry.leafletPaths(tier.paths),style)
+        .addTo(map).bindTooltip(safeTooltip(title+' · '+(tier.kind==='normal'
+          ? 'normal service reach' : 'FAR zone: customer confirmation required')));
+      registerPatch(['station:'+s.id_station],layer,style);
+      layer.on('click',event=>{
         L.DomEvent.stopPropagation(event);
         select(s);
       });
