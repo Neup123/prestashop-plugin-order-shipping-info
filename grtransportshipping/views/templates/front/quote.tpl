@@ -44,7 +44,7 @@
     {else}
       <p class="alert alert-info">{$quote_message|escape:'htmlall':'UTF-8'}</p>
     {/if}
-      {if $quote_note !== ''}
+      {if $quote_note}
         <p class="grtransport-quote-note"><strong>{l s='Note' mod='grtransportshipping'}:</strong> {$quote_note|escape:'htmlall':'UTF-8'}</p>
       {/if}
     </div>
