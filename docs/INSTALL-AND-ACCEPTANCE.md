@@ -189,3 +189,13 @@ These tests are separate from the original #62 static quote-page acceptance. The
 6. Unconfigured zero transit must not make a misleading zero-hour delivery promise. If the quoted path includes transfers whose time is not recorded by #73, show **Transfer travel time not included** as a limitation.
 
 Pure regression checks are in `tests/network_timing_test.php` and the PHP 8.2/8.4 CI matrix. Manual real-shop browser testing is required for visual acceptance on the merchant's theme.
+
+## Data verification/staleness upgrade and acceptance (0.9.0; #76)
+
+1. Upgrade from 0.8.0 to 0.9.0. Check nullable `verified_at` on both leg and transfer tables. Unverified old rows remain NULL, not stamped with a fabricated upgrade date; retrying migration is safe.
+2. Create a leg and transfer through the admin and API. Check automatic current UTC timestamp. Modify the price/details and confirm the timestamp refreshes. Use **Confirm current** for an unchanged record; check the same via write-token `POST ?entity=legs&id=N&confirm=1` and read-token rejection.
+3. Set **Stale after months** to a small value, use a date older than the threshold in the disposable test database, and check the coverage line/area fades with an explicit stale tooltip. Newly confirmed services remain vivid; exactly-on-threshold timestamps are not stale.
+4. Disable **Show stale map markings** (0). Every faded style/STALE label disappears from the map, but original dates and prices must remain identical in data/API.
+5. Confirm historical order snapshots and checkout prices are unaffected by the visualization settings.
+
+`tests/network_freshness_test.php` covers missing/old/fresh timestamps, calendar-month threshold, turn-off, and explicit confirmation without changing other data. Browser appearance verification remains a separate real-Shop acceptance step.
