@@ -57,6 +57,7 @@ class GrtransportshippingQuoteModuleFrontController extends ModuleFrontControlle
                 )) : '',
             'quote_notice' => $quote ? $this->module->customerQuoteNotice($quote) : '',
             'quote_message' => $result ? $this->module->customerQuoteMessage($result['status']) : '',
+            'quote_pin_radius' => GrTransportQuoteCheck::pinRadiusKm(),
             'quote_map' => json_encode($map, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT),
         ]);
         $this->setTemplate('module:grtransportshipping/views/templates/front/quote.tpl');
