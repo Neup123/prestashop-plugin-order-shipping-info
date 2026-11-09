@@ -161,7 +161,7 @@
     const rb = Math.max(0, Number(toRadius) || 0);
     if (!ra || !rb) return [];
     const stroke = (centre, radius) => {
-      const half = Math.min(0.9, radius * 0.23);
+      const half = Math.min(0.85, radius * 0.23);
       const shift = Math.max(-0.3, Math.min(0.3, lane * 0.18));
       return [
         projection.ll({x: centre.x + tx * (shift - half), y: centre.y + ty * (shift - half)}),
