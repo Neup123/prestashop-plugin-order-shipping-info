@@ -1,0 +1,94 @@
+# grtransportshipping — operator guide
+
+This is the English operator guide for the PrestaShop 9 transport module. All prices are unaccompanied parcel prices in EUR. Demo fares are **invented** and are not valid transport contracts.
+
+## Contents
+
+1. [Installation and existing flat Routes](#installation-and-existing-flat-routes)
+2. [Stations and two coverage rings (#64)](#stations-and-two-coverage-rings-64)
+3. [Service legs and direct area services (#65)](#service-legs-and-direct-area-services-65)
+4. [Transfer links (#66)](#transfer-links-66)
+5. [Visual coverage map (#68)](#visual-coverage-map-68)
+6. [Network CRUD and import API (#70)](#network-crud-and-import-api-70)
+7. [Safety and troubleshooting](#safety-and-troubleshooting)
+
+## Installation and existing flat Routes
+
+Install `grtransportshipping` from its module ZIP using **Module Manager**. Confirm its carrier is active for Greek delivery zones and the correct customer groups. Fresh installations seed ten illustrative flat Routes; **mark demo routes Draft or replace them with verified freight terms before live checkout**. To upgrade an existing installation, upload the module files and select **Module Manager → Upgrade**. Version 0.6.0 creates three empty network tables without modifying merchant flat Routes or historical orders. See [Install and acceptance](INSTALL-AND-ACCEPTANCE.md) for step-by-step checks.
+
+Under **Configure → Greek public transport routes**, flat Routes still support manually priced destinations. Enter a mode, origin, destination pickup station, city and/or postcode prefix, price, and notice. **Draft** does not quote, **Available** can quote, **Suspended** blocks broader matching rules. The route edit form retains values after validation failures. Deletion requires confirmation. The checkout carrier has a pickup-only warning where relevant, and missing routes do not show a false price. A successful cart quote is pinned for up to 30 minutes; historical pickup details on an order are saved independently from later route edits.
+
+## Stations and two coverage rings (#64)
+
+At **Configure → Transport network · coverage map**, select **Stations** in the Manage toolbar. Add a station with a name, bus/ferry/airport/other type, postal address text, and location. Enter WGS84 latitude/longitude or click the map to populate the coordinate fields. Set **Inner radius km** (normal walking distance) and **Outer radius km** (extended coverage, longer walk). The outer radius must be positive and at least as large as the inner. The station immediately appears as a strong inner disc and faint outer disc after saving and refreshing the map.
+
+Select **Is origin hub** for any station where the shop can dispatch parcels. Several origin hubs may coexist; the customer never chooses one. A station's map coverage indicates candidate geography, not an actual freight service; a priced path must exist before a network quote can be offered.
+
+## Service legs and direct area services (#65)
+
+Select **Legs**, choose **From station**, **To station**, mode (bus, ferry, flight or other), operator/line label, EUR price and whether the service runs in both directions. One leg is a priced journey. Two legs A→B and B→C can connect at shared station B, but **no travel is invented between distinct stations**.
+
+For a local courier delivering to an address, choose **Direct area (no pickup station)** as To station. Enter an area name, centre latitude/longitude and radius. A map click can fill the centre fields. This is a terminal service: its coverage area is drawn on the map, and a price of **€0** is valid. It does not create a feeder to a ferry or flight. Existing flat Routes remain in their original table.
+
+## Transfer links (#66)
+
+A transfer carries a parcel physically between separate stations (for example a bus terminal and a port). On the coverage map, tap the first station, press **Link selected station**, then tap the second station:
+
+- When the **inner rings overlap**, the current conservative definition of “nearby”, a free `walk` link is created directly.
+- Otherwise a small form appears. Enter the real connection type, such as `taxi`, and its price (zero is allowed), then save. The transfer appears as a distinct dashed connection.
+- Links have a direction from first to second. To enable reverse travel, define a reverse transfer. Use the **Transfers** grid to edit or remove links.
+
+The issue does not specify a numerical near/far threshold. Using overlapping inner walking rings avoids assuming a fixed walking distance that would be unsafe in every location.
+
+## Visual coverage map (#68)
+
+The back-office map uses locally bundled **Leaflet** and OpenStreetMap tiles. Every station is shown by two mode-colored concentric discs: the inner is approximately two-thirds opaque and the outer one-third opaque. Legs have labeled connecting lines, distinct color shades for different operators, and price tooltips. Transfers are separate dashed connections with their connection type and price. Direct-area services appear as their own coverage discs.
+
+Station coverage is drawn in descending reachable-price order so cheaper service is visually above more expensive coverage. The costs come from the shared directed graph used by the quote system, not manually entered map prices. Unreachable station discs are editing aids, not promised delivery coverage. No disc means no network-geography coverage.
+
+Edits made through the form or API appear on refresh. The map is optional: all data can also be managed in the tables or through the API.
+
+## Network CRUD and import API (#70)
+
+Generate credentials in **Configure → Programmatic API credentials**. **Read** and **write** tokens are independent. The plaintext is shown once, and only its hash is retained. Generating a replacement immediately revokes the old token. Write tokens are administrative credentials; keep them secret. Use HTTPS and the HTTP header `Authorization: Bearer <token>`; query-string tokens are not accepted.
+
+Base URL, using your shop hostname/subdirectory:
+
+`https://shop.example/index.php?fc=module&module=grtransportshipping&controller=network`
+
+| Request | Operation | Token |
+|---|---|---|
+| `GET` (no entity) | Full network snapshot | read/write |
+| `GET ?entity=stations` | List stations (also legs, transfers) | read/write |
+| `GET ?entity=stations&id=4` | Read record | read/write |
+| `GET ?entity=stations&format=csv` | CSV export | read/write |
+| `POST ?entity=stations` | Create from JSON object | write |
+| `PATCH ?entity=stations&id=4` | Update supplied fields | write |
+| `DELETE ?entity=stations&id=4` | Delete (if unreferenced) | write |
+| `POST ?bulk=1` | Atomic JSON bulk import | write |
+| `POST ?entity=legs` with `text/csv` body | Atomic CSV import | write |
+
+JSON batch example:
+
+```json
+{
+  "stations": [
+    {"client_ref":"athens","name":"Athens hub","type":"bus","address_text":"Athens","lat":37.99,"lng":23.70,"inner_radius_km":1,"outer_radius_km":5,"is_origin_hub":1}
+  ],
+  "legs": [
+    {"from_ref":"athens","to_station_id":12,"mode":"bus","operator_label":"Bus A","price":10,"bidirectional":0}
+  ]
+}
+```
+
+Temporary station `client_ref` aliases can be referenced by `from_ref`/`to_ref` in the same batch. Only a complete, validated batch is committed. CSV headers use the exact field names from the API. Unknown station IDs, negative prices, bad coordinates, invalid radii and self-links are rejected. A station with dependent legs/transfers must have those removed before deletion.
+
+These tables, like flat Routes, are shared across shops in a multistore installation.
+
+## Safety and troubleshooting
+
+An address with no actual directed transport path must not receive a made-up network quote. In particular, geographic proximity does not give permission to transfer a parcel between terminals. Confirm physical arrangements with the operator and enter only proven legs/links. Test unfamiliar routes in a disposable PrestaShop shop before real customers use them.
+
+If the map is unavailable, use the table forms or API. If an API request returns 403, verify the Bearer header, token scope, and whether an administrator rotated the token. If a station does not appear, check its coordinates and ring radii; if a connection is missing, inspect its references and direction.
+
+Later PRs extend these instructions with the cheapest-path checkout engine, variable tariffs, snapshots, delivery timing, data freshness and branch-aware origins. Parcel tracking/status (#74) and station contact fields (#75) remain explicitly post-first-release.
