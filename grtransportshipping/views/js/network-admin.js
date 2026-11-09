@@ -73,14 +73,109 @@
     legend.appendChild(item);
   });
   const color = type => baseColor[type] || baseColor.other;
-  const colorForLine = (mode, operator) => {
-    // Same transport mode, distinguish operators visually without losing family.
-    let hash = 0;
-    for (const letter of String(operator)) hash = ((hash << 5) - hash + letter.charCodeAt(0)) | 0;
-    const base = color(mode);
-    const delta = (Math.abs(hash) % 30) - 15;
-    const parts = [1, 3, 5].map(index => parseInt(base.slice(index, index + 2), 16));
-    return '#' + parts.map(x => Math.max(0, Math.min(255, x + delta)).toString(16).padStart(2, '0')).join('');
+  // Keep seam layers separate from the route preview (#96), which can hide
+  // schematic joins to expose actual travel paths without touching coverage.
+  const seamLayers = [];
+  const paintSeam = layer => {
+    seamLayers.push(layer);
+    return layer.addTo(map);
+  };
+  // A seam belongs to patch rims rather than station centres. Project only
+  // locally in kilometres to find the overlap chord / closest outer edges.
+  const drawSeam = (from, to, fromRadius, toRadius, label, stale, fromColor, toColor) => {
+    const a = point(from), b = point(to);
+    const latScale = 111.195;
+    const lngScale = latScale * Math.max(0.01, Math.cos((a[0] + b[0]) / 2 * Math.PI / 180));
+    const dx = (b[0] - a[0]) * latScale, dy = (b[1] - a[1]) * lngScale;
+    const d = Math.hypot(dx, dy);
+    if (d < 0.00001) return; // Coincident zone centres have no defined join.
+    const ux = dx / d, uy = dy / d;
+    const ra = Math.max(0, Number(fromRadius)), rb = Math.max(0, Number(toRadius));
+    const at = (along, across) => [
+      a[0] + (ux * along - uy * across) / latScale,
+      a[1] + (uy * along + ux * across) / lngScale
+    ];
+    const options = {color: '#343e50', weight: 2.5,
+      opacity: stale ? 0.32 : 0.9, interactive: false};
+    let along, half, spanStart, spanEnd;
+    if (d > ra + rb) {
+      // Disjoint patches: stitch between their facing rims, *not* station pins.
+      // This is a schematic link across a gap, never a coverage polygon.
+      spanStart = ra; spanEnd = d - rb;
+    } else if (d + Math.min(ra, rb) < Math.max(ra, rb)) {
+      // One circle inside the other: choose an inner-circle rim.
+      along = ra < rb ? -ra : d - rb;
+      half = Math.max(0.2, Math.min(1.5, Math.min(ra, rb) * 0.4));
+    } else {
+      // Intersecting patches: sew along their common overlap chord.
+      along = (ra * ra - rb * rb + d * d) / (2 * d);
+      half = Math.sqrt(Math.max(0, ra * ra - along * along));
+      half = Math.max(0.18, Math.min(half, 10));
+    }
+    if (spanStart !== undefined) {
+      // Disjoint circles have no literal shared edge. Draw a broad, gently
+      // curved two-colour fabric bridge between their FACING rims, not a road
+      // or a station-to-station line. The hover label discloses the schematic
+      // gap: this cloth-style join does not grant delivery coverage.
+      const gap = spanEnd - spanStart;
+      const bow = Math.min(4, gap * 0.14);
+      const width = Math.max(0.35, Math.min(2.5, Math.min(ra, rb) * 0.55 + gap * 0.008));
+      const sample = t => {
+        const x = spanStart + gap * t;
+        const y = bow * Math.sin(Math.PI * t);
+        const tx = gap, ty = bow * Math.PI * Math.cos(Math.PI * t);
+        const length = Math.hypot(tx, ty);
+        return {x, y, nx: -ty / length, ny: tx / length};
+      };
+      const edge = (t, side) => {
+        const p = sample(t);
+        return at(p.x + p.nx * side * width, p.y + p.ny * side * width);
+      };
+      const samples = Array.from({length: 17}, (_, i) => i / 16);
+      const middle = samples.map(t => edge(t, 0));
+      const left = samples.map(t => edge(t, -1));
+      const right = samples.map(t => edge(t, 1));
+      const opacity = stale ? 0.22 : 0.62;
+      // Two adjacent wide patch-coloured halves, not a single dashed line.
+      const leftFabric = paintSeam(L.polygon([...left, ...middle.slice().reverse()], {
+        color: fromColor, fillColor: fromColor, fillOpacity: opacity,
+        opacity, weight: 2, interactive: false
+      }));
+      paintSeam(L.polygon([...middle, ...right.slice().reverse()], {
+        color: toColor, fillColor: toColor, fillOpacity: opacity,
+        opacity, weight: 2, interactive: false
+      }));
+      // Pixel-width edges remain clearly fabric-like even at national zoom.
+      paintSeam(L.polyline(left, {color: fromColor, weight: 10,
+        opacity: stale ? 0.25 : 0.75, interactive: false}));
+      paintSeam(L.polyline(right, {color: toColor, weight: 10,
+        opacity: stale ? 0.25 : 0.75, interactive: false}));
+      const thread = paintSeam(L.polyline(middle, {
+        color: '#303744', weight: 3, opacity: stale ? 0.3 : 0.92,
+        dashArray: '3 6', interactive: true
+      })).bindTooltip(safeTooltip(label +
+        ' · schematic sewn gap between patches; NOT coverage or a routed path'));
+      const stitches = Math.max(8, Math.min(28, Math.ceil(gap / 4)));
+      for (let i = 1; i < stitches; i++) {
+        const t = i / stitches;
+        paintSeam(L.polyline([edge(Math.max(0, t - 0.014), -1),
+          edge(Math.min(1, t + 0.014), 1)], {
+          color: '#303744', weight: 2.5,
+          opacity: stale ? 0.28 : 0.94, interactive: false
+        }));
+      }
+      return leftFabric;
+    }
+    const seam = paintSeam(L.polyline([at(along, -half), at(along, half)], {
+      ...options, dashArray: '4 4', interactive: true
+    })).bindTooltip(safeTooltip(label));
+    // Short perpendicular stitches cross the seam, as on sewn fabric.
+    const ticks = 8;
+    for (let i = 0; i <= ticks; i++) {
+      const cross = -half + 2 * half * i / ticks;
+      paintSeam(L.polyline([at(along - 0.16, cross), at(along + 0.16, cross)], options));
+    }
+    return seam;
   };
   const select = station => {
     if (linking && chosen && Number(chosen.id_station) !== Number(station.id_station)) {
@@ -171,19 +266,18 @@
     }
     if (!to) return;
     const title = (leg.operator_label || leg.mode) + ' · ' + fmt(leg.price) + ' EUR' + staleLabel(leg);
-    L.polyline([point(from), point(to)], {
-      color: colorForLine(leg.mode, leg.operator_label), weight: 4,
-      opacity: leg._stale ? 0.22 : 0.85,
-      dashArray: leg.bidirectional == 1 ? null : '9 5'
-    }).addTo(map).bindTooltip(safeTooltip(title));
+    drawSeam(from, to, from.outer_radius_km, isArea ? leg.area_radius_km : to.outer_radius_km,
+      title, leg._stale, zoneColors.get('station:' + from.id_station),
+      zoneColors.get(isArea ? 'area:' + leg.id_leg : 'station:' + to.id_station));
   });
   data.transfers.forEach(transfer => {
     const from = stations.get(Number(transfer.from_station_id));
     const to = stations.get(Number(transfer.to_station_id));
     if (!from || !to) return;
-    L.polyline([point(from), point(to)], {
-      color: '#4a4a4a', weight: 3, opacity: transfer._stale ? 0.22 : 0.9, dashArray: '3 8'
-    }).addTo(map).bindTooltip(safeTooltip(transfer.connection_type + ' transfer · ' + fmt(transfer.price) + ' EUR' + staleLabel(transfer)));
+    drawSeam(from, to, from.outer_radius_km, to.outer_radius_km,
+      transfer.connection_type + ' transfer · ' + fmt(transfer.price) + ' EUR' + staleLabel(transfer),
+      transfer._stale, zoneColors.get('station:' + from.id_station),
+      zoneColors.get('station:' + to.id_station));
   });
   map.on('click', event => {
     const lat = document.getElementById('grtrans-network-field-lat');

@@ -21,7 +21,7 @@ function fixture(data) {
     stations: [], legs: [], transfers: [], cost: {}, leafletImagePath: '/leaflet/',
     ...data
   })};
-  const calls = {circles: [], lines: [], markers: [], mapEvents: {}, fits: [], views: []};
+  const calls = {circles: [], lines: [], polygons: [], markers: [], mapEvents: {}, fits: [], views: []};
   const layer = (type, entry) => {
     const value = {
       events: {}, addTo() { return this; }, bindTooltip() { return this; },
@@ -40,7 +40,8 @@ function fixture(data) {
     map() { return map; }, tileLayer() { return {addTo() {}}; },
     circle(point, options) { return layer('circles', {point, options}); },
     marker(point, options) { return layer('markers', {point, options}); },
-    polyline(points, options) { return layer('lines', {points, options}); }
+    polyline(points, options) { return layer('lines', {points, options}); },
+    polygon(points, options) { return layer('polygons', {points, options}); }
   };
   vm.runInNewContext(source, {
     window: {L}, L, Map, document: {
@@ -90,3 +91,47 @@ const withArea = fixture({stations:[station(1,'Hub',38,24)],legs:[{
 assert.ok(withArea.calls.fits[0][0].some(p => p[0] < 36),
   'Direct-area patch full radius is included in the initial frame');
 console.log('Admin coverage patches, radius-aware default framing and legend passed');
+
+
+const connected = fixture({
+  stations: [station(1, 'A', 38.0, 23.7), station(2, 'B', 38.05, 23.75),
+    station(3, 'Disconnected', 39, 25)],
+  legs: [{id_leg:1, from_station_id:1, to_station_id:2, mode:'bus',
+    operator_label:'Test route', price:10, bidirectional:0}],
+  transfers: []
+});
+assert.ok(connected.calls.lines.length > 4, 'Connected zones receive a seam and perpendicular stitches');
+for (const line of connected.calls.lines) {
+  const [p, q] = line.points;
+  const bothStations = (Number(p[0]) === 38 && Number(p[1]) === 23.7 &&
+    Number(q[0]) === 38.05 && Number(q[1]) === 23.75);
+  assert.equal(bothStations, false, 'No line can be a station-centre connector');
+}
+const disconnected = fixture({
+  stations: [station(1, 'A', 38.0, 23.7), station(2, 'B', 38.05, 23.75)]
+});
+assert.equal(disconnected.calls.lines.length, 0, 'Unconnected zones show no seams');
+const disjoint = fixture({
+  stations: [station(1, 'A', 38.0, 23.7), station(2, 'B', 39, 25)],
+  transfers: [{id_transfer:5, from_station_id:1,to_station_id:2,
+    connection_type:'taxi',price:12}]
+});
+assert.ok(disjoint.calls.lines.length > 1, 'Disjoint connected rims get a schematic stitched gap');
+assert.equal(disjoint.calls.polygons.length, 2,
+  'Disjoint gap is a pair of broad coloured fabric polygons, not only a line');
+assert.notEqual(disjoint.calls.polygons[0].options.fillColor,
+  disjoint.calls.polygons[1].options.fillColor, 'The fabric uses both zone colours');
+assert.ok(disjoint.calls.polygons.every(p => p.options.fillOpacity > 0.4),
+  'Disjoint seam has visible fabric fill');
+assert.ok(disjoint.calls.lines.some(line => line.options.weight === 10),
+  'Wide edges distinguish fabric bridge from a thin routed path');
+assert.ok(disjoint.calls.lines.filter(line => line.options.weight === 2.5).length >= 8,
+  'Diagonal stitch marks cross the two-colour ribbon');
+assert.ok(disjoint.calls.polygons[0].points.length > 20,
+  'Ribbon has sampled curved geometry, not a taut two-point connector');
+const touching = fixture({stations:[
+  station(1,'A',38,23.7),station(2,'B',38.08,23.7)
+],legs:[{id_leg:1,from_station_id:1,to_station_id:2,mode:'bus',price:2}]});
+assert.equal(touching.calls.polygons.length,0,
+  'Overlapping circles keep their original shared-boundary stitching');
+console.log('Admin patch seam and disconnected-zone rendering contracts passed');
