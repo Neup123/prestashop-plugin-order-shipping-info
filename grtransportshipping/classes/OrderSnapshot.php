@@ -97,7 +97,7 @@ final class GrTransportOrderSnapshot
         }
         // Preserve the complete selected path and per-edge quoted data as an
         // immutable order-time JSON snapshot, independent of mutable network tables.
-        $encoded=json_encode($quote,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
+        $encoded=json_encode($quote,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRESERVE_ZERO_FRACTION);
         if ($encoded===false) self::fail($orderId,'Cannot encode transport dispatch snapshot');
         if ($existing && $regenerate && ($existing['estimate_state'] ?? '')==='settled') {
             self::fail($orderId,'A settled freight estimate must not be regenerated');
