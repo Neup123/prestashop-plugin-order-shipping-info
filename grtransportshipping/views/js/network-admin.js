@@ -116,14 +116,18 @@
   const restoreFocus = () => {
     patchStyles.forEach((entry, layer) => layer.setStyle(entry.style));
   };
-  const focusOwners = owners => {
+  const focusExactly = owners => {
     const selected = new Set(owners);
-    owners.forEach(owner => (mentalLinks.get(owner) || []).forEach(other => selected.add(other)));
     patchStyles.forEach((entry, layer) => {
       const highlighted = entry.owners.some(owner => selected.has(owner));
       layer.setStyle({...entry.style, fillOpacity: highlighted
         ? Math.min(0.54, entry.style.fillOpacity + 0.22) : entry.style.fillOpacity});
     });
+  };
+  const focusOwners = owners => {
+    const selected = new Set(owners);
+    owners.forEach(owner => (mentalLinks.get(owner) || []).forEach(other => selected.add(other)));
+    focusExactly([...selected]);
   };
   const registerPatch = (owners, layer, style) => {
     patchStyles.set(layer, {owners, style});
@@ -148,7 +152,7 @@
       })).bindTooltip(safeTooltip(label));
       // An individual hover target selects only this priced pair. Hovering a
       // multi-vessel origin patch shows its separate, legitimately linked ends.
-      target.on('mouseover', () => focusOwners([fromOwner, toOwner]));
+      target.on('mouseover', () => focusExactly([fromOwner, toOwner]));
       target.on('mouseout', restoreFocus);
     }
   };
