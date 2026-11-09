@@ -101,8 +101,9 @@ final class GrTransportNetworkAdmin
         $base=self::esc((_MODULE_DIR_ . $module->name . '/')) . 'views/';
         $out='<section class="panel" id="grtrans-network">'
             . '<h3>Transport network · coverage map</h3>'
-            . '<p>Local station/area coverage only: overlapping linked stations of one service merge into one patch; '
-            . 'priced links have short joining stitches, never route-spanning ribbons. '
+            . '<p>Soft organic local station/area patches; overlapping priced links show a short zigzag seam, '
+            . 'unlinked overlaps show no seam. Distant flights alone have a symbolic dashed arc and arrow; '
+            . 'distant land/sea have no route-spanning line. '
             . 'Click a station, choose Link, and click its destination. Long-distance links require a type and price.</p>'
             . '<link rel="stylesheet" href="' . $base . 'vendor/leaflet/leaflet.css">'
             . '<link rel="stylesheet" href="' . $base . 'css/network-admin.css">'
