@@ -25,6 +25,7 @@ final class GrTransportNetworkRepository
             `to_station_id` INT UNSIGNED NULL,
             `mode` VARCHAR(16) NOT NULL, `operator_label` VARCHAR(190) NOT NULL,
             `price` DECIMAL(12,2) NOT NULL DEFAULT 0, `bidirectional` TINYINT(1) NOT NULL DEFAULT 0,
+            `verified_at` DATETIME NULL,
             `lead_hours` DECIMAL(8,2) NOT NULL DEFAULT 0,
             `preparation_hours` DECIMAL(8,2) NOT NULL DEFAULT 0,
             `transit_min_hours` DECIMAL(8,2) NOT NULL DEFAULT 0,
@@ -44,6 +45,7 @@ final class GrTransportNetworkRepository
             `from_station_id` INT UNSIGNED NOT NULL, `to_station_id` INT UNSIGNED NOT NULL,
             `connection_type` VARCHAR(64) NOT NULL DEFAULT 'walk',
             `price` DECIMAL(12,2) NOT NULL DEFAULT 0,
+            `verified_at` DATETIME NULL,
             INDEX `transfer_from` (`from_station_id`), INDEX `transfer_to` (`to_station_id`)
         ) ENGINE={$engine} DEFAULT CHARSET=utf8mb4");
     }
@@ -85,12 +87,27 @@ final class GrTransportNetworkRepository
         foreach ($normalized as $name=>$value) {
             $row[$name]=is_string($value) ? pSQL($value) : $value;
         }
+        if ($entity==='legs' || $entity==='transfers') {
+            $row['verified_at']=gmdate('Y-m-d H:i:s');
+        }
         $db=Db::getInstance();
         $ok=$id
             ? $db->update(self::table($entity),$row,GrTransportNetworkFields::IDS[$entity] . ' = ' . $id)
             : $db->insert(self::table($entity),$row);
         if (!$ok) throw new RuntimeException('Network write failed: ' . $entity);
         return $id ?: (int)$db->Insert_ID();
+    }
+
+    public static function confirm(string $entity,int $id): void
+    {
+        if (!in_array($entity,['legs','transfers'],true)) {
+            throw new InvalidArgumentException('Only service legs and transfers can be verified');
+        }
+        if (!self::find($entity,$id)) throw new InvalidArgumentException('Network record not found');
+        if (!Db::getInstance()->update(self::table($entity),
+            ['verified_at'=>gmdate('Y-m-d H:i:s')],GrTransportNetworkFields::IDS[$entity].' = '.$id)) {
+            throw new RuntimeException('Could not confirm network verification date');
+        }
     }
 
     public static function delete(string $entity,int $id): void
