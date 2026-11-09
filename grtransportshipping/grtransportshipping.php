@@ -48,7 +48,7 @@ class Grtransportshipping extends CarrierModule
     {
         $this->name = 'grtransportshipping';
         $this->tab = 'shipping_logistics';
-        $this->version = '0.7.0';
+        $this->version = '0.7.1';
         $this->author = 'Neup123';
         $this->need_instance = 0;
         $this->bootstrap = true;
@@ -105,7 +105,8 @@ class Grtransportshipping extends CarrierModule
             . ') ENGINE=' . _MYSQL_ENGINE_ . ' DEFAULT CHARSET=utf8mb4';
         return (bool) Db::getInstance()->execute($sql)
             && $this->installOrderSchema() && $this->installCartQuoteSchema()
-            && GrTransportNetworkRepository::installSchema();
+            && GrTransportNetworkRepository::installSchema()
+            && GrTransportNetworkSettings::ensureDefaults();
     }
 
     public function installOrderSchema(): bool
