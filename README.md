@@ -86,30 +86,38 @@ handling; cart discounts/free-shipping rules are confirmed at checkout.
 
 ### Optional map
 
-Leaflet 1.9.4 is bundled locally under `views/vendor/leaflet` with its BSD licence
-and marker images. Opening **Choose destination on a map** loads public
-OpenStreetMap tiles with visible attribution. No geocoder, remote JavaScript,
-account, paid provider or API key is used. Text input remains available if tiles
-cannot load.
+Leaflet 1.9.4 and its marker images are bundled locally under
+`views/vendor/leaflet` (BSD licence). The optional **Choose destination on
+a map** control loads public OpenStreetMap tiles only after customer opt-in.
+The map initially fits **Greece** (or re-centres on a previously selected pin),
+not the wider eastern Mediterranean. It shows **only the customer's draggable
+destination pin**—never origin stations, terminal markers, service links,
+coverage patches or routes.
 
-A click or a dragged pin sets coordinates; **Check pin destination** submits
-these coordinates to the server. The nearest destination terminal in
-`data/stations.php` is selected by great-circle (Haversine) distance, using mean
-Earth radius 6371.0088 km, **within an inclusive 25 km radius**. Equal distances
-use catalogue order. The radius does not promise home delivery. An out-of-radius
-or invalid pin produces the usual no-route message. A nearer terminal that has
-no priced route, is draft, or is suspended is never skipped in favour of a more
-distant priced terminal.
+Dropping or dragging the pin fills the visible address field and the hidden
+coordinates. After a short debounce, Nominatim reverse geocoding may fill a
+readable address; if unavailable, the field displays coordinates. Pricing uses
+the pin coordinates regardless of the address lookup. Manually changing the
+address clears the previous pin mode to avoid quoting a stale location.
+The same existing quote engine determines the transport price or a no-route
+message; merchant pricing and pickup rules do not change.
 
-Catalogue locations are approximate terminal points; representative postcodes
-identify seeded quote destinations, not every postcode within the circle.
-The selected destination uses the same postcode/canonical Greek locality as
-text lookup. Merchant pricing, suspension and pickup flags remain authoritative.
-The matched route's named origin and destination appear as markers joined by a
-straight line (not a travel itinerary). Terminal coordinates are displayed only
-when both stored terminal names still match the catalogue; renamed/custom
-stations remain fully usable via text but need a catalogue entry to be plotted.
-Catalogue edits never rewrite merchant route rows or seed prices.
+The optional free-text **note** (up to 500 characters) appears escaped in the
+quote result alongside the quoted price or no-route explanation. It is
+**display-only for this quote**: no order/customer-note persistence is
+implemented. The GET form includes the note in its URL, so do not enter
+sensitive text. A postcode or city can still be quoted without JavaScript,
+Leaflet, maps or reverse geocoding.
+
+The original demo catalogue matching still picks the nearest terminal within
+the **admin-configured inclusive pin radius (25 km default)**, breaking ties
+in catalogue order. This does not promise home delivery. An out-of-radius,
+invalid, suspended or unpriced destination produces the existing no-route
+message; the engine does not silently substitute a farther priced terminal.
+Network-geography quotes continue to use the existing stored station coverage
+radii and directed routes where the server supports coordinate matching.
+Neither catalogue locations nor network stations are exposed in the customer
+map payload.
 
 ### Local quote-page checks
 
@@ -123,8 +131,8 @@ The first test covers route/price parity, Greek matching, station pickup,
 nearest-terminal selection, overlapping radii, radius boundaries and blocked
 routes. The second exercises the actual page controller and module checkout
 entry points with local platform doubles, including handling fees and escaped
-notices. The Node test covers map opt-in, terminal plotting, click/drag submission
-and missing Leaflet. These are local contracts; live PrestaShop theme/FAQ
+notices. The Node test covers map opt-in, country framing, pin-only rendering,
+reverse address lookup, click/drag form synchronization and missing Leaflet. These are local contracts; live PrestaShop theme/FAQ
 acceptance remains a separate deployment check.
 
 
