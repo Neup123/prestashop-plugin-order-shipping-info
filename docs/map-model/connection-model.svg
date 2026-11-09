@@ -1,0 +1,110 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="1660" viewBox="0 0 1240 1660" font-family="DejaVu Sans, Arial, sans-serif">
+<defs>
+  <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" fill="#333"/>
+  </marker>
+  <linearGradient id="priceGrad" x1="0" y1="0" x2="1" y2="0">
+    <stop offset="0" stop-color="#7fb2e5"/>
+    <stop offset="1" stop-color="#0b3d91"/>
+  </linearGradient>
+</defs>
+<rect x="0" y="0" width="1240" height="1660" fill="#ffffff"/>
+<text x="620" y="42" font-size="30" font-weight="bold" text-anchor="middle" fill="#222">Coverage patches &amp; connection model — admin map</text>
+
+<!-- PANEL A -->
+<g>
+  <rect x="20" y="70" width="580" height="370" rx="12" fill="#fafafa" stroke="#ddd"/>
+  <text x="40" y="102" font-size="19" font-weight="bold" fill="#222">A. A patch is a reach area — shape from the data</text>
+  <polygon points="90,300 70,210 120,140 200,130 240,200 215,290 150,320" fill="#b9a7e6" fill-opacity="0.55" stroke="#8f76d1" stroke-width="2"/>
+  <text x="155" y="352" font-size="15" text-anchor="middle" fill="#444">postal-code area</text>
+  <text x="155" y="374" font-size="15" text-anchor="middle" fill="#444">(polygon, not a circle)</text>
+  <circle cx="355" cy="225" r="82" fill="#a8d8b9" fill-opacity="0.55" stroke="#5da271" stroke-width="2"/>
+  <text x="355" y="352" font-size="15" text-anchor="middle" fill="#444">walking distance</text>
+  <text x="355" y="374" font-size="15" text-anchor="middle" fill="#444">(circle ok)</text>
+  <path d="M475,160 C522,122 570,160 565,215 C560,262 585,298 542,324 C498,350 458,320 464,266 C469,222 445,196 475,160 Z" fill="#f2dfa0" fill-opacity="0.65" stroke="#c9a94e" stroke-width="2"/>
+  <text x="512" y="352" font-size="15" text-anchor="middle" fill="#444">walking routes</text>
+  <text x="512" y="374" font-size="15" text-anchor="middle" fill="#444">(isochrone)</text>
+</g>
+
+<!-- PANEL B -->
+<g>
+  <rect x="640" y="70" width="580" height="370" rx="12" fill="#fafafa" stroke="#ddd"/>
+  <text x="660" y="102" font-size="19" font-weight="bold" fill="#222">B. Overlap, NO link — nothing drawn</text>
+  <path d="M745,165 C800,118 890,128 918,190 C944,248 905,318 838,332 C772,346 705,310 700,245 C696,205 712,190 745,165 Z" fill="#b9a7e6" fill-opacity="0.5"/>
+  <path d="M935,185 C995,142 1080,168 1092,232 C1103,292 1048,340 982,332 C918,324 878,272 893,224 C900,200 912,198 935,185 Z" fill="#a8d8b9" fill-opacity="0.5"/>
+  <text x="930" y="385" font-size="16" text-anchor="middle" fill="#444">both kinds reach here, but no transfer between them —</text>
+  <text x="930" y="407" font-size="16" text-anchor="middle" fill="#444">the fills simply blend</text>
+</g>
+
+<!-- PANEL C -->
+<g>
+  <rect x="20" y="470" width="580" height="370" rx="12" fill="#fafafa" stroke="#ddd"/>
+  <text x="40" y="502" font-size="19" font-weight="bold" fill="#222">C. Overlap WITH a link — stitch = transfer seam</text>
+  <path d="M105,565 C160,520 248,528 272,590 C295,648 258,712 192,724 C128,736 62,696 58,632 C55,592 72,585 105,565 Z" fill="#b9a7e6" fill-opacity="0.55"/>
+  <path d="M290,578 C348,538 432,556 448,614 C463,668 420,722 358,724 C300,726 252,682 258,626 C261,598 268,592 290,578 Z" fill="#f5b971" fill-opacity="0.55"/>
+  <polyline points="252,592 266,608 254,624 268,640 256,656 268,672 258,690" fill="none" stroke="#c0392b" stroke-width="3"/>
+  <text x="130" y="615" font-size="17" font-weight="bold" fill="#5b4a9e">€5</text>
+  <text x="345" y="615" font-size="17" font-weight="bold" fill="#a3540a">€9</text>
+  <text x="310" y="775" font-size="16" text-anchor="middle" fill="#444">zigzag seam where the CHEAPER reach ends and only the</text>
+  <text x="310" y="797" font-size="16" text-anchor="middle" fill="#444">pricier patch still reaches — the engine picks the cheapest</text>
+</g>
+
+<!-- PANEL D -->
+<g>
+  <rect x="640" y="470" width="580" height="370" rx="12" fill="#fafafa" stroke="#ddd"/>
+  <text x="660" y="502" font-size="19" font-weight="bold" fill="#222">D. Air — dashed arc + mental connection</text>
+  <path d="M725,640 C765,592 838,596 852,650 C865,700 812,742 760,730 C710,718 692,680 725,640 Z" fill="#b9a7e6" fill-opacity="0.6"/>
+  <path d="M1015,548 C1068,512 1132,544 1128,600 C1124,650 1058,676 1012,644 C972,616 972,580 1015,548 Z" fill="#b9a7e6" fill-opacity="0.6"/>
+  <path d="M838,612 C895,522 962,520 1032,586" fill="none" stroke="#333" stroke-width="2.5" stroke-dasharray="8 7" marker-end="url(#arr)"/>
+  <text x="930" y="775" font-size="16" text-anchor="middle" fill="#444">two distant patches, one flight link — on hover both</text>
+  <text x="930" y="797" font-size="16" text-anchor="middle" fill="#444">patches darken together as a single mental unit</text>
+</g>
+
+<!-- PANEL E -->
+<g>
+  <rect x="20" y="870" width="580" height="370" rx="12" fill="#fafafa" stroke="#ddd"/>
+  <text x="40" y="902" font-size="19" font-weight="bold" fill="#222">E. Sea / ferry — dashed STRAIGHT line</text>
+  <path d="M112,1008 C158,964 232,976 234,1036 C236,1092 162,1122 114,1088 C72,1058 70,1046 112,1008 Z" fill="#9fd4d8" fill-opacity="0.65"/>
+  <path d="M408,1000 C456,960 524,978 520,1034 C516,1086 448,1112 404,1080 C366,1052 366,1036 408,1000 Z" fill="#9fd4d8" fill-opacity="0.65"/>
+  <line x1="238" y1="1036" x2="402" y2="1034" stroke="#333" stroke-width="2.5" stroke-dasharray="8 7" marker-end="url(#arr)"/>
+  <text x="310" y="1185" font-size="16" text-anchor="middle" fill="#444">like air, but straight, + mental link — each priced pair</text>
+  <text x="310" y="1207" font-size="16" text-anchor="middle" fill="#444">is its own vessel; the origin patch is only the stitch point</text>
+</g>
+
+<!-- PANEL F -->
+<g>
+  <rect x="640" y="870" width="580" height="370" rx="12" fill="#fafafa" stroke="#ddd"/>
+  <text x="660" y="902" font-size="19" font-weight="bold" fill="#222">F. Land, SAME price — merge + solid line</text>
+  <path d="M690,1100 C800,1060 950,1050 1160,1085" fill="none" stroke="#e3e3e3" stroke-width="16"/>
+  <path d="M718,972 C782,940 862,956 902,1002 C946,954 1040,948 1082,998 C1122,1046 1096,1112 1032,1126 C982,1137 936,1112 908,1078 C876,1114 800,1132 746,1102 C692,1072 668,1012 718,972 Z" fill="#a8d8b9" fill-opacity="0.55"/>
+  <path d="M690,1100 C800,1060 950,1050 1160,1085" fill="none" stroke="#5da271" stroke-width="5"/>
+  <circle cx="812" cy="1038" r="6" fill="#2e6b3e"/>
+  <circle cx="992" cy="1034" r="6" fill="#2e6b3e"/>
+  <text x="930" y="1185" font-size="16" text-anchor="middle" fill="#444">continuous line in the patches' colour, MORE opaque,</text>
+  <text x="930" y="1207" font-size="16" text-anchor="middle" fill="#444">on the real road; overlapping station patches are ONE patch</text>
+</g>
+
+<!-- PANEL G -->
+<g>
+  <rect x="20" y="1270" width="580" height="370" rx="12" fill="#fafafa" stroke="#ddd"/>
+  <text x="40" y="1302" font-size="19" font-weight="bold" fill="#222">G. Land, price DIFFERS — gradient, no merge</text>
+  <path d="M60,1500 C200,1465 380,1460 540,1490" fill="none" stroke="#e3e3e3" stroke-width="16"/>
+  <path d="M148,1484 C260,1468 342,1468 452,1484" fill="none" stroke="url(#priceGrad)" stroke-width="7"/>
+  <path d="M82,1386 C126,1350 188,1366 186,1424 C184,1472 120,1494 82,1464 C48,1437 46,1416 82,1386 Z" fill="#7fb2e5" fill-opacity="0.6"/>
+  <path d="M428,1386 C472,1350 534,1366 532,1424 C530,1472 466,1494 428,1464 C394,1437 392,1416 428,1386 Z" fill="#0b3d91" fill-opacity="0.5"/>
+  <text x="128" y="1432" font-size="17" font-weight="bold" fill="#123f73">€5</text>
+  <text x="474" y="1432" font-size="17" font-weight="bold" fill="#ffffff">€9</text>
+  <text x="310" y="1580" font-size="16" text-anchor="middle" fill="#444">the connection darkens station to station with the price;</text>
+  <text x="310" y="1602" font-size="16" text-anchor="middle" fill="#444">the patches stay separate — no merging</text>
+</g>
+
+<!-- PANEL H -->
+<g>
+  <rect x="640" y="1270" width="580" height="370" rx="12" fill="#fafafa" stroke="#ddd"/>
+  <text x="660" y="1302" font-size="19" font-weight="bold" fill="#222">H. Dynamic vehicle — a "sea" with islands</text>
+  <path d="M700,1380 C800,1330 1120,1335 1160,1420 C1195,1495 1120,1560 950,1562 C790,1564 690,1520 682,1450 C678,1410 672,1400 700,1380 Z" fill="#bcd9ea" fill-opacity="0.5"/>
+  <path d="M792,1422 C826,1398 870,1418 864,1452 C858,1484 812,1496 786,1473 C762,1452 764,1442 792,1422 Z" fill="#b9a7e6" fill-opacity="0.75"/>
+  <path d="M962,1462 C996,1438 1040,1458 1034,1492 C1028,1524 982,1536 956,1513 C932,1492 934,1482 962,1462 Z" fill="#a8d8b9" fill-opacity="0.75"/>
+  <text x="930" y="1602" font-size="16" text-anchor="middle" fill="#444">taxi / courier: one area-filling patch; other modes inside it are islands</text>
+</g>
+</svg>
