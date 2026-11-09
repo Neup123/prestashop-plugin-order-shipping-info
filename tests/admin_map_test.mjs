@@ -69,3 +69,31 @@ const labels = elements['grtrans-zone-legend'].children.map(item => item.childre
 assert.ok(labels.includes('<first>'), 'Merchant-supplied zone label is text, never HTML');
 assert.equal(calls.markers.length, 2, 'Existing station selection remains available');
 console.log('Admin coverage patches, distinct colours and zone legend passed');
+
+
+const connected = fixture({
+  stations: [station(1, 'A', 38.0, 23.7), station(2, 'B', 38.05, 23.75),
+    station(3, 'Disconnected', 39, 25)],
+  legs: [{id_leg:1, from_station_id:1, to_station_id:2, mode:'bus',
+    operator_label:'Test route', price:10, bidirectional:0}],
+  transfers: []
+});
+assert.ok(connected.calls.lines.length > 4, 'Connected zones receive a seam and perpendicular stitches');
+for (const line of connected.calls.lines) {
+  const [p, q] = line.points;
+  const bothStations = (Number(p[0]) === 38 && Number(p[1]) === 23.7 &&
+    Number(q[0]) === 38.05 && Number(q[1]) === 23.75);
+  assert.equal(bothStations, false, 'No line can be a station-centre connector');
+}
+const disconnected = fixture({
+  stations: [station(1, 'A', 38.0, 23.7), station(2, 'B', 38.05, 23.75)]
+});
+assert.equal(disconnected.calls.lines.length, 0, 'Unconnected zones show no seams');
+const disjoint = fixture({
+  stations: [station(1, 'A', 38.0, 23.7), station(2, 'B', 39, 25)],
+  transfers: [{id_transfer:5, from_station_id:1,to_station_id:2,
+    connection_type:'taxi',price:12}]
+});
+assert.ok(disjoint.calls.lines.length > 1, 'Disjoint connected rims get a schematic stitched gap');
+assert.ok(disjoint.calls.lines[0].layer, 'Schematic connector has a Leaflet layer');
+console.log('Admin patch seam and disconnected-zone rendering contracts passed');
