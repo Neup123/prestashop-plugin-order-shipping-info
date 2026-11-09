@@ -15,6 +15,11 @@
   const baseColor = { bus: '#2473b6', ferry: '#168ca2', airport: '#845bb7',
                       flight: '#845bb7', other: '#33875a' };
   const map = L.map(root).setView([38.5, 24], 6);
+  // Paint coverage in a dedicated vector pane. An intersecting seam must never
+  // replace a patch or share its SVG paint stack; keep both above map tiles
+  // and below connections and the existing routed-preview overlay.
+  const coveragePane = map.createPane('grtrans-coverage-patches');
+  coveragePane.style.zIndex = '390';
   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19, attribution: '&copy; OpenStreetMap contributors'
   }).addTo(map);
@@ -166,6 +171,24 @@
       }
       return leftFabric;
     }
+    if (d < ra + rb && d > Math.abs(ra - rb)) {
+      // Real intersections retain BOTH complete coverage discs. A short,
+      // faint dash on the common chord merely identifies a configured link;
+      // the long dark chord and cross-ticks used to mask the pale fills.
+      const markerHalf = Math.min(half, 0.9); // at most 1.8 km end-to-end
+      const endpoints = [at(along, -markerHalf), at(along, markerHalf)];
+      const marker = paintSeam(L.polyline(endpoints, {
+        color: '#637384', weight: 1.25,
+        opacity: stale ? 0.22 : 0.55, dashArray: '2 5', interactive: false
+      }));
+      // Invisible wider hover target: tooltip stays usable without a thick
+      // visible stroke or affecting the routed-preview layer separation.
+      paintSeam(L.polyline(endpoints, {
+        color: '#637384', weight: 10, opacity: 0.001, interactive: true
+      })).bindTooltip(safeTooltip(label));
+      return marker;
+    }
+    // Nested and just-touching circles keep their existing stitch treatment.
     const seam = paintSeam(L.polyline([at(along, -half), at(along, half)], {
       ...options, dashArray: '4 4', interactive: true
     })).bindTooltip(safeTooltip(label));
@@ -426,7 +449,8 @@
       { radius: Number(s.outer_radius_km) * 1000, opacity: 0.20 },
       { radius: Number(s.inner_radius_km) * 1000, opacity: 0.10 }
     ].forEach(ring => L.circle(pos, {
-      radius: ring.radius, fillColor: c, color: c, fillOpacity: ring.opacity,
+      pane: 'grtrans-coverage-patches', radius: ring.radius, fill: true,
+      fillColor: c, color: c, fillOpacity: ring.opacity,
       opacity: 0.7, weight: 1
     }).addTo(map).bindTooltip(safeTooltip(title)).on('click', event => {
       L.DomEvent.stopPropagation(event);
@@ -449,6 +473,7 @@
     if (isArea) {
       to = { lat: leg.area_lat, lng: leg.area_lng };
       L.circle(point(to), {
+        pane: 'grtrans-coverage-patches', fill: true,
         radius: Number(leg.area_radius_km) * 1000,
         fillColor: zoneColors.get('area:' + leg.id_leg), color: zoneColors.get('area:' + leg.id_leg), fillOpacity: leg._stale ? 0.1 : 0.24,
         opacity: leg._stale ? 0.2 : 0.5, weight: 1
