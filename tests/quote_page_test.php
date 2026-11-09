@@ -106,7 +106,8 @@ foreach ([['84300', 'Νάξος'], ['26221', 'Πάτρα'], ['99999', 'Unknown']
         testAssert($vars['quote_carrier'] === 'Test transport carrier', 'Live carrier name');
         testAssert(str_contains($vars['quote_notice'], 'STATION PICKUP ONLY'), 'Same pickup warning');
         testAssert(str_contains($vars['quote_notice'], 'DEMO ESTIMATE'), 'Same demo warning');
-        testAssert(count(json_decode($vars['quote_map'], true)['stations']) === 2, 'Map has both terminals');
+        testAssert(!array_key_exists('stations', json_decode($vars['quote_map'], true)),
+            'Public map never exposes origin or destination station coordinates');
         testAssert(json_decode($vars['quote_map'], true)['leafletImagePath']
             === '/modules/grtransportshipping/views/vendor/leaflet/images/',
             'Marker icons use the bundled module path, not the quote controller path');
@@ -130,4 +131,23 @@ testAssert(!$context->smarty->vars['quote_submitted'], 'Reject array text input 
 Tools::$request = ['pin' => '1', 'lat' => ['invalid'], 'lng' => '24'];
 $controller->initContent();
 testAssert($context->smarty->vars['quote_route'] === null, 'Reject invalid pin');
+Tools::$request = ['pin'=>'1', 'lat'=>'37.1', 'lng'=>'25.37',
+    'destination'=>'Pinned address', 'note'=>'Depends on storms <script>alert(1)</script>'];
+$controller->initContent();
+$vars = $context->smarty->vars;
+testAssert($vars['quote_is_pin'] === true, 'Pin request persists coordinate pricing mode');
+testAssert($vars['quote_lat'] === '37.1' && $vars['quote_lng'] === '25.37',
+    'Customer location coordinates are preserved, not replaced with nearest station');
+testAssert(json_decode($vars['quote_map'], true)['pin'] === [37.1,25.37],
+    'Only the chosen pin is supplied to the customer map');
+testAssert(!array_key_exists('stations',json_decode($vars['quote_map'],true)),
+    'No network locations leak to customer map payload');
+testAssert($vars['quote_note'] === 'Depends on storms <script>alert(1)</script>',
+    'Quote carries the user note unchanged for escaped template output');
+$template = file_get_contents(__DIR__ . '/../grtransportshipping/views/templates/front/quote.tpl');
+testAssert(str_contains($template, "\$quote_note|escape:'htmlall'"),
+    'Quote note must be escaped by Smarty');
+Tools::$request = ['destination'=>'26221','note'=>['not a scalar']];
+$controller->initContent();
+testAssert($context->smarty->vars['quote_note'] === '', 'Invalid note array is ignored');
 echo "Quote page/controller and actual checkout entry point contracts passed\n";
