@@ -129,7 +129,7 @@ final class GrTransportNetworkRepository
             if (!self::find('branches',(int)$normalized['id_branch'])) {
                 throw new InvalidArgumentException('Unknown branch in this shop');
             }
-            if (class_exists('Product',false)) {
+            if (class_exists('Product')) {
                 $product=new Product((int)$normalized['id_product']);
                 if (!Validate::isLoadedObject($product)) throw new InvalidArgumentException('Unknown product');
                 if ($normalized['id_product_attribute']>0) {
