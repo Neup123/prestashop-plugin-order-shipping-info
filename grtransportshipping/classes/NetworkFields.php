@@ -6,9 +6,9 @@ require_once __DIR__ . '/NetworkSettings.php';
  */
 final class GrTransportNetworkFields
 {
-    public const ENTITIES = ['stations', 'legs', 'transfers'];
-    public const TABLES = ['stations'=>'grtrans_station', 'legs'=>'grtrans_leg', 'transfers'=>'grtrans_transfer'];
-    public const IDS = ['stations'=>'id_station', 'legs'=>'id_leg', 'transfers'=>'id_transfer'];
+    public const ENTITIES = ['stations', 'legs', 'transfers', 'branches', 'branch_stock'];
+    public const TABLES = ['stations'=>'grtrans_station', 'legs'=>'grtrans_leg', 'transfers'=>'grtrans_transfer', 'branches'=>'grtrans_branch', 'branch_stock'=>'grtrans_branch_stock'];
+    public const IDS = ['stations'=>'id_station', 'legs'=>'id_leg', 'transfers'=>'id_transfer', 'branches'=>'id_branch', 'branch_stock'=>'id_branch_stock'];
 
     public static function fields(string $entity): array
     {
@@ -36,6 +36,15 @@ final class GrTransportNetworkFields
                     'area_name'=>['text',190], 'area_lat'=>['nullable_latitude'],
                     'area_lng'=>['nullable_longitude'], 'area_radius_km'=>['range',0,GrTransportNetworkSettings::get('max_coverage_km')],
                 ];
+            case 'branches':
+                return [
+                    'name'=>['text',190], 'origin_station_id'=>['id'],
+                ];
+            case 'branch_stock':
+                return [
+                    'id_branch'=>['id'], 'id_product'=>['id'],
+                    'id_product_attribute'=>['nonnegative_int'], 'quantity'=>['nonnegative_int'],
+                ];
             case 'transfers':
                 return [
                     'from_station_id'=>['id'], 'to_station_id'=>['id'],
@@ -62,6 +71,10 @@ final class GrTransportNetworkFields
                 'lead_hours'=>0, 'preparation_hours'=>0,
                 'transit_min_hours'=>0, 'transit_max_hours'=>0,
                 'area_name'=>'', 'area_lat'=>null, 'area_lng'=>null, 'area_radius_km'=>0,
+            ];
+            case 'branches': return ['name'=>'', 'origin_station_id'=>0];
+            case 'branch_stock': return [
+                'id_branch'=>0,'id_product'=>0,'id_product_attribute'=>0,'quantity'=>0,
             ];
             case 'transfers': return [
                 'from_station_id'=>0, 'to_station_id'=>0, 'connection_type'=>'walk', 'price'=>0,
@@ -95,6 +108,12 @@ final class GrTransportNetworkFields
                 $output[$key]=$value;
             } elseif ($type==='bool') {
                 if (!in_array($value,[0,1,'0','1',false,true],true)) throw new InvalidArgumentException('Invalid ' . $key);
+                $output[$key]=(int)$value;
+            } elseif ($type==='nonnegative_int') {
+                if (!is_scalar($value) || !preg_match('/^(0|[1-9][0-9]*)$/D',(string)$value)
+                    || (float)$value>2147483647) {
+                    throw new InvalidArgumentException('Invalid nonnegative integer: '.$key);
+                }
                 $output[$key]=(int)$value;
             } elseif ($type==='id' || $type==='nullable_id') {
                 if ($type==='nullable_id' && ($value===null || $value==='' || $value==='0' || $value===0)) {
@@ -152,7 +171,9 @@ final class GrTransportNetworkFields
             } elseif ($output['area_lat']===null || $output['area_lng']===null || $output['area_radius_km']<=0) {
                 throw new InvalidArgumentException('Direct service requires area centre and coverage radius');
             }
-        } elseif ($output['from_station_id']===$output['to_station_id']) {
+        } elseif ($entity==='branches') {
+            if ($output['name']==='') throw new InvalidArgumentException('Branch name is required');
+        } elseif ($entity==='transfers' && $output['from_station_id']===$output['to_station_id']) {
             throw new InvalidArgumentException('A transfer must connect distinct stations');
         }
         return $output;
