@@ -253,6 +253,11 @@ assert.ok(kmDistance(arrow.points[1],[37,25]) < .001,
 const midpoint = [(38+37)/2,(23.7+25)/2];
 assert.ok(kmDistance(arc.points[20],midpoint) > 50,
   'Air connection is a high, symbolic curved arc, never straight across the route');
+const fixedKm = p => Math.hypot((p[0] - midpoint[0]) * 111.195,
+  (p[1] - midpoint[1]) * 111.195 * Math.cos(midpoint[0] * Math.PI / 180));
+const arcRadii = arc.points.map(fixedKm);
+assert.ok(Math.max(...arcRadii) - Math.min(...arcRadii) < 0.05,
+  'Every air-arc sample lies on one true radius: a geometric half circle');
 assert.match(arc.layer.tooltip.textContent,/symbolic flight arc; not area coverage/);
 air.calls.polygons[0].layer.events.mouseover();
 assert.ok(air.calls.polygons[0].layer.style.fillOpacity > .2);
