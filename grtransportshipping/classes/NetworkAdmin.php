@@ -107,6 +107,7 @@ final class GrTransportNetworkAdmin
             . '<link rel="stylesheet" href="' . $base . 'css/network-admin.css">'
             . '<div id="grtrans-network-map" aria-label="Transport network coverage map" role="region" data-config="'
             . self::esc($mapConfig) . '"></div>'
+            . '<div id="grtrans-zone-legend" role="list" aria-label="Coverage zone colours"></div>'
             . '<div id="grtrans-network-map-tools"><button type="button" id="grtrans-map-link" class="btn btn-default" disabled>Link selected station</button>'
             . ' <span id="grtrans-map-status" role="status">Select a station or click the map to set coordinates in the editor.</span></div>'
             . '<form method="post" action="' . $url . '#grtrans-network" id="grtrans-map-link-form" hidden>'
