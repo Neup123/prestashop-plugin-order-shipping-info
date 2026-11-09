@@ -92,3 +92,17 @@ An address with no actual directed transport path must not receive a made-up net
 If the map is unavailable, use the table forms or API. If an API request returns 403, verify the Bearer header, token scope, and whether an administrator rotated the token. If a station does not appear, check its coordinates and ring radii; if a connection is missing, inspect its references and direction.
 
 Later PRs extend these instructions with the cheapest-path checkout engine, variable tariffs, snapshots, delivery timing, data freshness and branch-aware origins. Parcel tracking/status (#74) and station contact fields (#75) remain explicitly post-first-release.
+
+## Cheapest-route quotes and simulator (#67, #77)
+
+A network quote is computed from origin hubs across explicitly configured **directed** service legs and transfer links, summing every edge's price. When several origin hubs or destination-station coverage rings overlap, the cheapest **complete** valid route wins. Direct-area couriers compete only if the address is within their delivery circle and the service can be reached from an origin hub; they never become unconfigured feeder routes. Adding a cheaper leg can change the quote without editing destination prices.
+
+**Manual flat Routes remain overrides:** an available flat matching row wins even when a network alternative is cheaper; a Suspended or ambiguous flat result cannot be bypassed through the network. When the network has no valid route, existing postcode-prefix/city matching applies as before.
+
+**Geography and address safety:** standard PrestaShop delivery addresses only have city/postcode, not guaranteed coordinates. This module intentionally does not guess coordinates or send customer addresses to an external geocoder. The network resolver operates when a trustworthy WGS84 destination coordinate is provided through an address extension or the quote-page map pin. Otherwise the existing flat Routes matching remains responsible. Invalid or distant pins are not matched to a fictional station. The customer quote page's legacy demo terminal mapping remains supported. This limits network-geography coverage for shops without a source of customer coordinates, and should be verified on the target shop before network service is enabled.
+
+**Long walk warning:** a destination inside an outer station radius but outside all inner rings shows a prominent extended pickup warning in checkout, sourced from **Configure → Extended pickup notice**. Leave the field empty for the built-in English explanation. Inner-ring quotes have no long-walk warning.
+
+**Admin quote simulator:** open **Configure → Network quote simulator**. Select a destination station to test its exact path or supply a destination postcode/city and verified latitude/longitude. Parcel weight/volume inputs are shown for preparation; tariff calculation from these fields arrives in #71. Results show the winning hub, ring, station or direct area, per-leg and per-transfer price, and total EUR. A no-path result is explicit. The simulator calls the same PHP resolver as checkout, so path costs never rely on UI-only logic.
+
+A network quote is pinned in the existing cart quote store with its selected path and handling fee. The historical full-edge snapshot and estimate-handling upgrades arrive in #72. Test customer-facing addresses with the real PrestaShop 9.2 rig, not just the pure PHP tests.
