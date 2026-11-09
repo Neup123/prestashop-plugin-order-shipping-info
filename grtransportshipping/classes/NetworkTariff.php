@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/NetworkSettings.php';
 /** Pricing and cart parcel measurements for network legs. */
 final class GrTransportNetworkTariff
 {
@@ -13,7 +14,7 @@ final class GrTransportNetworkTariff
             $quantity=max(1,(int)($item['cart_quantity'] ?? $item['quantity'] ?? 1));
             $w=$item['weight'] ?? null;
             if (!is_numeric($w) || (float)$w<=0) $parcel['missing_weight']=true;
-            else $weight+=(float)$w*$quantity;
+            else $weight+=(float)$w*$quantity*GrTransportNetworkSettings::get('weight_to_kg');
             $dimensions=[$item['width'] ?? null,$item['height'] ?? null,$item['depth'] ?? null];
             if (count(array_filter($dimensions,static function ($d) {
                 return is_numeric($d) && (float)$d>0;
@@ -22,7 +23,8 @@ final class GrTransportNetworkTariff
             } else {
                 // PrestaShop product dimensions are in shop-defined dimension units;
                 // target shop must use cm for this conversion; see operator guide.
-                $volume+=(float)$dimensions[0]*(float)$dimensions[1]*(float)$dimensions[2]*$quantity/1000000;
+                $factor=GrTransportNetworkSettings::get('dimension_to_cm');
+                $volume+=(float)$dimensions[0]*(float)$dimensions[1]*(float)$dimensions[2]*$quantity*$factor*$factor*$factor/1000000;
             }
         }
         $parcel['weight_kg']=$parcel['missing_weight'] ? null : round($weight,4);
@@ -52,8 +54,8 @@ final class GrTransportNetworkTariff
         $estimate=!empty($leg['estimate']);
         $min=round($cost,2); $max=$min;
         if ($estimate) {
-            $low=(float)($leg['estimate_low_factor'] ?? 0.9);
-            $high=(float)($leg['estimate_high_factor'] ?? 1.1);
+            $low=(float)($leg['estimate_low_factor'] ?? GrTransportNetworkSettings::get('estimate_low_factor'));
+            $high=(float)($leg['estimate_high_factor'] ?? GrTransportNetworkSettings::get('estimate_high_factor'));
             if ($cost<=0 || !is_finite($low) || !is_finite($high) || $low<0 || $high<=$low) {
                 return null;
             }
