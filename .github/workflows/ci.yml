@@ -26,4 +26,4 @@ jobs:
       - name: Validate demo seed format
         run: php tests/seed_test.php
       - name: Quote map interaction contracts
-        run: node tests/quote_map_test.mjs
+        run: node tests/quote_map_test.mjs && node tests/admin_map_test.mjs
