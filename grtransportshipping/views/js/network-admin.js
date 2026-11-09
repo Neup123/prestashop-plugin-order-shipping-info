@@ -39,9 +39,10 @@
     if (linking && chosen && Number(chosen.id_station) !== Number(station.id_station)) {
       document.getElementById('grtrans-link-from').value = chosen.id_station;
       document.getElementById('grtrans-link-to').value = station.id_station;
-      // "Nearby" is defined conservatively as overlapping inner service rings.
+      // A configurable extra gap extends the default overlapping-inner-ring rule.
       const km = distance(point(chosen), point(station));
-      const nearby = km <= Number(chosen.inner_radius_km) + Number(station.inner_radius_km);
+      const nearby = km <= Number(chosen.inner_radius_km) + Number(station.inner_radius_km)
+        + Number(data.nearbyGapKm || 0);
       document.getElementById('grtrans-link-type').value = nearby ? 'walk' : 'taxi';
       document.getElementById('grtrans-link-price').value = '0';
       linking = false;
