@@ -305,6 +305,7 @@ const routeC = station(3,'Island port',37.1,25.37);
 let roadRequests = 0;
 const routing = fixture({
   stations:[routeA,routeB,routeC],
+  cost:{1:3,2:3,3:12},
   legs:[
     {id_leg:1,from_station_id:1,to_station_id:2,mode:'bus',
       operator_label:'Road bus',price:3,bidirectional:0},
