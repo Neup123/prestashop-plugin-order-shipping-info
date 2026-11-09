@@ -8,8 +8,15 @@ final class GrTransportNetworkSimulator
     public static function simulate(array $flat,array $network,array $params,string $extendedNotice=''): array
     {
         $stationId=(int)($params['station_id'] ?? 0);
+        $parcel=[];
+        foreach (['weight'=>'weight_kg','volume'=>'volume_m3'] as $field=>$target) {
+            if (isset($params[$field]) && $params[$field]!=='' && is_numeric($params[$field])
+                && is_finite((float)$params[$field]) && (float)$params[$field]>0) {
+                $parcel[$target]=(float)$params[$field];
+            }
+        }
         if ($stationId>0) {
-            return GrTransportNetworkQuote::forStation($network,$stationId);
+            return GrTransportNetworkQuote::forStation($network,$stationId,null,$parcel);
         }
         $postcode=trim((string)($params['postcode'] ?? ''));
         $city=trim((string)($params['city'] ?? ''));
@@ -17,7 +24,7 @@ final class GrTransportNetworkSimulator
         if (isset($params['lat'],$params['lng']) && $params['lat']!=='' && $params['lng']!=='') {
             $location=GrTransportNetworkQuote::validLocation([$params['lat'],$params['lng']]);
         }
-        return GrTransportNetworkQuote::resolve($flat,$network,$postcode,$city,$location,null,$extendedNotice);
+        return GrTransportNetworkQuote::resolve($flat,$network,$postcode,$city,$location,null,$extendedNotice,$parcel);
     }
 
     public static function render($module): string
@@ -78,8 +85,13 @@ final class GrTransportNetworkSimulator
                     . $esc($result['status']) . '</div></section>';
             }
             $quote=$result['quote'];
-            $form.='<div class="alert alert-success"><strong>Quoted EUR '
-                . $esc(number_format((float)$quote['price'],2)) . '</strong>'
+            $form.='<div class="alert alert-success"><strong>'
+                . (!empty($quote['estimate'])
+                    ? 'Estimated EUR ' . $esc(number_format((float)$quote['estimate_min'],2))
+                        . '–' . $esc(number_format((float)$quote['estimate_max'],2))
+                        . ' — not charged at checkout'
+                    : 'Quoted EUR ' . $esc(number_format((float)$quote['price'],2)))
+                . '</strong>'
                 . '<p>Pickup/delivery: ' . $esc($quote['station_name']) . '</p>'
                 . '<p>Destination ring: ' . $esc($quote['ring'] ?? 'manual') . '</p>'
                 . '<p>Origin hub: ' . $esc($quote['origin_name'] ?? '') . '</p></div>';
@@ -99,7 +111,7 @@ final class GrTransportNetworkSimulator
             }
             $form.='<p>Parcel measurements entered: ' . $esc($data['weight'] ?: 'not specified')
                 . ' kg, ' . $esc($data['volume'] ?: 'not specified') . ' m³. '
-                . 'Flat tariffs do not depend on measurements; tariff modes arrive in #71.</p>';
+                . 'Per-weight and per-volume tariffs use these values; missing measurements trigger the configured flat fallback.</p>';
         } catch (Throwable $e) {
             $form.='<div class="alert alert-danger">Simulation failed: '
                 . $esc($e->getMessage()) . '</div>';
