@@ -2,6 +2,7 @@
 require_once __DIR__ . '/QuoteEngine.php';
 require_once __DIR__ . '/NetworkGraph.php';
 require_once __DIR__ . '/NetworkTariff.php';
+require_once __DIR__ . '/NetworkTiming.php';
 
 /**
  * Single cheapest-total resolver for checkout, customer quote page and simulator.
@@ -50,7 +51,8 @@ final class GrTransportNetworkQuote
                 'mode'=>(string)$service['mode'],'operator'=>(string)$service['operator_label'],
                 'price'=>(float)$service['price'],'direct_area'=>true,
                 'area_name'=>(string)$service['area_name']];
-            foreach (['tariff_min','tariff_max','tariff_estimate','tariff_missing_data','tariff_basis'] as $field) {
+            foreach (['tariff_min','tariff_max','tariff_estimate','tariff_missing_data','tariff_basis',
+                'lead_hours','preparation_hours','transit_min_hours','transit_max_hours'] as $field) {
                 if (isset($service[$field])) $edge[$field]=$service[$field];
             }
             $prefix['edges'][]=$edge;
@@ -95,6 +97,7 @@ final class GrTransportNetworkQuote
         int $pickup,string $notice,string $ring,?int $stationId,int $priority,array $parcel=[]): array
     {
         $tariff=GrTransportNetworkTariff::totals($path['edges']);
+        $window=GrTransportNetworkTiming::window($path['edges']);
         $quote=[
             'mode'=>$mode,'origin_name'=>$originName,'station_name'=>$stationName,
             'price'=>$tariff['estimate'] ? 0.0 : round((float)$path['total'],2),
@@ -110,6 +113,7 @@ final class GrTransportNetworkQuote
             'origin_hub_id'=>(int)$path['origin_hub_id'],
             'network_path'=>$path,
             'source'=>'network',
+            'delivery_window_hours'=>$window,
         ];
         return ['priority'=>$priority,'comparison_cost'=>round((float)$path['total'],2),'quote'=>$quote];
     }
