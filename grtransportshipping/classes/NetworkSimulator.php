@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/NetworkQuote.php';
 require_once __DIR__ . '/NetworkRepository.php';
+require_once __DIR__ . '/BranchAvailability.php';
 
 /** Back-office test bench using the exact checkout resolver, not a second algorithm. */
 final class GrTransportNetworkSimulator
@@ -8,15 +9,25 @@ final class GrTransportNetworkSimulator
     public static function simulate(array $flat,array $network,array $params,string $extendedNotice=''): array
     {
         $stationId=(int)($params['station_id'] ?? 0);
-        $parcel=[];
-        foreach (['weight'=>'weight_kg','volume'=>'volume_m3'] as $field=>$target) {
+        $cart=$params['cart'] ?? null;
+        $origins=null;
+        $byOrigin=[];
+        if (!empty($network['branches'])) {
+            $eligible=GrTransportBranchAvailability::eligible(
+                $cart,$network['branches'],$network['branch_stock'] ?? []
+            );
+            $origins=$eligible['origin_ids'];
+            $byOrigin=$eligible['by_origin'];
+        }
+        $parcel=is_object($cart) ? GrTransportNetworkTariff::cartMeasurements($cart) : [];
+        foreach (is_object($cart) ? [] : ['weight'=>'weight_kg','volume'=>'volume_m3'] as $field=>$target) {
             if (isset($params[$field]) && $params[$field]!=='' && is_numeric($params[$field])
                 && is_finite((float)$params[$field]) && (float)$params[$field]>0) {
                 $parcel[$target]=(float)$params[$field];
             }
         }
         if ($stationId>0) {
-            return GrTransportNetworkQuote::forStation($network,$stationId,null,$parcel);
+            return GrTransportNetworkQuote::forStation($network,$stationId,$origins,$parcel,$byOrigin);
         }
         $postcode=trim((string)($params['postcode'] ?? ''));
         $city=trim((string)($params['city'] ?? ''));
@@ -24,7 +35,7 @@ final class GrTransportNetworkSimulator
         if (isset($params['lat'],$params['lng']) && $params['lat']!=='' && $params['lng']!=='') {
             $location=GrTransportNetworkQuote::validLocation([$params['lat'],$params['lng']]);
         }
-        return GrTransportNetworkQuote::resolve($flat,$network,$postcode,$city,$location,null,$extendedNotice,$parcel);
+        return GrTransportNetworkQuote::resolve($flat,$network,$postcode,$city,$location,$origins,$extendedNotice,$parcel,$byOrigin);
     }
 
     public static function render($module): string
@@ -55,7 +66,8 @@ final class GrTransportNetworkSimulator
         $form.='</select></div>';
         foreach (['postcode'=>'Postcode','city'=>'City','lat'=>'Latitude (if known)',
             'lng'=>'Longitude (if known)','weight'=>'Parcel weight (kg)',
-            'volume'=>'Parcel volume (m³)'] as $key=>$label) {
+            'volume'=>'Parcel volume (m³)',
+            'cart_id'=>'Existing cart ID (for branch stock availability)'] as $key=>$label) {
             $value=$_GET[$key] ?? '';
             if (!is_scalar($value)) $value='';
             $form.='<div class="form-group"><label for="grtrans-sim-' . $key . '">'
@@ -66,7 +78,7 @@ final class GrTransportNetworkSimulator
         $form.='<button class="btn btn-primary">Simulate quote</button></form>';
         if (!isset($_GET['grtrans_simulate'])) return $form . '</section>';
         $data=[];
-        foreach (['station_id','postcode','city','lat','lng','weight','volume'] as $key) {
+        foreach (['station_id','postcode','city','lat','lng','weight','volume','cart_id'] as $key) {
             $data[$key]=isset($_GET[$key]) && is_scalar($_GET[$key]) ? (string)$_GET[$key] : '';
         }
         foreach (['weight','volume'] as $value) {
@@ -79,6 +91,17 @@ final class GrTransportNetworkSimulator
             $flat=Db::getInstance()->executeS('SELECT * FROM `' . _DB_PREFIX_ . 'grtrans_route`') ?: [];
             $network=GrTransportNetworkRepository::snapshot();
             $notice=(string)Configuration::get('GRTRANS_EXTENDED_NOTICE');
+            if ($data['cart_id']!=='') {
+                if (!ctype_digit($data['cart_id']) || (int)$data['cart_id']<=0) {
+                    throw new InvalidArgumentException('Enter a valid cart ID');
+                }
+                $cart=new Cart((int)$data['cart_id']);
+                if (!Validate::isLoadedObject($cart)
+                    || (int)($cart->id_shop ?? 0)!==GrTransportNetworkRepository::shopId()) {
+                    throw new InvalidArgumentException('Cart does not belong to this shop');
+                }
+                $data['cart']=$cart;
+            }
             $result=self::simulate($flat,$network,$data,$notice);
             if ($result['status']!=='quoted' || !$result['quote']) {
                 return $form . '<div class="alert alert-warning">No quote: '
@@ -94,7 +117,10 @@ final class GrTransportNetworkSimulator
                 . '</strong>'
                 . '<p>Pickup/delivery: ' . $esc($quote['station_name']) . '</p>'
                 . '<p>Destination ring: ' . $esc($quote['ring'] ?? 'manual') . '</p>'
-                . '<p>Origin hub: ' . $esc($quote['origin_name'] ?? '') . '</p></div>';
+                . '<p>Origin hub: ' . $esc($quote['origin_name'] ?? '') . '</p>'
+                . (!empty($quote['branch_id']) ? '<p>Dispatch branch: '
+                    . $esc($quote['branch_name']) . ' (#' . (int)$quote['branch_id'] . ')</p>' : '')
+                . '</div>';
             $path=$quote['network_path']['edges'] ?? [];
             if ($path) {
                 $form.='<table class="table"><thead><tr><th>Step</th><th>Mode / service</th><th>From → To</th><th>EUR</th></tr></thead><tbody>';
@@ -116,7 +142,7 @@ final class GrTransportNetworkSimulator
                     . (!empty($window['transfer_time_unknown']) ? ' (transfer travel time not included)' : '')
                     . '</p>';
             }
-            $form.='<p>Parcel measurements entered: ' . $esc($data['weight'] ?: 'not specified')
+            $form.='<p>Parcel measurements entered: ' . $esc(isset($data['cart']) ? 'from cart' : ($data['weight'] ?: 'not specified'))
                 . ' kg, ' . $esc($data['volume'] ?: 'not specified') . ' m³. '
                 . 'Per-weight and per-volume tariffs use these values; missing measurements trigger the configured flat fallback.</p>';
         } catch (Throwable $e) {
