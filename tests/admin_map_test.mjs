@@ -241,11 +241,63 @@ vessels[0].layer.events.mouseout();
 const dynamic=fixture({stations:[a,station(2,'Island',38.04,23.76)],
   legs:[{id_leg:12,from_station_id:1,to_station_id:null,mode:'other',price:8,
     area_lat:38.02,area_lng:23.73,area_radius_km:25,area_name:'Courier sea'}]});
-assert.equal(dynamic.calls.polygons.length,5);
-assert.equal(dynamic.calls.polygons[0].options.fillOpacity,.24);
-assert.equal(dynamic.calls.lines.length,0,
-  'Panel H: area sea and station islands have NO sewn traversal or false route');
-console.log('Panels D/E/H: directed air, individual straight ferries and dynamic islands passed');
+assert.equal(dynamic.calls.polygons.length,5,
+  'Panel H: one continuous dynamic sea, then two island outer/inner washes');
+const seaPatch=dynamic.calls.polygons[0];
+assert.equal(seaPatch.options.fillOpacity,.24);
+assert.equal(seaPatch.options.fill,true);
+assert.equal(seaPatch.options.pane,'grtrans-coverage-patches');
+assert.ok(seaPatch.points.length>100 && !Array.isArray(seaPatch.points[0][0]),
+  'Sea is ONE uncut outer polygon, not a punched-out ring or polygon with holes');
+assert.ok(dynamic.calls.polygons.slice(1).every(p=>p.options.fillOpacity<1),
+  'Island fills are translucent, so the still-present sea colour shows within them');
+assert.ok(polygonContains([38,23.7],seaPatch.points) &&
+  polygonContains([38.04,23.76],seaPatch.points),
+  'Sea covers BOTH the linked and unlinked islands — no subtractive clipping');
+const fullRing=dynamic.calls.lines.filter(l=>
+  l.options.className==='grtrans-linked-island-perimeter');
+const ringTarget=dynamic.calls.lines.filter(l=>
+  l.options.className==='grtrans-linked-island-perimeter-hover');
+assert.equal(fullRing.length,1,
+  'Exactly ONE linked station island gets a full-circumference stitch');
+assert.equal(ringTarget.length,1,'Ring retains one separate hover/tooltip target');
+assert.ok(fullRing[0].points.length>200,
+  'Linked stitch traces the WHOLE island perimeter, not one small lens seam');
+assert.deepEqual(Array.from(fullRing[0].points[0]),
+  Array.from(fullRing[0].points.at(-1)),
+  'Zigzag seam is a closed full-circumference ring');
+assert.ok(fullRing[0].points.slice(0,-1).every(p=>
+  Math.abs(kmDistance(p,[38,23.7])-10)<.19),
+  'Entire ring hugs the linked island boundary');
+assert.ok(fullRing[0].points.some(p=>p[0]<37.92) &&
+  fullRing[0].points.some(p=>p[0]>38.08),
+  'The ring wraps north and south of the island, not one touch point');
+assert.equal(fullRing[0].options.weight,1.25);
+assert.equal(fullRing[0].options.opacity,.55);
+assert.equal(fullRing[0].options.dashArray,'2 5');
+assert.ok(!dynamic.calls.lines.some(l=>l.options.className==='grtrans-zigzag-stitch'),
+  'Contained linked island is NOT also marked by the old short point stitch');
+assert.ok(!dynamic.calls.lines.some(l=>l.options.className==='grtrans-land-road' ||
+  l.options.className==='grtrans-land-gradient'),
+  'No road/ribbon crosses over the dynamic sea');
+assert.ok(ringTarget[0].layer.tooltip.textContent.includes('entire linked island boundary'));
+ringTarget[0].layer.events.mouseover();
+assert.ok(dynamic.calls.polygons[0].layer.style.fillOpacity>.24 &&
+  dynamic.calls.polygons[1].layer.style.fillOpacity>.2,
+  'Ring hover highlights the dynamic sea and linked island');
+assert.equal(dynamic.calls.polygons[3].layer.style.fillOpacity,.2,
+  'Unlinked island is not accidentally linked or highlighted');
+ringTarget[0].layer.events.mouseout();
+assert.equal(dynamic.calls.polygons[3].layer.style.fillOpacity,.2);
+dynamic.elements['grtrans-map-preview'].events.click();
+assert.ok(dynamic.calls.lines.every(l=>l.layer.removed),
+  'Explicit route preview hides full-perimeter stitch without hiding the sea');
+assert.ok(dynamic.calls.polygons.every(p=>!p.layer.removed),
+  'Sea and both islands remain filled while the preview operates');
+dynamic.elements['grtrans-map-preview-clear'].events.click();
+assert.ok(dynamic.calls.lines.every(l=>!l.layer.removed),
+  'Clearing preview restores the complete zigzag ring');
+console.log('Panels D/E/H: air, distinct ferry vessels, full linked-island seam and uncut sea passed');
 
 const routeA = station(1,'Road start',38,23.7);
 const routeB = station(2,'Ferry port',38.05,23.75);
