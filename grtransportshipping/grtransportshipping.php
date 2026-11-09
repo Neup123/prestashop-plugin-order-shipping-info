@@ -121,7 +121,7 @@ class Grtransportshipping extends CarrierModule
             `route_snapshot` LONGTEXT NULL,
             `estimate_min` DECIMAL(12,2) NULL,
             `estimate_max` DECIMAL(12,2) NULL,
-            `estimate_state` VARCHAR(16) NOT NULL DEFAULT 'not_estimate',
+            `estimate_state` VARCHAR(16) NOT NULL DEFAULT \'not_estimate\',
             `actual_shipping_charge` DECIMAL(12,2) NULL,
             `external_receipt` VARCHAR(190) NULL,
             `settled_at` DATETIME NULL
