@@ -14,3 +14,8 @@
 #grtrans-zone-legend {display:flex;flex-wrap:wrap;gap:8px 16px;margin:6px 0 12px}
 .grtrans-zone-key {display:inline-flex;gap:6px;align-items:center;font-size:12px}
 .grtrans-zone-swatch {display:inline-block;width:14px;height:14px;border:1px solid #6d7780;border-radius:3px;flex:none}
+
+#grtrans-preview-status {margin:4px 0 12px;color:#344458;min-height:18px}
+#grtrans-network-map .grtrans-origin-marker {filter:hue-rotate(175deg) saturate(2.2) drop-shadow(0 0 3px #f2a900)}
+#grtrans-network-map .grtrans-preview-pin {filter:hue-rotate(90deg) saturate(2)}
+#grtrans-network-map-tools {flex-wrap:wrap}
