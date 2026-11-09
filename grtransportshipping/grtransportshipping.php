@@ -11,6 +11,7 @@ require_once __DIR__ . '/classes/RouteRepository.php';
 require_once __DIR__ . '/classes/NetworkAdmin.php';
 require_once __DIR__ . '/classes/NetworkQuote.php';
 require_once __DIR__ . '/classes/NetworkSimulator.php';
+require_once __DIR__ . '/classes/EstimateSettlement.php';
 
 /**
  * Athens-origin public transport parcel quotes. Prices in EUR.
@@ -200,8 +201,31 @@ class Grtransportshipping extends CarrierModule
                 . '<p>Repair is possible only from the original stored cart quote; do not use a current route price.</p>'
                 . $repairForm . '</div>';
         }
+        $original=GrTransportOrderSnapshot::originalQuote($info);
+        $details=$original ? array_replace($info,$original) : $info;
+        $settlement='';
+        if (($info['estimate_state'] ?? '')===GrTransportEstimateSettlement::PENDING) {
+            $settlement='<div class="alert alert-warning"><strong>Final freight is pending, not charged at checkout.</strong>'
+                . '<p>Collect the customer-approved freight amount through a separate supported payment method. '
+                . 'Only after the payment processor confirms success, record its receipt below. '
+                . 'This shipping module does not itself capture funds.</p></div>'
+                . '<form method="post" action="' . $this->escape($url) . '">'
+                . '<input type="hidden" name="token" value="' . $this->escape(Tools::getAdminTokenLite('AdminModules')) . '">'
+                . '<label>Actual freight paid (EUR) <input type="number" min="0.01" step="0.01" name="grtrans_actual_freight" required></label>'
+                . '<label>External payment transaction/receipt ID <input type="text" name="grtrans_external_receipt" maxlength="190" required></label>'
+                . '<label><input type="checkbox" name="grtrans_customer_approved" value="1" required>'
+                . ' Customer approved the final freight price and external payment was confirmed</label>'
+                . '<button type="submit" class="btn btn-warning" name="grtrans_confirm_estimate" value="'
+                . $id . '">Record confirmed external freight receipt</button></form>';
+        } elseif (($info['estimate_state'] ?? '')===GrTransportEstimateSettlement::SETTLED) {
+            $settlement='<div class="alert alert-success">External freight receipt confirmed: EUR '
+                . $this->escape(number_format((float)$info['actual_shipping_charge'],2))
+                . ' · reference ' . $this->escape($info['external_receipt'] ?? '') . '</div>';
+        }
         return '<section class="card"><div class="card-body"><h3>Public transport shipping</h3>'
-            . $this->renderNotice($info, 'admin') . $repairForm . '</div></section>';
+            . $this->renderNotice($details, 'admin')
+            . $this->renderNetworkPath($original)
+            . $settlement . $repairForm . '</div></section>';
     }
 
     public function hookDisplayOrderDetail($params)
@@ -227,7 +251,31 @@ class Grtransportshipping extends CarrierModule
                 ? '<div class="alert alert-danger">Transport pickup details are temporarily unavailable. Please contact the merchant before collection.</div>'
                 : '';
         }
-        return $this->renderNotice($info, 'order');
+        $original=GrTransportOrderSnapshot::originalQuote($info);
+        $details=$original ? array_replace($info,$original) : $info;
+        return $this->renderNotice($details, 'order') . $this->renderNetworkPath($original)
+            . (($info['estimate_state'] ?? '')===GrTransportEstimateSettlement::PENDING
+                ? '<p>Freight payment is pending separate confirmation; no estimated freight was charged at checkout.</p>'
+                : '');
+    }
+
+    /** Render the ORIGINAL pinned leg/transfer breakdown, not today's editable network. */
+    private function renderNetworkPath(?array $quote): string
+    {
+        $edges=$quote['network_path']['edges'] ?? [];
+        if (!is_array($edges) || !$edges) return '';
+        $out='<section class="grtrans-dispatch-path"><h4>Transport journey at order time</h4><ol>';
+        foreach ($edges as $edge) {
+            if (!is_array($edge)) continue;
+            $description=(string)($edge['kind'] ?? 'leg') . ': '
+                . (string)($edge['mode'] ?? '') . ' '
+                . (string)($edge['operator'] ?? '')
+                . ' · ' . (string)($edge['from'] ?? '')
+                . ' → ' . (string)($edge['to'] ?? $edge['area_name'] ?? 'address')
+                . ' · EUR ' . number_format((float)($edge['price'] ?? 0),2);
+            $out.='<li>' . $this->escape($description) . '</li>';
+        }
+        return $out . '</ol></section>';
     }
 
     /**
@@ -454,7 +502,8 @@ class Grtransportshipping extends CarrierModule
         $saveError = '';
         $saveAttempt = Tools::isSubmit('grtrans_save');
         if (Tools::isSubmit('grtrans_save') || Tools::isSubmit('grtrans_delete')
-            || Tools::isSubmit('grtrans_repair_order') || Tools::isSubmit('grtrans_repair_carrier')) {
+            || Tools::isSubmit('grtrans_repair_order') || Tools::isSubmit('grtrans_repair_carrier')
+            || Tools::isSubmit('grtrans_confirm_estimate')) {
             // PrestaShop 9 uses Symfony masked CSRF tokens: two valid tokens
             // need not have identical byte strings. Ask the core validator
             // rather than comparing against a newly generated token.
@@ -470,6 +519,19 @@ class Grtransportshipping extends CarrierModule
                         throw new RuntimeException('Could not recover module carrier identity or delivery range');
                     }
                     $out .= $this->displayConfirmation($this->l('Transport carrier restored and assigned to this module.'));
+                } elseif (Tools::isSubmit('grtrans_confirm_estimate')) {
+                    if (!Tools::isSubmit('grtrans_customer_approved')) {
+                        throw new InvalidArgumentException('Customer approval of final freight is required.');
+                    }
+                    $idOrder=(int)Tools::getValue('grtrans_confirm_estimate');
+                    $amount=Tools::getValue('grtrans_actual_freight');
+                    $reference=Tools::getValue('grtrans_external_receipt');
+                    if (!is_scalar($amount) || !is_numeric($amount) || !is_string($reference)) {
+                        throw new InvalidArgumentException('Valid final price and external payment receipt are required.');
+                    }
+                    GrTransportEstimateSettlement::recordExternalReceipt($idOrder,(float)$amount,
+                        $reference,(int)($this->context->employee->id ?? 0));
+                    $out.=$this->displayConfirmation($this->l('External freight payment receipt recorded. No payment was captured by this shipping module.'));
                 } elseif (Tools::isSubmit('grtrans_repair_order')) {
                     $idOrder = (int) Tools::getValue('grtrans_repair_order');
                     GrTransportOrderSnapshot::repair($idOrder);
