@@ -82,7 +82,7 @@ testAssert(GrTransportOrderCharge::classify(10.0,$q['quote'],false)===null,
     'Unexpected estimated charge at checkout is rejected');
 
 $original=['network_path'=>$q['quote']['network_path'],'tariff_inputs'=>['weight_kg'=>3]];
-$stored=['route_snapshot'=>json_encode($original,JSON_UNESCAPED_UNICODE)];
+$stored=['route_snapshot'=>json_encode($original,JSON_UNESCAPED_UNICODE|JSON_PRESERVE_ZERO_FRACTION)];
 testAssert(GrTransportOrderSnapshot::originalQuote($stored)===$original,
     'Frozen dispatch JSON round-trips without network re-query');
 $receipt=GrTransportEstimateSettlement::validate(11.0,'PAY-2026-001',7,8,12);
