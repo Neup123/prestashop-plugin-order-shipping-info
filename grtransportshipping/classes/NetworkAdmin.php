@@ -63,7 +63,9 @@ final class GrTransportNetworkAdmin
                     'price'=>$_POST['price'] ?? 0,
                 ]);
             } else throw new InvalidArgumentException('Unknown network action');
-            return '<div class="alert alert-success" role="status">Network record updated.</div>';
+            $message=($action==='link' || ($action==='save' && $id===0))
+                ? 'Network record created.' : 'Network record updated.';
+            return '<div class="alert alert-success" role="status">' . $message . '</div>';
         } catch (Throwable $error) {
             return '<div class="alert alert-danger" role="alert">Network action failed: '
                 . self::esc($error->getMessage()) . '</div>';
@@ -94,7 +96,8 @@ final class GrTransportNetworkAdmin
             if (is_finite($amount)) $cost[(string)$id]=round($amount,2);
         }
         $mapData=array_intersect_key($data,array_flip(['stations','legs','transfers']));
-        $mapConfig=json_encode($mapData+['cost'=>$cost,'nearbyGapKm'=>GrTransportNetworkSettings::get('nearby_gap_km')],JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_THROW_ON_ERROR);
+        $mapConfig=json_encode($mapData+['cost'=>$cost,'nearbyGapKm'=>GrTransportNetworkSettings::get('nearby_gap_km'),
+            'leafletImagePath'=>_MODULE_DIR_ . $module->name . '/views/vendor/leaflet/images/'],JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_THROW_ON_ERROR);
         $base=self::esc((_MODULE_DIR_ . $module->name . '/')) . 'views/';
         $out='<section class="panel" id="grtrans-network">'
             . '<h3>Transport network · coverage map</h3>'

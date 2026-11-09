@@ -2,6 +2,7 @@
 require_once __DIR__ . '/bootstrap.php';
 define('_PS_VERSION_', '9.0.0');
 define('_DB_PREFIX_', 'ps_');
+define('_MODULE_DIR_', '/modules/');
 // Local contracts exercise the real module entry points and front controller.
 // These platform doubles do not pretend to be a running PrestaShop installation.
 class CarrierModule
@@ -106,6 +107,9 @@ foreach ([['84300', 'Νάξος'], ['26221', 'Πάτρα'], ['99999', 'Unknown']
         testAssert(str_contains($vars['quote_notice'], 'STATION PICKUP ONLY'), 'Same pickup warning');
         testAssert(str_contains($vars['quote_notice'], 'DEMO ESTIMATE'), 'Same demo warning');
         testAssert(count(json_decode($vars['quote_map'], true)['stations']) === 2, 'Map has both terminals');
+        testAssert(json_decode($vars['quote_map'], true)['leafletImagePath']
+            === '/modules/grtransportshipping/views/vendor/leaflet/images/',
+            'Marker icons use the bundled module path, not the quote controller path');
     }
 }
 Db::$routes = [array_replace(Db::$routes[3], ['postal_prefix' => '', 'city' => 'Χαϊδάρι', 'pickup_only' => 0, 'demo' => 0])];

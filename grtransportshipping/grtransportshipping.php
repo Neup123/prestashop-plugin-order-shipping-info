@@ -555,7 +555,7 @@ class Grtransportshipping extends CarrierModule
         $saveAttempt = Tools::isSubmit('grtrans_save');
         if (Tools::isSubmit('grtrans_save') || Tools::isSubmit('grtrans_delete')
             || Tools::isSubmit('grtrans_repair_order') || Tools::isSubmit('grtrans_repair_carrier')
-            || Tools::isSubmit('grtrans_confirm_estimate')) {
+            || Tools::isSubmit('grtrans_confirm_estimate') || Tools::isSubmit('grtrans_simulate')) {
             // PrestaShop 9 uses Symfony masked CSRF tokens: two valid tokens
             // need not have identical byte strings. Ask the core validator
             // rather than comparing against a newly generated token.
@@ -566,7 +566,9 @@ class Grtransportshipping extends CarrierModule
                 return $this->displayError($this->l('Invalid admin token.'));
             }
             try {
-                if (Tools::isSubmit('grtrans_repair_carrier')) {
+                if (Tools::isSubmit('grtrans_simulate')) {
+                    // Read-only POST: the simulator renderer shows the result below.
+                } elseif (Tools::isSubmit('grtrans_repair_carrier')) {
                     if (!GrTransportCarrierLifecycle::ensure($this)) {
                         throw new RuntimeException('Could not recover module carrier identity or delivery range');
                     }

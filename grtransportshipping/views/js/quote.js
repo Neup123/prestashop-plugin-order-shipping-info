@@ -5,6 +5,9 @@
   const element = document.getElementById('grtransport-map');
   if (!option || !element || !window.L) return;
   const config = JSON.parse(element.dataset.config);
+  // PrestaShop serves bundled CSS through its asset pipeline, so Leaflet's
+  // automatic image-path detection cannot resolve the module's icon files.
+  L.Icon.Default.imagePath = config.leafletImagePath;
   const panel = document.getElementById('grtransport-map-panel');
   let map;
   let pin;

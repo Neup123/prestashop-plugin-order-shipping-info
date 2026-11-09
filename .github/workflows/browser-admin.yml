@@ -61,6 +61,12 @@ jobs:
           TEST_ADMIN_PASSWORD: OnlyForEphemeralCI123!
         run: |
           ADMIN_URL="$(cat /tmp/grtrans-admin-url)" TEST_ORDER_ID="$(cat /tmp/grtrans-browser-order-id)" node tests/browser-admin.mjs
+      - name: Verify simulator POST, network feedback and Leaflet PNGs in real browser
+        env:
+          TEST_ADMIN_EMAIL: ci@example.invalid
+          TEST_ADMIN_PASSWORD: OnlyForEphemeralCI123!
+        run: |
+          ADMIN_URL="$(cat /tmp/grtrans-admin-url)" node tests/browser-network-fixes.mjs
       - name: Prepare disposable Greek checkout
         env:
           TEST_CUSTOMER_PASSWORD: BrowserOnlyCiPassword123

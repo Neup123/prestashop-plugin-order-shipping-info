@@ -9,6 +9,8 @@
     return;
   }
   const data = JSON.parse(root.dataset.config);
+  // Use the bundled module assets, not paths relative to the BO controller.
+  L.Icon.Default.imagePath = data.leafletImagePath;
   const stations = new Map(data.stations.map(s => [Number(s.id_station), s]));
   const baseColor = { bus: '#2473b6', ferry: '#168ca2', airport: '#845bb7',
                       flight: '#845bb7', other: '#33875a' };

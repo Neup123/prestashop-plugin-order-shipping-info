@@ -49,15 +49,14 @@ final class GrTransportNetworkSimulator
         $form='<section class="panel" id="grtrans-simulator"><h3>Network quote simulator</h3>'
             . '<p>Calculate the same eligible path as checkout. Select a station directly or supply a postcode/city '
             . 'and confirmed destination coordinates. A postcode alone is not geocoded by this module.</p>'
-            . '<form method="get" action="' . $esc($url) . '#grtrans-simulator">'
-            . '<input type="hidden" name="configure" value="grtransportshipping">'
-            . '<input type="hidden" name="module_name" value="grtransportshipping">'
+            . '<form method="post" action="' . $esc($url) . '#grtrans-simulator">'
+            . '<input type="hidden" name="token" value="' . $esc(Tools::getAdminTokenLite('AdminModules')) . '">'
             . '<input type="hidden" name="grtrans_simulate" value="1">'
             . '<div class="form-group"><label for="grtrans-sim-station">Destination station (optional)</label>'
             . '<select name="station_id" class="form-control" id="grtrans-sim-station">'
             . '<option value="0">Resolve destination from address</option>';
         $stations=GrTransportNetworkRepository::all('stations');
-        $selected=(int)(isset($_GET['station_id']) && is_scalar($_GET['station_id']) ? $_GET['station_id'] : 0);
+        $selected=(int)(isset($_POST['station_id']) && is_scalar($_POST['station_id']) ? $_POST['station_id'] : 0);
         foreach ($stations as $station) {
             $id=(int)$station['id_station'];
             $form.='<option value="' . $id . '"' . ($selected===$id ? ' selected' : '') . '>'
@@ -68,7 +67,7 @@ final class GrTransportNetworkSimulator
             'lng'=>'Longitude (if known)','weight'=>'Parcel weight (kg)',
             'volume'=>'Parcel volume (m³)',
             'cart_id'=>'Existing cart ID (for branch stock availability)'] as $key=>$label) {
-            $value=$_GET[$key] ?? '';
+            $value=$_POST[$key] ?? '';
             if (!is_scalar($value)) $value='';
             $form.='<div class="form-group"><label for="grtrans-sim-' . $key . '">'
                 . $esc($label) . '</label><input class="form-control" id="grtrans-sim-'
@@ -76,10 +75,10 @@ final class GrTransportNetworkSimulator
                 . '" maxlength="128"></div>';
         }
         $form.='<button class="btn btn-primary">Simulate quote</button></form>';
-        if (!isset($_GET['grtrans_simulate'])) return $form . '</section>';
+        if (!isset($_POST['grtrans_simulate'])) return $form . '</section>';
         $data=[];
         foreach (['station_id','postcode','city','lat','lng','weight','volume','cart_id'] as $key) {
-            $data[$key]=isset($_GET[$key]) && is_scalar($_GET[$key]) ? (string)$_GET[$key] : '';
+            $data[$key]=isset($_POST[$key]) && is_scalar($_POST[$key]) ? (string)$_POST[$key] : '';
         }
         foreach (['weight','volume'] as $value) {
             if ($data[$value]!=='' && (!is_numeric($data[$value]) || (float)$data[$value]<0

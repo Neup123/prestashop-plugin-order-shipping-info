@@ -38,6 +38,7 @@ class GrtransportshippingQuoteModuleFrontController extends ModuleFrontControlle
             'zoomOut' => $this->module->l('Zoom out', 'quote'),
             'marker' => $this->module->l('Destination pin', 'quote'),
             'attribution' => $this->module->l('© OpenStreetMap contributors', 'quote'),
+            'leafletImagePath' => _MODULE_DIR_ . $this->module->name . '/views/vendor/leaflet/images/',
         ];
         $station = $result['station'] ?? null;
         if ($station) {
