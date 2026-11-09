@@ -9,6 +9,8 @@ require_once __DIR__ . '/classes/OrderCharge.php';
 require_once __DIR__ . '/classes/CarrierLifecycle.php';
 require_once __DIR__ . '/classes/RouteRepository.php';
 require_once __DIR__ . '/classes/NetworkAdmin.php';
+require_once __DIR__ . '/classes/NetworkQuote.php';
+require_once __DIR__ . '/classes/NetworkSimulator.php';
 
 /**
  * Athens-origin public transport parcel quotes. Prices in EUR.
@@ -45,7 +47,7 @@ class Grtransportshipping extends CarrierModule
     {
         $this->name = 'grtransportshipping';
         $this->tab = 'shipping_logistics';
-        $this->version = '0.6.0';
+        $this->version = '0.6.1';
         $this->author = 'Neup123';
         $this->need_instance = 0;
         $this->bootstrap = true;
@@ -239,6 +241,9 @@ class Grtransportshipping extends CarrierModule
                 : '')
             . '<p>' . $this->escape($this->l(self::NOTICE_TEXT['location']))
                 . $this->escape($row['station_name'] ?? '') . '</p>'
+            . (!empty($row['extended'])
+                ? '<strong>' . $this->escape($this->l('EXTENDED PICKUP AREA — LONG WALK')) . '</strong>'
+                : '')
             . '<p>' . $this->escape($row['notice'] ?? '') . '</p>'
             . (!empty($row['demo'])
                 ? '<strong>' . $this->escape($this->l(self::NOTICE_TEXT['demo'])) . '</strong>'
@@ -277,8 +282,10 @@ class Grtransportshipping extends CarrierModule
         if (!Validate::isLoadedObject($address)) {
             return ['status' => 'invalid_address', 'quote' => null];
         }
+        $location = GrTransportNetworkQuote::addressLocation($address);
         $fingerprint = hash('sha256', (int) $address->id_country . ':'
-            . trim((string) $address->postcode) . ':' . trim((string) $address->city));
+            . trim((string) $address->postcode) . ':' . trim((string) $address->city)
+            . ':' . ($location === null ? '' : implode(':', $location)));
         $key = $cartId . ':' . $addressId . ':' . $fingerprint . ':' . ($cartId ? '' : spl_object_id($cart));
         if (isset($this->requestQuotes[$key])) {
             return $this->requestQuotes[$key];
@@ -295,7 +302,10 @@ class Grtransportshipping extends CarrierModule
         if (!is_array($routes)) {
             throw new RuntimeException('Transport route lookup failed');
         }
-        $result = GrTransportQuoteEngine::resolve($routes, (string) $address->postcode, (string) $address->city);
+        $result = GrTransportNetworkQuote::resolve($routes,
+            $location === null ? [] : GrTransportNetworkRepository::snapshot(),
+            (string) $address->postcode, (string) $address->city, $location,
+            null, (string) Configuration::get('GRTRANS_EXTENDED_NOTICE'));
         if ($result['status'] === 'quoted') {
             // A CarrierModule overrides PrestaShop's precomputed shipping_cost;
             // persist the eligible shop handling fee with the quote so charge,
@@ -380,6 +390,17 @@ class Grtransportshipping extends CarrierModule
         }
         $result = $pin === null ? GrTransportQuoteCheck::text($routes, $input)
             : GrTransportQuoteCheck::pin($routes, $pin[0] ?? null, $pin[1] ?? null);
+        // Resolve newly configured network stations/areas from an actual
+        // map point, while preserving any matching legacy/manual quote.
+        if ($pin !== null && $result['status'] !== 'quoted'
+            && !in_array($result['status'], ['ambiguous', 'suspended'], true)) {
+            $location = GrTransportNetworkQuote::validLocation($pin);
+            if ($location !== null) {
+                $network = GrTransportNetworkQuote::resolve([], GrTransportNetworkRepository::snapshot(),
+                    '', '', $location, null, (string) Configuration::get('GRTRANS_EXTENDED_NOTICE'));
+                if ($network['status'] === 'quoted') $result = $network;
+            }
+        }
         if ($result['quote']) {
             $result['quote']['handling_fee'] = GrTransportOrderCharge::configuredHandlingFee(
                 $carrierId, (int) $this->context->currency->id
@@ -645,7 +666,7 @@ class Grtransportshipping extends CarrierModule
         }
         $out .= '<button type="submit" name="grtrans_save" value="1" class="btn btn-primary">'
             . $this->escape($editing ? $this->l('Save route changes') : $this->l('Add route')) . '</button></form></section>';
-        return $out . GrTransportNetworkAdmin::render($this);
+        return $out . GrTransportNetworkAdmin::render($this) . GrTransportNetworkSimulator::render($this);
     }
 
     /** One named-field collection shared by saving and failed-save re-rendering. */
