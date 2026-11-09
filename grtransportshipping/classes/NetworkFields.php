@@ -29,6 +29,10 @@ final class GrTransportNetworkFields
                     'estimate'=>['bool'], 'estimate_low_factor'=>['range',0,10],
                     'estimate_high_factor'=>['range',0,10],
                     'bidirectional'=>['bool'],
+                    'lead_hours'=>['range',0,GrTransportNetworkSettings::get('max_leg_hours')],
+                    'preparation_hours'=>['range',0,GrTransportNetworkSettings::get('max_leg_hours')],
+                    'transit_min_hours'=>['range',0,GrTransportNetworkSettings::get('max_leg_hours')],
+                    'transit_max_hours'=>['range',0,GrTransportNetworkSettings::get('max_leg_hours')],
                     'area_name'=>['text',190], 'area_lat'=>['nullable_latitude'],
                     'area_lng'=>['nullable_longitude'], 'area_radius_km'=>['range',0,GrTransportNetworkSettings::get('max_coverage_km')],
                 ];
@@ -55,6 +59,8 @@ final class GrTransportNetworkFields
                 'estimate'=>0,'estimate_low_factor'=>GrTransportNetworkSettings::get('estimate_low_factor'),
                 'estimate_high_factor'=>GrTransportNetworkSettings::get('estimate_high_factor'),
                 'bidirectional'=>0,
+                'lead_hours'=>0, 'preparation_hours'=>0,
+                'transit_min_hours'=>0, 'transit_max_hours'=>0,
                 'area_name'=>'', 'area_lat'=>null, 'area_lng'=>null, 'area_radius_km'=>0,
             ];
             case 'transfers': return [
@@ -130,6 +136,11 @@ final class GrTransportNetworkFields
                 throw new InvalidArgumentException('Outer station radius must be positive and at least the inner radius');
             }
         } elseif ($entity==='legs') {
+            if ($output['transit_min_hours']>0 && $output['transit_max_hours']<$output['transit_min_hours']
+                || ($output['transit_min_hours']==0 && $output['transit_max_hours']>0)
+                || ($output['transit_min_hours']>0 && $output['transit_max_hours']==0)) {
+                throw new InvalidArgumentException('Transit requires positive min/max hours, with max at least min');
+            }
             if ($output['estimate'] && $output['estimate_high_factor']<=$output['estimate_low_factor']) {
                 throw new InvalidArgumentException('Estimate high factor must exceed low factor');
             }
