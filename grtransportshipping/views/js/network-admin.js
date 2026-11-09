@@ -46,6 +46,15 @@
     coverageBounds.push([Math.max(-90, lat - latitudeSpan), Math.max(-180, lng - longitudeSpan)]);
     coverageBounds.push([Math.min(90, lat + latitudeSpan), Math.min(180, lng + longitudeSpan)]);
   };
+  const includeShape = paths => {
+    const visit = value => {
+      if (!Array.isArray(value) || !value.length) return;
+      if (typeof value[0] === 'number' && typeof value[1] === 'number') {
+        coverageBounds.push([value[0], value[1]]);
+      } else value.forEach(visit);
+    };
+    visit(paths);
+  };
   const fmt = n => Number(n).toFixed(2);
   // Render merchant names as text, not HTML inside Leaflet tooltips.
   const safeTooltip = title => {
@@ -62,7 +71,8 @@
     key: 'station:' + s.id_station, name: s.name
   })).concat(data.legs.filter(leg => leg.to_station_id == null &&
     leg.area_lat != null && leg.area_lng != null &&
-    Number(leg.area_radius_km) > 0 && stations.has(Number(leg.from_station_id))).map(leg => ({
+    (Number(leg.area_radius_km) > 0 || !!leg.area_coverage_geojson) &&
+    stations.has(Number(leg.from_station_id))).map(leg => ({
     key: 'area:' + leg.id_leg, name: leg.area_name || 'Direct area #' + leg.id_leg
   }))).sort((a, b) => a.key.localeCompare(b.key));
   const palette = zones.map((zone, index) =>
@@ -525,7 +535,8 @@
   data.legs.forEach(leg => {
     const from = stations.get(Number(leg.from_station_id));
     if (!from || leg.to_station_id != null || leg.area_lat == null ||
-        leg.area_lng == null || !(Number(leg.area_radius_km) > 0)) return;
+        leg.area_lng == null || (!(Number(leg.area_radius_km) > 0) &&
+        !leg.area_coverage_geojson)) return;
     const area = {lat: leg.area_lat, lng: leg.area_lng};
     const c = zoneColors.get('area:' + leg.id_leg);
     const style = {
@@ -538,7 +549,9 @@
       style).addTo(map).bindTooltip(
       safeTooltip((leg.area_name || 'Direct area') + ' · ' + fmt(leg.price) + ' EUR' + staleLabel(leg)));
     registerPatch([owner], layer, style);
-    includeCoverage(point(area), leg.area_radius_km);
+    if (leg.area_coverage_geojson && leg.area_coverage_kind !== 'radius') {
+      includeShape(geometry.patchPaths(areaPatch(leg)));
+    } else includeCoverage(point(area), leg.area_radius_km);
   });
 
   // Draw expensive reachable patches first and cheapest ones on top.
@@ -547,7 +560,11 @@
     const bCost = Object.prototype.hasOwnProperty.call(costs, b.id_station) ? Number(costs[b.id_station]) : Infinity;
     return bCost - aCost;
   });
-  painted.forEach(s => includeCoverage(point(s), s.outer_radius_km));
+  painted.forEach(s => {
+    if (s.coverage_geojson && s.coverage_kind !== 'radius') {
+      includeShape(geometry.patchPaths(stationPatch(s)));
+    } else includeCoverage(point(s), s.outer_radius_km);
+  });
   const paintedGroups = new Set();
   painted.forEach(s => {
     const group = groupsByStation.get(Number(s.id_station)) || [s];
@@ -585,10 +602,13 @@
     const title = s.name + (s.is_origin_hub == 1 ? ' · Origin hub' : '')
       + (Object.prototype.hasOwnProperty.call(costs, s.id_station)
         ? ' · cheapest ' + fmt(costs[s.id_station]) + ' EUR' : ' · no priced path');
-    [
-      {radiusKm: Number(s.outer_radius_km), opacity: 0.20, outline: true},
-      {radiusKm: Number(s.inner_radius_km), opacity: 0.10, outline: false}
-    ].filter(ring => ring.radiusKm > 0).forEach(ring => {
+    (s.coverage_kind !== 'radius' && s.coverage_geojson
+      ? [{radiusKm:Number(s.outer_radius_km),opacity:0.20,outline:true}]
+      : [
+        {radiusKm:Number(s.outer_radius_km),opacity:0.20,outline:true},
+        {radiusKm:Number(s.inner_radius_km),opacity:0.10,outline:false}
+      ]).filter(ring => ring.radiusKm > 0 || (ring.outline && !!s.coverage_geojson))
+      .forEach(ring => {
       const style = {
         pane: 'grtrans-coverage-patches', fill: true, className: 'grtrans-organic-patch',
         fillColor: c, color: c, fillOpacity: ring.opacity, opacity: ring.outline ? 0.6 : 0,
@@ -626,7 +646,8 @@
     if (!from || !Number.isFinite(Number(leg.price)) || Number(leg.price) < 0) return;
     const toStation = stations.get(Number(leg.to_station_id));
     const isArea = !toStation && leg.to_station_id == null &&
-      leg.area_lat != null && leg.area_lng != null && Number(leg.area_radius_km) > 0;
+      leg.area_lat != null && leg.area_lng != null &&
+      (Number(leg.area_radius_km) > 0 || !!leg.area_coverage_geojson);
     const to = toStation || (isArea ? {lat: leg.area_lat, lng: leg.area_lng} : null);
     if (!to) return;
     const mode = geometry.kind(leg.mode, isArea);
