@@ -25,13 +25,16 @@ function fixture(data, options = {}) {
   const calls = {circles: [], lines: [], polygons: [], markers: [], mapEvents: {}, fits: [], views: []};
   const layer = (type, entry) => {
     const value = {
-      events: {}, addTo() { this.removed = false; return this; }, bindTooltip() { return this; },
+      events: {}, addTo() { this.removed = false; return this; },
+      bindTooltip(content) { this.tooltip = content; return this; },
       on(event, fn) { this.events[event] = fn; }, setLatLng(p) { this.point = p; },
       getLatLng() { return this.point; }, remove() { this.removed = true; }
     };
     entry.layer = value; calls[type].push(entry); return value;
   };
+  const panes = {};
   const map = {
+    createPane(name) { panes[name] = {style: {}}; return panes[name]; },
     setView(...args) { calls.views.push(args); return this; },
     fitBounds(...args) { calls.fits.push(args); }, on(type, fn) { calls.mapEvents[type] = fn; },
     removeLayer(item) { item.removed = true; }
@@ -54,21 +57,26 @@ function fixture(data, options = {}) {
       createElement: make
     }
   });
-  return {elements, calls, map};
+  return {elements, calls, map, panes};
 }
 const station = (id, name, lat, lng) => ({
   id_station: id, name, type:'bus', lat, lng,
   inner_radius_km: 2, outer_radius_km: 10, is_origin_hub: id === 1 ? 1 : 0
 });
-const {calls, elements} = fixture({
+const {calls, elements, panes} = fixture({
   stations: [station(1, '<first>', 37.9, 23.6), station(2, 'Second', 38.2, 23.9)],
   legs: [{id_leg: 9, from_station_id:1, to_station_id:null, mode:'other',
     area_lat:37.8, area_lng:23.5, area_radius_km:4, area_name:'Third area', price:5}],
 });
 const circles = calls.circles;
+assert.equal(panes['grtrans-coverage-patches'].style.zIndex, '390',
+  'Coverage pane is above map tiles yet below normal overlays and route previews');
 assert.equal(circles.length, 5, 'Two inner/outer station pairs and direct-area patch');
 assert.equal(circles[0].options.fillOpacity, 0.2, 'Outer radius remains see-through');
 assert.equal(circles[1].options.fillOpacity, 0.1, 'Combined inner fill stays translucent');
+assert.equal(circles.every(c => c.options.fill === true &&
+  c.options.pane === 'grtrans-coverage-patches'), true,
+  'All station and direct-area coverage discs explicitly fill in the dedicated patch pane');
 const colours = [circles[0].options.fillColor, circles[2].options.fillColor, circles[4].options.fillColor];
 assert.equal(new Set(colours).size, 3, 'All zone colours must be different');
 assert.equal(elements['grtrans-zone-legend'].children.length, 3, 'Legend matches all zones');
@@ -105,7 +113,38 @@ const connected = fixture({
     operator_label:'Test route', price:10, bidirectional:0}],
   transfers: []
 });
-assert.ok(connected.calls.lines.length > 4, 'Connected zones receive a seam and perpendicular stitches');
+assert.equal(connected.calls.circles.length, 6,
+  'An intersecting connected pair still renders both inner/outer filled discs, plus the third zone');
+const intersectingFills = connected.calls.circles.slice(0, 4);
+assert.deepEqual(intersectingFills.map(c => c.options.fillOpacity), [0.2, 0.1, 0.2, 0.1],
+  'Intersecting zones keep exactly the same fill opacities as disjoint zones');
+assert.ok(intersectingFills.every(c => c.options.fill === true &&
+  c.options.pane === 'grtrans-coverage-patches' && !c.layer.removed),
+  'Each entire intersecting circle is filled in a separate persistent pane');
+assert.notEqual(intersectingFills[0].options.fillColor, intersectingFills[2].options.fillColor,
+  'Both overlap patches preserve their own zone colours');
+assert.equal(connected.calls.lines.length, 2,
+  'Intersecting connection uses only a light marker and its transparent hover target, no ticks');
+assert.equal(connected.calls.polygons.length, 0, 'Intersecting join adds no filled band');
+assert.equal(connected.calls.lines[0].options.weight, 1.25, 'Visible marker is hairline-thin');
+assert.equal(connected.calls.lines[0].options.opacity, 0.55, 'Visible marker is muted');
+assert.equal(connected.calls.lines[1].options.opacity, 0.001,
+  'Wide tooltip hit target is effectively invisible');
+assert.equal(connected.calls.lines[1].layer.tooltip.textContent, 'Test route · 10.00 EUR',
+  'Intersecting join keeps its safe leg-name and price hover label');
+assert.equal(connected.calls.lines[0].points.length, 2, 'Marker follows the common chord');
+const markerPoints = connected.calls.lines[0].points;
+const markerLengthKm = Math.hypot((markerPoints[1][0] - markerPoints[0][0]) * 111.195,
+  (markerPoints[1][1] - markerPoints[0][1]) * 111.195 * Math.cos(38 * Math.PI / 180));
+assert.ok(markerLengthKm <= 1.801, 'Marker is a short section of the lens chord, not its long band');
+connected.elements['grtrans-map-preview'].events.click();
+assert.ok(connected.calls.lines.every(line => line.layer.removed),
+  'Intersecting connection marker is hidden during routed preview');
+assert.ok(intersectingFills.every(c => !c.layer.removed),
+  'Routed preview never removes the overlapping filled patches');
+connected.elements['grtrans-map-preview-clear'].events.click();
+assert.ok(connected.calls.lines.every(line => !line.layer.removed),
+  'Clearing routed preview restores both parts of the connection marker');
 for (const line of connected.calls.lines) {
   const [p, q] = line.points;
   const bothStations = (Number(p[0]) === 38 && Number(p[1]) === 23.7 &&
@@ -134,11 +173,11 @@ assert.ok(disjoint.calls.lines.filter(line => line.options.weight === 2.5).lengt
   'Diagonal stitch marks cross the two-colour ribbon');
 assert.ok(disjoint.calls.polygons[0].points.length > 20,
   'Ribbon has sampled curved geometry, not a taut two-point connector');
-const touching = fixture({stations:[
+const overlapping = fixture({stations:[
   station(1,'A',38,23.7),station(2,'B',38.08,23.7)
 ],legs:[{id_leg:1,from_station_id:1,to_station_id:2,mode:'bus',price:2}]});
-assert.equal(touching.calls.polygons.length,0,
-  'Overlapping circles keep their original shared-boundary stitching');
+assert.equal(overlapping.calls.polygons.length,0,
+  'Intersecting zones never manufacture disjoint-gap fabric');
 
 console.log('Admin patch seam and disconnected-zone rendering contracts passed');
 
