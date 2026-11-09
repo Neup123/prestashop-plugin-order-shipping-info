@@ -20,6 +20,8 @@ final class GrTransportNetworkSettings
         'quote_ttl_minutes'=>['key'=>'GRTRANS_QUOTE_TTL_MIN','default'=>30.0,'min'=>1,'max'=>1440,'label'=>'Cart shipping quote hold (minutes)'],
         'dimension_to_cm'=>['key'=>'GRTRANS_DIMENSION_TO_CM','default'=>1.0,'min'=>0.0001,'max'=>1000,'label'=>'Product dimension unit multiplier to centimetres'],
         'weight_to_kg'=>['key'=>'GRTRANS_WEIGHT_TO_KG','default'=>1.0,'min'=>0.0001,'max'=>1000,'label'=>'Product weight unit multiplier to kilograms'],
+        'show_delivery_time'=>['key'=>'GRTRANS_SHOW_DELIVERY_TIME','default'=>1,'min'=>0,'max'=>1,'label'=>'Show delivery-time windows (1=on, 0=off)'],
+        'max_leg_hours'=>['key'=>'GRTRANS_MAX_LEG_HOURS','default'=>168,'min'=>1,'max'=>2160,'label'=>'Maximum entered hours per leg component'],
         'max_freight_eur'=>['key'=>'GRTRANS_MAX_FREIGHT_EUR','default'=>100000.0,'min'=>1,'max'=>9999999,'label'=>'Maximum single leg/receipt amount (EUR)'],
     ];
 
