@@ -29,6 +29,15 @@ final class GrTransportOrderSnapshot
         return is_array($row) ? $row : null;
     }
 
+    /** Read-only history for dispatch/admin/customer display. */
+    public static function originalQuote(array $row): ?array
+    {
+        $json=$row['route_snapshot'] ?? null;
+        if (!is_string($json) || $json==='') return null;
+        $decoded=json_decode($json,true);
+        return is_array($decoded) ? $decoded : null;
+    }
+
     public static function status(int $orderId): string
     {
         return self::find($orderId) ? self::STORED : self::ABSENT;
@@ -86,7 +95,19 @@ final class GrTransportOrderSnapshot
                 self::fail($orderId, 'Cannot persist incomplete pickup quote (' . $field . ')');
             }
         }
+        // Preserve the complete selected path and per-edge quoted data as an
+        // immutable order-time JSON snapshot, independent of mutable network tables.
+        $encoded=json_encode($quote,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
+        if ($encoded===false) self::fail($orderId,'Cannot encode transport dispatch snapshot');
+        if ($existing && $regenerate && ($existing['estimate_state'] ?? '')==='settled') {
+            self::fail($orderId,'A settled freight estimate must not be regenerated');
+        }
+        $isEstimate=!empty($quote['estimate']);
         $payload = [
+            'route_snapshot'=>pSQL($encoded,true),
+            'estimate_min'=>$isEstimate ? round((float)($quote['estimate_min'] ?? 0),2) : null,
+            'estimate_max'=>$isEstimate ? round((float)($quote['estimate_max'] ?? 0),2) : null,
+            'estimate_state'=>$isEstimate ? 'pending' : 'not_estimate',
             'mode' => pSQL((string) $quote['mode']),
             'station_name' => pSQL((string) $quote['station_name']),
             'price' => round((float) $quote['price'], 2),
