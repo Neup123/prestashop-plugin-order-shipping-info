@@ -181,7 +181,20 @@ final class GrTransportNetworkRepository
                 if ($count) throw new InvalidArgumentException('Delete connecting legs/transfers before deleting this station');
             }
         }
-        if (!Db::getInstance()->delete(self::table($entity),GrTransportNetworkFields::IDS[$entity] . ' = ' . $id)) {
+        if ($entity==='stations') {
+            $used=(int)Db::getInstance()->getValue('SELECT COUNT(*) FROM `'
+                . _DB_PREFIX_ . 'grtrans_branch` WHERE origin_station_id = '.$id);
+            if ($used) throw new InvalidArgumentException('Remove dependent branches before deleting origin station');
+        }
+        if ($entity==='branches') {
+            $used=(int)Db::getInstance()->getValue('SELECT COUNT(*) FROM `'
+                . _DB_PREFIX_ . 'grtrans_branch_stock` WHERE id_branch = '.$id
+                . ' AND id_shop = '.self::shopId());
+            if ($used) throw new InvalidArgumentException('Remove branch stock before deleting branch');
+        }
+        $where=GrTransportNetworkFields::IDS[$entity].' = '.$id
+            . (self::isShopScoped($entity) ? ' AND id_shop = '.self::shopId() : '');
+        if (!Db::getInstance()->delete(self::table($entity),$where)) {
             throw new RuntimeException('Network delete failed');
         }
     }
@@ -204,7 +217,8 @@ final class GrTransportNetworkRepository
         $db=Db::getInstance();
         if (!$db->execute('START TRANSACTION')) throw new RuntimeException('Cannot start network import');
         $refs=[];
-        $created=['stations'=>[],'legs'=>[],'transfers'=>[]];
+        $branchRefs=[];
+        $created=array_fill_keys(GrTransportNetworkFields::ENTITIES,[]);
         try {
             foreach (GrTransportNetworkFields::ENTITIES as $entity) {
                 foreach ($payload[$entity] ?? [] as $record) {
@@ -221,8 +235,30 @@ final class GrTransportNetworkRepository
                             unset($record[$alias]);
                         }
                     }
+                    if ($entity==='branches' && isset($record['origin_ref'])) {
+                        $name=$record['origin_ref'];
+                        if (!is_string($name) || !isset($refs[$name])) {
+                            throw new InvalidArgumentException('Unknown origin-station import reference');
+                        }
+                        $record['origin_station_id']=$refs[$name];
+                        unset($record['origin_ref']);
+                    }
+                    if ($entity==='branch_stock' && isset($record['branch_ref'])) {
+                        $name=$record['branch_ref'];
+                        if (!is_string($name) || !isset($branchRefs[$name])) {
+                            throw new InvalidArgumentException('Unknown branch import reference');
+                        }
+                        $record['id_branch']=$branchRefs[$name];
+                        unset($record['branch_ref']);
+                    }
                     $id=self::save($entity,$record);
                     $created[$entity][]=$id;
+                    if ($entity==='branches' && $ref!==null) {
+                        if (!is_string($ref) || $ref==='' || isset($branchRefs[$ref])) {
+                            throw new InvalidArgumentException('Duplicate/invalid branch import reference');
+                        }
+                        $branchRefs[$ref]=$id;
+                    }
                     if ($entity==='stations' && $ref!==null) {
                         if (!is_string($ref) || $ref==='' || isset($refs[$ref])) {
                             throw new InvalidArgumentException('Duplicate/invalid station import reference');
@@ -245,6 +281,8 @@ final class GrTransportNetworkRepository
             'stations'=>self::all('stations'),
             'legs'=>self::all('legs'),
             'transfers'=>self::all('transfers'),
+            'branches'=>self::all('branches'),
+            'branch_stock'=>self::all('branch_stock'),
         ];
     }
 
