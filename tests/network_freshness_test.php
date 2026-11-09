@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/bootstrap.php';
+define('_DB_PREFIX_', 'ps_');
 class Configuration {
     private static $values=[];
     public static function get($key) { return self::$values[$key] ?? false; }
