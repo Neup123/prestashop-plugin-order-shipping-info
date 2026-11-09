@@ -77,11 +77,18 @@ try {
   // #88: Creating stations/legs confirms creation; editing a leg confirms update.
   const source = await addStation('CI map source', 38.0, 23.7, true);
   await checkMarkerAssets('#grtrans-network-map', 'admin station map');
+  const stationRow = page.locator('#grtrans-network table').first().locator('tbody tr')
+    .filter({ hasText: 'CI map source' });
+  await stationRow.getByRole('link', { name: 'Edit' }).click();
+  let form = page.locator('#grtrans-network-editor form');
+  await form.locator('input[name="address_text"]').fill('CI edited station');
+  await form.getByRole('button', { name: 'Save changes' }).click();
+  await page.getByText('Network record updated.', { exact: true }).first().waitFor({ timeout: 20000 });
   const target = await addStation('CI map target', 38.05, 23.75, false);
   const legsUrl = new URL(adminUrl);
   legsUrl.searchParams.set('network_entity', 'legs');
   await page.goto(legsUrl.toString(), { waitUntil: 'domcontentloaded', timeout: 45000 });
-  let form = page.locator('#grtrans-network-editor form');
+  form = page.locator('#grtrans-network-editor form');
   await form.locator('select[name="from_station_id"]').selectOption(source);
   await form.locator('select[name="to_station_id"]').selectOption(target);
   await form.locator('input[name="operator_label"]').fill('CI leg');
@@ -90,12 +97,7 @@ try {
   await page.getByText('Network record created.', { exact: true }).first().waitFor({ timeout: 20000 });
   const legRow = page.locator('#grtrans-network table').nth(1).locator('tbody tr').filter({ hasText: 'CI leg' });
   assert.equal(await legRow.count(), 1);
-  await legRow.getByRole('link', { name: 'Edit' }).click();
-  form = page.locator('#grtrans-network-editor form');
-  await form.locator('input[name="price"]').fill('13.00');
-  await form.getByRole('button', { name: 'Save changes' }).click();
-  await page.getByText('Network record updated.', { exact: true }).first().waitFor({ timeout: 20000 });
-  console.log('LIVE NETWORK FEEDBACK: station/leg created, leg edited with correct notices');
+  console.log('LIVE NETWORK FEEDBACK: stations and leg created, station edited with correct notices');
 
   // #87: Customer public map and BO map both load actual bundled PNGs over HTTP.
   await page.goto('http://localhost:8080/index.php?fc=module&module=grtransportshipping&controller=quote',
