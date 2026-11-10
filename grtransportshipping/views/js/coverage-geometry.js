@@ -427,64 +427,71 @@
     return [...groups.values()];
   };
 
-  // Panel C: the transfer seam hugs the CHEAPER service's OUTER reach
-  // boundary, but only its section inside the dearer reach. Not the mid-lens.
+  // Panel C: follow the actual resolved winning coverage boundary within
+  // the losing reach. Stored MultiPolygon islands and hole boundaries are
+  // eligible handovers too; never silently default to the first outer ring.
   const zigzagSeam = (cheap, expensive, lane = 0) => {
     if (!overlaps(cheap, expensive)) return null;
     const projection = projector([[cheap.lat, cheap.lng], [expensive.lat, expensive.lng]]);
-    const cheapRing = shapeXY(cheap, projection), expensiveRing = shapeXY(expensive, projection);
-    const centre = projection.xy([cheap.lat, cheap.lng]);
-    // A midpoint of a cheap-perimeter segment entirely inside the dearer
-    // polygon is the actual changeover from both-reach to dearer-only.
-    const candidates = [];
-    for (let i = 0; i < cheapRing.length; i++) {
-      const a = cheapRing[i], b = cheapRing[(i + 1) % cheapRing.length];
-      const mid = move(a, difference(b, a), 0.5);
-      if (inside(mid, expensiveRing)) {
-        // Prefer the portion facing the dearer centre (the widest lens).
-        const expensiveCentre = projection.xy([expensive.lat, expensive.lng]);
-        candidates.push({i, mid, score: length(mid, expensiveCentre)});
-      }
+    const shape = record => patchPaths(record).map(part => part.map(ring => {
+      const xy=ring.map(projection.xy);
+      if(xy.length>1&&length(xy[0],xy[xy.length-1])<EPS)xy.pop();
+      return xy;
+    }).filter(ring=>ring.length>=3)).filter(part=>part.length);
+    const cheapParts=shape(cheap),expensiveParts=shape(expensive);
+    const contains=(point,parts)=>parts.some(poly=>
+      inside(point,poly[0])&&!poly.slice(1).some(hole=>inside(point,hole)));
+    const expensiveCentre=projection.xy([expensive.lat,expensive.lng]);
+    const candidates=[];
+    for(const part of cheapParts)for(const ring of part)for(let i=0;i<ring.length;i++){
+      const from=ring[i],to=ring[(i+1)%ring.length];
+      const mid=move(from,difference(to,from),0.5);
+      if(contains(mid,expensiveParts))
+        candidates.push({ring,i,score:length(mid,expensiveCentre)});
     }
-    if (!candidates.length) return null;
-    candidates.sort((a, b) => a.score - b.score);
-    const chosen = candidates[0].i;
-    const ring = cheapRing;
-    const signedArea = ring.reduce((sum, p, i) => sum +
-      cross(p, ring[(i + 1) % ring.length]), 0);
-    for (let scale = 1; scale >= 0.08; scale *= 0.7) {
-      const half = Math.min(0.65, Number(cheap.radiusKm || 2) * 0.14) * scale;
-      const wiggle = 0.035 * scale;
-      const vertices = [];
-      for (let k = 0; k < 9; k++) {
-        const signed = (k / 4 - 1) * half;
-        let index = chosen;
-        let pos = move(ring[index], difference(ring[(index+1)%ring.length],ring[index]),0.5);
-        let remaining = Math.abs(signed);
-        const dir = signed < 0 ? -1 : 1;
-        while (remaining > EPS) {
-          const next = dir > 0 ? ring[(index+1)%ring.length] : ring[index];
-          const dist = length(pos,next);
-          if (dist >= remaining || dist < EPS) {
-            if (dist > EPS) pos=move(pos,difference(next,pos),remaining/dist);
-            break;
+    candidates.sort((a,b)=>a.score-b.score);
+    // Try neighbouring candidate arcs rather than omitting a valid stitch
+    // because a single highly concave edge cannot accommodate nine points.
+    for(const candidate of candidates.slice(0,32)){
+      const {ring,i:chosen}=candidate;
+      for(let scale=1;scale>=0.08;scale*=0.7){
+        const half=Math.min(0.65,Number(cheap.radiusKm||2)*0.14)*scale;
+        const wiggle=0.035*scale;
+        const vertices=[];
+        for(let k=0;k<9;k++){
+          const signed=(k/4-1)*half;
+          let index=chosen;
+          let pos=move(ring[index],
+            difference(ring[(index+1)%ring.length],ring[index]),0.5);
+          let remaining=Math.abs(signed);
+          const dir=signed<0?-1:1;
+          while(remaining>EPS){
+            const next=dir>0?ring[(index+1)%ring.length]:ring[index];
+            const dist=length(pos,next);
+            if(dist>=remaining||dist<EPS){
+              if(dist>EPS)pos=move(pos,difference(next,pos),remaining/dist);
+              break;
+            }
+            remaining-=dist;
+            pos=next;
+            index=(index+dir+ring.length)%ring.length;
           }
-          remaining -= dist;
-          pos=next;
-          index=(index+dir+ring.length)%ring.length;
+          const p0=ring[index],p1=ring[(index+1)%ring.length];
+          const tangent=difference(p1,p0),norm=length(p0,p1);
+          if(norm<EPS){vertices.length=0;break;}
+          const left={x:-tangent.y/norm,y:tangent.x/norm};
+          const mid=move(p0,tangent,0.5);
+          const inward=contains(move(mid,left,0.0001),cheapParts)
+            ? left:{x:-left.x,y:-left.y};
+          vertices.push(move(pos,inward,wiggle*(1+(k%2?0.6:0))));
         }
-        const p0=ring[index],p1=ring[(index+1)%ring.length];
-        const tangent=difference(p1,p0), norm=length(p0,p1);
-        if (norm<EPS) {vertices.length=0;break;}
-        const inward=signedArea>=0
-          ? {x:-tangent.y/norm,y:tangent.x/norm}
-          : {x:tangent.y/norm,y:-tangent.x/norm};
-        vertices.push(move(pos,inward,wiggle * (1 + (k % 2 ? 0.6 : 0))));
+        if(vertices.length!==9)continue;
+        const kmLength=vertices.slice(1).reduce((sum,p,i)=>
+          sum+length(p,vertices[i]),0);
+        if(kmLength<=1.8&&vertices.every(p=>
+          contains(p,cheapParts)&&contains(p,expensiveParts)))
+          return vertices.map(projection.ll);
       }
-      if (vertices.length!==9) continue;
-      const kmLength=vertices.slice(1).reduce((sum,p,i)=>sum+length(p,vertices[i]),0);
-      if (kmLength<=1.8 && vertices.every(p=>inside(p,cheapRing)&&inside(p,expensiveRing)))
-        return vertices.map(projection.ll);
     }
     return null;
   };
