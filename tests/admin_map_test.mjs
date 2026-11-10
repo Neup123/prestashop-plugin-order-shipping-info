@@ -328,6 +328,8 @@ const arc=air.calls.lines.find(l=>l.options.className==='grtrans-air-arc');
 const arrow=air.calls.lines.find(l=>l.options.className==='grtrans-air-arrow');
 assert.ok(arc && arrow,'Panel D: flight renders a directed dashed arc');
 assert.equal(arc.points.length,41);
+assert.equal(air.calls.lines.filter(l=>l.options.className==='grtrans-air-arrow').length,1,
+  'Panel D schematic and directed flight use ONE destination arrow');
 assert.equal(arc.options.dashArray,'7 7');
 assert.ok(kmDistance(arrow.points[1],[37,25])<.001);
 const airMiddle=[37.5,24.35];
@@ -358,6 +360,22 @@ assert.equal(vessels.length,2,
   'Panel E: each priced sea origin-destination vessel gets a separate straight dashed line');
 assert.ok(vessels.every(l=>l.points.length===2&&l.options.dashArray==='8 7'));
 assert.equal(sea.calls.lines.filter(l=>l.options.className==='grtrans-sea-arrow').length,2);
+const sameEndpointVessels=fixture({stations:[
+  {...a,type:'ferry'}, {...station(2,'Single destination',37.1,25.4),type:'ferry'}
+],legs:[
+  {id_leg:32,from_station_id:1,to_station_id:2,mode:'ferry',operator_label:'Lower fare',price:12},
+  {id_leg:33,from_station_id:1,to_station_id:2,mode:'ferry',operator_label:'Higher fare',price:24}
+]});
+const twoFares=sameEndpointVessels.calls.lines.filter(l=>
+  l.options.className==='grtrans-sea-line');
+assert.equal(twoFares.length,2,
+  'Two priced origin-destination sea records remain separate DOM/hover vessels');
+assert.ok(twoFares[0].layer.tooltip.textContent.includes('12.00') &&
+  twoFares[1].layer.tooltip.textContent.includes('24.00'),
+  'Coincident geometric sea lines retain their independent fares and targets');
+assert.equal(sameEndpointVessels.calls.lines.filter(l=>
+  l.options.className==='grtrans-sea-arrow').length,2,
+  'Panel E draws one destination-facing arrow for each directed sea record');
 vessels[0].layer.events.mouseover();
 assert.ok(sea.calls.polygons[0].layer.style.fillOpacity>.16);
 assert.ok(sea.calls.polygons[2].layer.style.fillOpacity>.16);
