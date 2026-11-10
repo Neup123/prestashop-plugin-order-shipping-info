@@ -173,6 +173,47 @@
   const overlaps = (a, b) => {
     if (!isValid(a) || !isValid(b)) return false;
     const projection = projector([[a.lat, a.lng], [b.lat, b.lng]]);
+    if (geoPaths(a) || geoPaths(b)) {
+      // A circle entirely inside a stored polygon HOLE is not overlapping
+      // service. Use every Polygon/MultiPolygon ring, not its bounding shell.
+      const footprint = record => patchPaths(record).map(polygon =>
+        polygon.map(ring => {
+          const points=ring.map(projection.xy);
+          if(points.length>1 && length(points[0],points[points.length-1])<EPS)
+            points.pop();
+          return points;
+        }).filter(ring=>ring.length>=3)).filter(polygon=>polygon.length);
+      const first=footprint(a), second=footprint(b);
+      const covers=(point,polygons)=>polygons.some(poly=>
+        inside(point,poly[0])&&!poly.slice(1).some(hole=>inside(point,hole)));
+      const exposedEdgeInside=(polys,other)=>{
+        for(const poly of polys) {
+          const ring=poly[0];
+          for(let i=0;i<ring.length;i++){
+            const p=ring[i],q=ring[(i+1)%ring.length];
+            const mid=move(p,difference(q,p),0.5);
+            const delta=difference(q,p),dist=length(p,q);
+            if(dist<EPS)continue;
+            const side={x:-delta.y/dist*0.0001,y:delta.x/dist*0.0001};
+            if((covers(move(mid,side,1),polys)&&
+                covers(move(mid,side,1),other))||
+               (covers(move(mid,side,-1),polys)&&
+                covers(move(mid,side,-1),other)))return true;
+          }
+        }
+        return false;
+      };
+      if(exposedEdgeInside(first,second)||exposedEdgeInside(second,first))
+        return true;
+      const edges=polys=>polys.flatMap(poly=>poly.flatMap(ring=>
+        ring.map((point,i)=>[point,ring[(i+1)%ring.length]])));
+      const one=edges(first),two=edges(second);
+      for(const [p,q] of one)for(const [s,t] of two){
+        const hit=intersection(p,q,s,t);
+        if(hit!==null&&hit>EPS&&hit<1-EPS)return true;
+      }
+      return false;
+    }
     if (!nearby(a, b, projection)) return false;
     const first = shapeXY(a, projection), second = shapeXY(b, projection);
     if (inside(first[0], second) || inside(second[0], first)) return true;
