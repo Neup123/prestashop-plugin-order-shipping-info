@@ -95,12 +95,13 @@ const original = fixture({
 });
 assert.equal(original.panes['grtrans-coverage-patches'].style.zIndex,'390');
 assert.equal(original.calls.circles.length,0,'No Leaflet stamped circle paths');
-assert.equal(original.calls.polygons.length,5,'Dynamic area first, two station inner+outer pairs');
-assert.equal(original.calls.polygons[0].options.fillOpacity,.24);
+assert.equal(original.calls.polygons.length,6,'Two area tiers first, then two station normal/FAR pairs');
+assert.equal(original.calls.polygons[0].options.fillOpacity,.16);
+assert.equal(original.calls.polygons[1].options.fillOpacity,.36);
 assert.ok(original.calls.polygons.every(p=>p.options.pane==='grtrans-coverage-patches'));
 assert.equal(original.calls.markers.length,2,'Station pins remain independently clickable');
 assert.equal(original.elements['grtrans-zone-legend'].children.length,3);
-const radiusRing=original.calls.polygons[1].points;
+const radiusRing=original.calls.polygons[2].points;
 assert.ok(Math.max(...radiusRing.map(p=>kmDistance(p,[37.9,23.6]))) -
   Math.min(...radiusRing.map(p=>kmDistance(p,[37.9,23.6]))) < .06,
   'A walking-radius definition renders as an actual circle (panel A)');
@@ -128,12 +129,12 @@ console.log('Panel A: exact postal polygon / walking radius / isochrone, pane an
 
 /* Panel I: tier definitions are geometry data and work for circles and
  * polygonal reach. The far spread stays LIGHTER than the normal inner fill. */
-assert.equal(original.calls.polygons[1].options.className.includes('tier-far'),true);
-assert.equal(original.calls.polygons[2].options.className.includes('tier-normal'),true);
-assert.ok(original.calls.polygons[1].options.fillOpacity <
-  original.calls.polygons[2].options.fillOpacity,
+assert.equal(original.calls.polygons[2].options.className.includes('tier-far'),true);
+assert.equal(original.calls.polygons[3].options.className.includes('tier-normal'),true);
+assert.ok(original.calls.polygons[2].options.fillOpacity <
+  original.calls.polygons[3].options.fillOpacity,
   'Far zone visibly lighter than normal reach (panel I)');
-assert.equal(original.calls.polygons[2].options.stroke,false,
+assert.equal(original.calls.polygons[3].options.stroke,false,
   'Normal wash has no spurious interior circle outline');
 assert.equal(postal.calls.polygons[0].points.length,5,
   'Recorded postal polygon remains the true outer geometry');
@@ -141,7 +142,28 @@ assert.ok(postal.calls.polygons[1].points.length >= 3,
   'Inner postal tier is clipped to actual polygon reach, not an invented full disc');
 assert.equal(iso.calls.polygons[0].options.className.includes('tier-far'),true,
   'An isochrone outside normal walking radius remains only a far-zone polygon');
-console.log('Panel I: normal strong inner coverage, lighter far outer spread, extensible tier model passed');
+
+const inherit=fixture({farDefaultKm:12,
+  stations:[{...station(1,'Inherited station',38,23.7),outer_radius_km:null}],
+  legs:[{id_leg:88,from_station_id:1,to_station_id:null,mode:'other',price:5,
+    area_lat:39,area_lng:23.7,area_radius_km:2,area_outer_radius_km:null}]});
+assert.equal(inherit.calls.polygons.length,4,
+  'Station and area each paint a normal and FAR tier when inheriting');
+const inheritedAreaFar=inherit.calls.polygons[0];
+const inheritedAreaNormal=inherit.calls.polygons[1];
+assert.ok(Math.abs(kmDistance(inheritedAreaFar.points[0],[39,23.7])-12)<.15,
+  'Area FAR silhouette uses runtime shared global 12 km');
+assert.ok(Math.abs(kmDistance(inheritedAreaNormal.points[0],[39,23.7])-2)<.15,
+  'Area normal boundary remains stored normal radius');
+assert.ok(Math.abs(kmDistance(inherit.calls.polygons[2].points[0],[38,23.7])-12)<.15,
+  'Station with NULL override inherits runtime global 12 km');
+const explicitArea=fixture({farDefaultKm:12,stations:[station(1,'Hub',38,23.7)],
+  legs:[{id_leg:89,from_station_id:1,to_station_id:null,mode:'other',price:5,
+    area_lat:39,area_lng:23.7,area_radius_km:2,area_outer_radius_km:7}]});
+assert.ok(Math.abs(kmDistance(explicitArea.calls.polygons[0].points[0],[39,23.7])-7)<.15,
+  'Per-area FAR override supersedes global on map');
+assert.equal(inheritedAreaFar.options.stroke,false,'FAR area keeps no deprecated coastline frame');
+console.log('Panel I: station and area FAR inheritance, override and normal tiers passed');
 
 
 const a=station(1,'Athens',38,23.7);
@@ -398,10 +420,10 @@ vessels[0].layer.events.mouseout();
 const dynamic=fixture({stations:[a,station(2,'Island',38.04,23.76)],
   legs:[{id_leg:12,from_station_id:1,to_station_id:null,mode:'other',price:8,
     area_lat:38.02,area_lng:23.73,area_radius_km:25,area_name:'Courier sea'}]});
-assert.equal(dynamic.calls.polygons.length,5,
-  'Panel H: one continuous dynamic sea, then two island outer/inner washes');
+assert.equal(dynamic.calls.polygons.length,6,
+  'Panels H/I: far and normal dynamic sea before two island coverage tiers');
 const seaPatch=dynamic.calls.polygons[0];
-assert.equal(seaPatch.options.fillOpacity,.24);
+assert.equal(seaPatch.options.fillOpacity,.16);
 assert.equal(seaPatch.options.fill,true);
 assert.equal(seaPatch.options.pane,'grtrans-coverage-patches');
 assert.equal(seaPatch.options.stroke,false,
@@ -443,13 +465,13 @@ assert.ok(!dynamic.calls.lines.some(l=>l.options.className==='grtrans-land-road'
   'No road/ribbon crosses over the dynamic sea');
 assert.ok(ringTarget[0].layer.tooltip.textContent.includes('entire linked island boundary'));
 ringTarget[0].layer.events.mouseover();
-assert.ok(dynamic.calls.polygons[0].layer.style.fillOpacity>.24 &&
-  dynamic.calls.polygons[1].layer.style.fillOpacity>.16,
+assert.ok(dynamic.calls.polygons[0].layer.style.fillOpacity>.16 &&
+  dynamic.calls.polygons[2].layer.style.fillOpacity>.16,
   'Ring hover highlights the dynamic sea and linked island');
-assert.equal(dynamic.calls.polygons[3].layer.style.fillOpacity,.16,
+assert.equal(dynamic.calls.polygons[4].layer.style.fillOpacity,.16,
   'Unlinked island is not accidentally linked or highlighted');
 ringTarget[0].layer.events.mouseout();
-assert.equal(dynamic.calls.polygons[3].layer.style.fillOpacity,.16);
+assert.equal(dynamic.calls.polygons[4].layer.style.fillOpacity,.16);
 dynamic.elements['grtrans-map-preview'].events.click();
 assert.ok(dynamic.calls.lines.every(l=>l.layer.removed),
   'Explicit route preview hides full-perimeter stitch without hiding the sea');
