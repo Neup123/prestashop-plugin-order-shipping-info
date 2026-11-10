@@ -200,6 +200,12 @@ final class GrTransportNetworkFields
                 throw new InvalidArgumentException('Estimate high factor must exceed low factor');
             }
             if ($output['to_station_id']!==null) {
+                // Older station legs may store zero coordinates instead of SQL NULL.
+                // Clear them before validation and persistence, but only for station
+                // legs: a direct-area service may legitimately be centred at (0, 0).
+                foreach (['area_lat','area_lng'] as $coordinate) {
+                    if ($output[$coordinate]===0.0) $output[$coordinate]=null;
+                }
                 if ($output['to_station_id']===$output['from_station_id']) throw new InvalidArgumentException('A leg must connect distinct stations');
                 if ($output['patch_precedence']!=='none') throw new InvalidArgumentException('Patch precedence requires a direct-area leg');
                 if ($output['area_lat']!==null || $output['area_lng']!==null || $output['area_radius_km']>0 ||

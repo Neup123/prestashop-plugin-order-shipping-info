@@ -185,4 +185,78 @@ fails(static function () use ($postalStation) {
 testAssert(GrTransportNetworkFields::normalize('stations',$station)['coverage_kind']==='radius',
     'Legacy station import defaults to radius coverage without migration input');
 
-echo "Station, graph, safe transfers, direct area and API permission tests passed\n";
+// #109: An existing DB row with decimal zero area coordinates must be editable
+// without clearing its pre-filled fields by hand. Exercise the actual writer,
+// including its SQL NULL representation, with an isolated in-memory Db stub.
+if (!defined('_DB_PREFIX_')) define('_DB_PREFIX_', 'ps_');
+if (!function_exists('pSQL')) {
+    function pSQL(string $value): string { return $value; }
+}
+class Db {
+    public static array $rows=['station'=>[1=>['id_station'=>1],2=>['id_station'=>2]],'leg'=>[]];
+    public static int $updates=0;
+    public static function getInstance(): self { static $instance; return $instance ??= new self; }
+    public function getRow(string $sql)
+    {
+        if (!preg_match('/^SELECT \\* FROM `ps_grtrans_(station|leg)` WHERE `id_(?:station|leg)` = ([0-9]+)$/', $sql, $m)) {
+            throw new RuntimeException('Unexpected query in test: ' . $sql);
+        }
+        return self::$rows[$m[1]][(int)$m[2]] ?? false;
+    }
+    public function update(string $table, array $row, string $where): bool
+    {
+        if ($table!=='grtrans_leg' || !preg_match('/^id_leg = ([0-9]+)$/', $where, $m)) {
+            throw new RuntimeException('Unexpected update in test');
+        }
+        ++self::$updates;
+        $values=array_map(static function ($value) {
+            return is_array($value) && $value===['type'=>'sql','value'=>'NULL'] ? null : $value;
+        }, $row);
+        self::$rows['leg'][(int)$m[1]]=array_replace(self::$rows['leg'][(int)$m[1]], $values);
+        return true;
+    }
+}
+$legacyLeg=array_replace(GrTransportNetworkFields::defaults('legs'),[
+    'id_leg'=>9, 'from_station_id'=>1, 'to_station_id'=>2,
+    'operator_label'=>'Existing ferry', 'area_lat'=>'0.0000000', 'area_lng'=>'0.0000000',
+]);
+Db::$rows['leg'][9]=$legacyLeg;
+$prefilled=array_intersect_key($legacyLeg,GrTransportNetworkFields::fields('legs'));
+testAssert(GrTransportNetworkRepository::save('legs',$prefilled,9)===9,
+    'Unchanged editor submission with both legacy zero coordinates must save');
+testAssert(Db::$updates===1 && Db::$rows['leg'][9]['area_lat']===null
+    && Db::$rows['leg'][9]['area_lng']===null,
+    'Station leg zero coordinates are saved as SQL NULL, not decimal zero');
+$edited=$prefilled;
+$edited['operator_label']='Edited ferry';
+testAssert(GrTransportNetworkRepository::save('legs',$edited,9)===9
+    && Db::$rows['leg'][9]['operator_label']==='Edited ferry',
+    'Other station-leg fields remain editable after zero-coordinate re-save');
+
+foreach ([
+    ['37.9500000','23.6400000'],
+    ['37.9500000','0.0000000'],
+    ['0.0000000','23.6400000'],
+] as [$latitude,$longitude]) {
+    Db::$rows['leg'][9]=array_replace($legacyLeg,[
+        'area_lat'=>$latitude,'area_lng'=>$longitude,
+    ]);
+    $beforeUpdates=Db::$updates;
+    try {
+        GrTransportNetworkRepository::save('legs',
+            array_intersect_key(Db::$rows['leg'][9],GrTransportNetworkFields::fields('legs')),9);
+        throw new RuntimeException('Non-zero area coordinates passed station-leg validation');
+    } catch (InvalidArgumentException $error) {
+        testAssert($error->getMessage()==='A station leg cannot also be a direct area service',
+            'Non-zero station-leg coordinates must retain the original error');
+    }
+    testAssert(Db::$updates===$beforeUpdates,
+        'Rejected station-leg geometry must not reach the DB writer');
+}
+$zeroCentre=GrTransportNetworkFields::normalize('legs',array_replace($direct,[
+    'area_lat'=>'0.0000000','area_lng'=>'0.0000000',
+]));
+testAssert($zeroCentre['area_lat']===0.0 && $zeroCentre['area_lng']===0.0,
+    'Direct-area coordinates at (0,0) must keep their valid existing meaning');
+
+echo "Station, graph, safe transfers, direct area, API permissions and #109 re-save tests passed\\n";
