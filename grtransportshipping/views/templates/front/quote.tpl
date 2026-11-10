@@ -33,8 +33,8 @@
     {if $quote_route}
       {if $quote_far_required && !$quote_far_confirmed}
         <div class="alert alert-warning grtransport-far-preview" role="alert">
-          <strong>{l s='Far from the station — FAR zone' mod='grtransportshipping'}</strong>
-          <p>{l s='This address is outside the normal service reach. You may need to walk a long distance to the station. Proceed with this far-zone transport option anyway?' mod='grtransportshipping'}</p>
+          <strong>{l s='FAR service boundary — confirmation required' mod='grtransportshipping'}</strong>
+          <p>{l s='This address is outside the normal service reach of the selected transport option. Do you wish to proceed with this far-zone service?' mod='grtransportshipping'}</p>
         </div>
         <form method="post" action="{$quote_action|escape:'htmlall':'UTF-8'}" id="grtransport-quote-far-confirm">
           <input type="hidden" name="fc" value="module">
@@ -47,7 +47,7 @@
           <input type="hidden" name="note" value="{$quote_note|escape:'htmlall':'UTF-8'}">
           <label>
             <input type="checkbox" name="far_ack" value="1" required>
-            {l s='I understand that the station is far away and explicitly choose to proceed with this option.' mod='grtransportshipping'}
+            {l s='I understand that this destination is in the FAR zone and explicitly choose to proceed with this option.' mod='grtransportshipping'}
           </label>
           <button class="btn btn-warning" type="submit" name="far_accept" value="1">{l s='Proceed with far-zone transport quote' mod='grtransportshipping'}</button>
         </form>

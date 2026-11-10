@@ -9,6 +9,14 @@
     return;
   }
   const data = JSON.parse(root.dataset.config);
+  // Resolve nullable per-place overrides from the live administrator global
+  // before every geometry, union, stitch, tooltip and route-preview operation.
+  const effectiveOuter = (override, inner) => Math.max(Number(inner) || 0,
+    override == null || override === '' ? Number(data.farDefaultKm ?? 5) : Number(override));
+  data.stations = data.stations.map(s => ({...s,
+    outer_radius_km: effectiveOuter(s.outer_radius_km, s.inner_radius_km)}));
+  data.legs = data.legs.map(leg => leg.to_station_id == null ? {...leg,
+    area_outer_radius_km: effectiveOuter(leg.area_outer_radius_km, leg.area_radius_km)} : leg);
   const resolution = data.resolution || null;
   const geometry = window.GrtransCoverage;
   if (!geometry) {
@@ -159,7 +167,7 @@
   });
   const areaPatch = (leg) => ({
     lat: Number(leg.area_lat), lng: Number(leg.area_lng),
-    radiusKm: Number(leg.area_radius_km), key: 'area:' + leg.id_leg,
+    radiusKm: Number(leg.area_outer_radius_km), key: 'area:' + leg.id_leg,
     area_coverage_kind: leg.area_coverage_kind,
     area_coverage_geojson: leg.area_coverage_geojson
   });
@@ -571,21 +579,25 @@
         !leg.area_coverage_geojson)) return;
     const area = {lat: leg.area_lat, lng: leg.area_lng};
     const c = zoneColors.get('area:' + leg.id_leg);
-    const style = {
-      pane: 'grtrans-coverage-patches', fill: true, className: 'grtrans-organic-patch',
-      // The dynamic sea is a fill, not a second offset coastline/frame.
-      // Only a linked station island receives an explicit perimeter stitch.
-      fillColor: c, color: c, fillOpacity: leg._stale ? 0.1 : 0.24,
-      stroke: false, opacity: 0, weight: 0
-    };
+    // Paint both area tiers BEFORE the station islands: no holes, rim frame,
+    // or decorative coverage strip is introduced by the far-tier expansion.
     const owner = 'area:' + leg.id_leg;
-    const layer = L.polygon(geometry.leafletPaths(geometry.patchPaths(areaPatch(leg))),
-      style).addTo(map).bindTooltip(
-      safeTooltip((leg.area_name || 'Direct area') + ' · ' + fmt(leg.price) + ' EUR' + staleLabel(leg)));
-    registerPatch([owner], layer, style);
+    geometry.coverageTiers(areaPatch(leg), leg.area_radius_km).forEach(tier => {
+      if (!tier.paths.length) return;
+      const far = tier.kind === 'far';
+      const style = {pane:'grtrans-coverage-patches', fill:true,
+        className:'grtrans-organic-patch grtrans-tier-' + tier.kind,
+        fillColor:c, color:c, fillOpacity:leg._stale ? (far ? 0.1 : 0.18) : (far ? 0.16 : 0.36),
+        stroke:false, opacity:0, weight:0};
+      const layer=L.polygon(geometry.leafletPaths(tier.paths),style).addTo(map)
+        .bindTooltip(safeTooltip((leg.area_name || 'Direct area') + ' · ' + fmt(leg.price)
+          + ' EUR · ' + (far ? 'FAR zone: customer confirmation required' : 'normal service reach')
+          + staleLabel(leg)));
+      registerPatch([owner],layer,style);
+    });
     if (leg.area_coverage_geojson && leg.area_coverage_kind !== 'radius') {
       includeShape(geometry.patchPaths(areaPatch(leg)));
-    } else includeCoverage(point(area), leg.area_radius_km);
+    } else includeCoverage(point(area), leg.area_outer_radius_km);
   });
 
   // Use #107's server paint order; #106 fixture fallback remains unchanged.

@@ -163,7 +163,7 @@ class Grtransportshipping extends CarrierModule
         if (!empty($quote['extended']) &&
             !GrTransportFarZoneConsent::confirmed(
                 $this->context->cookie ?? null, $cart, $quote)) {
-            throw new RuntimeException('Far from the station: explicit customer confirmation is required before this transport option can be ordered');
+            throw new RuntimeException('FAR service zone: explicit customer confirmation is required before this transport option can be ordered');
         }
         // One invariant for both validation and subsequent snapshot repair:
         // distinguish an actual applied free-shipping voucher or configured
@@ -317,7 +317,7 @@ class Grtransportshipping extends CarrierModule
             . '<p>' . $this->escape($this->l(self::NOTICE_TEXT['location']))
                 . $this->escape($row['station_name'] ?? '') . '</p>'
             . (!empty($row['extended'])
-                ? '<strong>' . $this->escape($this->l('EXTENDED PICKUP AREA — LONG WALK')) . '</strong>'
+                ? '<strong>' . $this->escape($this->l('FAR SERVICE ZONE — CONFIRMATION REQUIRED')) . '</strong>'
                 : '')
             . '<p>' . $this->escape($row['notice'] ?? '') . '</p>'
             . (GrTransportNetworkSettings::get('show_delivery_time')>=0.5
@@ -525,7 +525,7 @@ class Grtransportshipping extends CarrierModule
         $cart=$this->context->cart ?? null;
         if (!$cart || (int)($cart->id ?? 0)<=0) {
             return '<div class="alert alert-warning grtransport-far-zone">'
-                . '<strong>Far from the station.</strong> This location is in the FAR zone. '
+                . '<strong>FAR service zone.</strong> This location is in the FAR zone. '
                 . 'An active cart and explicit confirmation are required to proceed.</div>';
         }
         $confirmed=GrTransportFarZoneConsent::confirmed(
@@ -537,9 +537,9 @@ class Grtransportshipping extends CarrierModule
             . 'data-confirm-token="' . $this->escape(GrTransportFarZoneConsent::token($cart)) . '" '
             . 'data-confirmed="' . ($confirmed?'1':'0') . '" '
             . 'role="group" aria-label="Far-zone transport confirmation">'
-            . '<strong>Far from the station — FAR zone.</strong> '
+            . '<strong>FAR service zone — confirmation required.</strong> '
             . '<p>This destination is outside the normal service reach. '
-            . 'It may require a long walk to the station. Proceed with this option anyway?</p>'
+            . 'Proceed with this far-zone transport option anyway?</p>'
             . '<label><input type="checkbox" class="grtransport-far-ack" '
             . ($confirmed?'checked ':'') . '> I understand the distance and explicitly '
             . 'agree to proceed with this far-zone transport option.</label>'
