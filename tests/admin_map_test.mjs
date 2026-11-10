@@ -273,6 +273,19 @@ assert.equal(multipartMerged.geometry.overlaps(postalRecord,
   {lat:38,lng:23.70,radiusKm:0.2,key:'isolated-in-hole'}),false,
   'A station entirely inside a saved polygon hole cannot falsely merge');
 console.log('Panel F: polygon/multipolygon union retains all sourced islands and holes');
+const remoteOverlapStation={...station(2,'At second polygon island',38.04,24.075),
+  inner_radius_km:1,outer_radius_km:4};
+const remoteSeamFixture=fixture({stations:[storedMulti,remoteOverlapStation],
+  cost:{1:5,2:9},legs:[{...busLeg,price:6}]});
+const remoteSeam=remoteSeamFixture.calls.lines.find(line=>
+  line.options.className==='grtrans-zigzag-stitch');
+assert.ok(remoteSeam&&remoteSeam.points.length===9,
+  'Panel C: linked priced overlap on second MultiPolygon component gets a stitch');
+assert.ok(remoteSeam.points.every(point=>point[1]>24.0&&point[1]<24.08),
+  'Panel C seam follows actual second source polygon boundary, not first shell');
+assert.ok(lengthKm(remoteSeam.points)<=1.8,
+  'MultiPolygon stitch respects the same local seam length cap');
+console.log('Panels C/F: sourced multipolygon boundary and union regressions passed');
 
 /* Resolution is a data contract, not hard-coded price interpretation inside
  * the seam painter. An override-aware resolver can replace this map in #107. */
