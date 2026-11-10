@@ -67,11 +67,13 @@ try {
   assert.equal((await simulator.getAttribute('method')).toLowerCase(), 'post');
   assert.ok((await simulator.locator('input[name="token"]').inputValue()).length > 8);
   await simulator.locator('input[name="postcode"]').fill('26221');
-  await simulator.getByRole('button', { name: 'Simulate quote' }).click();
-  await page.locator('#grtrans-simulator .alert').first().waitFor({ timeout: 20000 });
+  await simulator.getByRole('button', { name: 'Calculate test price' }).click();
+  const outcome = page.locator('#grtrans-simulator [data-grtrans-result], #grtrans-simulator .alert').first();
+  await outcome.waitFor({ timeout: 20000 });
   assert.doesNotMatch(page.url(), /\/security\/compromised/, 'Simulator must not enter the token warning page');
-  assert.match(await page.locator('#grtrans-simulator .alert').first().innerText(),
-    /Quoted EUR|No quote:/, 'The normal simulator result must render on first submit');
+  assert.match(await outcome.innerText(),
+    /Quoted price|No price available|The test could not be completed/,
+    'The normal simulator result must render on first submit');
   console.log('LIVE SIMULATOR: tokenized POST rendered result without interstitial');
 
   // #88: Creating stations/legs confirms creation; editing a leg confirms update.

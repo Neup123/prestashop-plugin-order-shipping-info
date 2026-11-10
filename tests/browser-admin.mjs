@@ -72,9 +72,9 @@ try {
   assert.equal(await form.locator('input[name="id_route"]').count(), 0, 'Edit form must not offer editable Route ID');
   assert.equal(await form.locator('input[name="grtrans_edit_proof"]').count(), 1,
     'Edit intent must be bound to the opened row');
-  assert.equal(await form.locator('select[name="demo"]').inputValue(), '1');
-  assert.equal((await form.locator('label[for="grtrans-field-route_status"]').innerText()).trim(), 'Route state');
-  assert.equal((await form.locator('label[for="grtrans-field-demo"]').innerText()).trim(), 'Estimate verification');
+  assert.equal(await form.locator('input[name="demo"][type="checkbox"]').isChecked(), true);
+  assert.equal((await form.locator('label[for="grtrans-field-route_status"]').innerText()).trim(), 'Availability');
+  assert.equal((await form.locator('label[for="grtrans-field-demo"]').innerText()).trim(), 'Unverified estimate');
   const viewport = await editor.evaluate(el => {
     const r = el.getBoundingClientRect();
     return {top:r.top,bottom:r.bottom,height:innerHeight,scrollY:scrollY};
@@ -183,9 +183,9 @@ try {
   await addForm.locator('input[name="city"]').fill('CI Town');
   await addForm.locator('input[name="postal_prefix"]').fill('ABC');
   await addForm.locator('input[name="price"]').fill('6.75');
-  await addForm.locator('select[name="pickup_only"]').selectOption('1');
+  await addForm.locator('input[name="pickup_only"][type="checkbox"]').check();
   await addForm.locator('select[name="route_status"]').selectOption('available');
-  await addForm.locator('select[name="demo"]').selectOption('1');
+  await addForm.locator('input[name="demo"][type="checkbox"]').check();
   await addForm.locator('textarea[name="notice"]').fill('CI customer collection note');
   await addForm.locator('button[name="grtrans_save"]').click();
   await page.getByText('Route not saved.', {exact:false}).first().waitFor({timeout:20000});
@@ -212,7 +212,7 @@ try {
   await inserted.getByRole('link',{name:'Edit'}).click();
   form = page.locator('form').filter({has:page.locator('button[name="grtrans_save"]')}).first();
   await form.locator('select[name="route_status"]').selectOption('suspended');
-  await form.locator('select[name="demo"]').selectOption('0');
+  await form.locator('input[name="demo"][type="checkbox"]').uncheck();
   await form.locator('button[name="grtrans_save"]').click();
   await page.getByText('Route dataset updated', {exact:false}).first().waitFor({timeout:20000});
   inserted = page.locator('.grtrans-route-grid tbody tr').filter({hasText:'99998'});
@@ -228,6 +228,7 @@ try {
     assert.match(dialog.message(), /Delete route #/);
     await dialog.accept();
   });
+  await inserted.locator('.grtrans-row-more summary').click();
   await inserted.locator('button[name="grtrans_delete"]').click();
   await page.getByText('Route dataset updated', {exact:false}).first().waitFor({timeout:20000});
   assert.equal(await page.locator('.grtrans-route-grid tbody tr').filter({hasText:'99998'}).count(), 0,
@@ -237,6 +238,7 @@ try {
   const staleForm = page.locator('.grtrans-route-grid tbody tr form').first();
   await staleForm.locator('input[name="id_route"]').evaluate((input,id)=>{input.value=id;},deletedId);
   page.once('dialog', async dialog => await dialog.accept());
+  await staleForm.locator('xpath=ancestor::details[1]/summary').click();
   await staleForm.locator('button[name="grtrans_delete"]').click();
   await page.getByText('Route does not exist', {exact:false}).first().waitFor({timeout:20000});
   assert.doesNotMatch(await page.locator('body').innerText(), /Route dataset updated\./);
