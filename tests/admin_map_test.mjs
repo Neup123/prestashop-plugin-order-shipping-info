@@ -241,6 +241,52 @@ const zeroPrice=fixture({stations:[a,b],cost:{1:0,2:0},legs:[{
 assert.ok(!zeroPrice.calls.lines.some(l=>l.options.className==='grtrans-zigzag-stitch'),
   'Equal-cost linked land stations merge without a false cheap-to-expensive transfer seam');
 
+/* #103/F regression: equal-price station-bound union must preserve the
+ * real Polygon/MultiPolygon footprint, including an unfilled postal hole.
+ * The original radius-only CI fixture missed this source-geometry case. */
+const multipart=JSON.stringify({type:'MultiPolygon',coordinates:[
+  [
+    [[23.60,37.90],[23.80,37.90],[23.80,38.10],[23.60,38.10],[23.60,37.90]],
+    [[23.68,37.98],[23.72,37.98],[23.72,38.02],[23.68,38.02],[23.68,37.98]]
+  ],
+  [[[24.00,38.00],[24.08,38.00],[24.08,38.08],[24.00,38.08],[24.00,38.00]]]
+]});
+const storedMulti={...station(1,'Postal islands',38,23.62),
+  coverage_kind:'postal_polygon',coverage_geojson:multipart};
+const adjoining={...station(2,'Bus boundary',38,23.79),
+  outer_radius_km:3,inner_radius_km:1};
+const multipartMerged=fixture({stations:[storedMulti,adjoining],cost:{1:0,2:0},
+  legs:[{...busLeg,price:4}]});
+assert.equal(multipartMerged.calls.polygons.length,2,
+  'Equal-price linked polygon and circle have ONE far and ONE normal layer');
+const mergedPaths=multipartMerged.calls.polygons[0].points;
+assert.equal(mergedPaths.length,2,
+  'Panel F retains the second supplied MultiPolygon island after union');
+assert.ok(mergedPaths.some(poly=>polygonContains([38.04,24.04],poly[0])),
+  'Distant postal polygon island is not silently discarded');
+const polygonWithHole=mergedPaths.find(poly=>poly.length>1);
+assert.ok(polygonWithHole&&polygonContains([38,23.70],polygonWithHole[1]),
+  'Uncovered postal hole remains a hole when adjacent station coverage merges');
+const postalRecord={lat:38,lng:23.62,radiusKm:10,
+  coverage_geojson:multipart,key:'station:1'};
+assert.equal(multipartMerged.geometry.overlaps(postalRecord,
+  {lat:38,lng:23.70,radiusKm:0.2,key:'isolated-in-hole'}),false,
+  'A station entirely inside a saved polygon hole cannot falsely merge');
+console.log('Panel F: polygon/multipolygon union retains all sourced islands and holes');
+const remoteOverlapStation={...station(2,'At second polygon island',38.04,24.075),
+  inner_radius_km:1,outer_radius_km:4};
+const remoteSeamFixture=fixture({stations:[storedMulti,remoteOverlapStation],
+  cost:{1:5,2:9},legs:[{...busLeg,price:6}]});
+const remoteSeam=remoteSeamFixture.calls.lines.find(line=>
+  line.options.className==='grtrans-zigzag-stitch');
+assert.ok(remoteSeam&&remoteSeam.points.length===9,
+  'Panel C: linked priced overlap on second MultiPolygon component gets a stitch');
+assert.ok(remoteSeam.points.every(point=>point[1]>24.0&&point[1]<24.08),
+  'Panel C seam follows actual second source polygon boundary, not first shell');
+assert.ok(lengthKm(remoteSeam.points)<=1.8,
+  'MultiPolygon stitch respects the same local seam length cap');
+console.log('Panels C/F: sourced multipolygon boundary and union regressions passed');
+
 /* Resolution is a data contract, not hard-coded price interpretation inside
  * the seam painter. An override-aware resolver can replace this map in #107. */
 const explicitBoundary = fixture({
@@ -295,6 +341,8 @@ const arc=air.calls.lines.find(l=>l.options.className==='grtrans-air-arc');
 const arrow=air.calls.lines.find(l=>l.options.className==='grtrans-air-arrow');
 assert.ok(arc && arrow,'Panel D: flight renders a directed dashed arc');
 assert.equal(arc.points.length,41);
+assert.equal(air.calls.lines.filter(l=>l.options.className==='grtrans-air-arrow').length,1,
+  'Panel D schematic and directed flight use ONE destination arrow');
 assert.equal(arc.options.dashArray,'7 7');
 assert.ok(kmDistance(arrow.points[1],[37,25])<.001);
 const airMiddle=[37.5,24.35];
@@ -325,6 +373,22 @@ assert.equal(vessels.length,2,
   'Panel E: each priced sea origin-destination vessel gets a separate straight dashed line');
 assert.ok(vessels.every(l=>l.points.length===2&&l.options.dashArray==='8 7'));
 assert.equal(sea.calls.lines.filter(l=>l.options.className==='grtrans-sea-arrow').length,2);
+const sameEndpointVessels=fixture({stations:[
+  {...a,type:'ferry'}, {...station(2,'Single destination',37.1,25.4),type:'ferry'}
+],legs:[
+  {id_leg:32,from_station_id:1,to_station_id:2,mode:'ferry',operator_label:'Lower fare',price:12},
+  {id_leg:33,from_station_id:1,to_station_id:2,mode:'ferry',operator_label:'Higher fare',price:24}
+]});
+const twoFares=sameEndpointVessels.calls.lines.filter(l=>
+  l.options.className==='grtrans-sea-line');
+assert.equal(twoFares.length,2,
+  'Two priced origin-destination sea records remain separate DOM/hover vessels');
+assert.ok(twoFares[0].layer.tooltip.textContent.includes('12.00') &&
+  twoFares[1].layer.tooltip.textContent.includes('24.00'),
+  'Coincident geometric sea lines retain their independent fares and targets');
+assert.equal(sameEndpointVessels.calls.lines.filter(l=>
+  l.options.className==='grtrans-sea-arrow').length,2,
+  'Panel E draws one destination-facing arrow for each directed sea record');
 vessels[0].layer.events.mouseover();
 assert.ok(sea.calls.polygons[0].layer.style.fillOpacity>.16);
 assert.ok(sea.calls.polygons[2].layer.style.fillOpacity>.16);

@@ -613,7 +613,7 @@
       const groupId = group.map(station => station.id_station).sort((a, b) => a - b).join(',');
       if (paintedGroups.has(groupId)) return;
       paintedGroups.add(groupId);
-      const contours = geometry.unionContours(group.map(stationPatch));
+      const contours = geometry.unionCoveragePaths(group.map(stationPatch));
       if (contours.length) {
         const c = zoneColors.get('station:' + group[0].id_station);
         const owners = group.map(station => 'station:' + station.id_station);
@@ -626,7 +626,7 @@
             className:'grtrans-organic-patch grtrans-tier-'+kind,
             fillColor:c,color:c,fillOpacity,weight:outer?1:0,
             stroke:outer,opacity:outer?0.65:0};
-          const latlngs = rings.length === 1 ? rings[0] : rings.map(ring=>[ring]);
+          const latlngs = geometry.leafletPaths(rings);
           const layer=L.polygon(latlngs,style).addTo(map).bindTooltip(title);
           registerPatch(owners,layer,style);
           layer.on('click',event=>{
@@ -655,7 +655,7 @@
               coverage_geojson:JSON.stringify({type:'Polygon',coordinates})});
           });
         });
-        mergedTier('normal',geometry.unionContours(innerRecords),0.42);
+        mergedTier('normal',geometry.unionCoveragePaths(innerRecords),0.42);
       }
       return;
     }
@@ -720,7 +720,7 @@
       const group = groupsByStation.get(Number(from.id_station)) || [from];
       const island = group.length > 1
         ? {...stationPatch(from),
-          paths: geometry.unionContours(group.map(stationPatch)).map(ring => [ring])}
+          paths: geometry.unionCoveragePaths(group.map(stationPatch))}
         : stationPatch(from);
       const linkedOwners = group.map(station => 'station:' + station.id_station).concat(b);
       if (!drawIslandPerimeter(areaPatch(leg), island, label, leg._stale, linkedOwners)) {

@@ -173,6 +173,47 @@
   const overlaps = (a, b) => {
     if (!isValid(a) || !isValid(b)) return false;
     const projection = projector([[a.lat, a.lng], [b.lat, b.lng]]);
+    if (geoPaths(a) || geoPaths(b)) {
+      // A circle entirely inside a stored polygon HOLE is not overlapping
+      // service. Use every Polygon/MultiPolygon ring, not its bounding shell.
+      const footprint = record => patchPaths(record).map(polygon =>
+        polygon.map(ring => {
+          const points=ring.map(projection.xy);
+          if(points.length>1 && length(points[0],points[points.length-1])<EPS)
+            points.pop();
+          return points;
+        }).filter(ring=>ring.length>=3)).filter(polygon=>polygon.length);
+      const first=footprint(a), second=footprint(b);
+      const covers=(point,polygons)=>polygons.some(poly=>
+        inside(point,poly[0])&&!poly.slice(1).some(hole=>inside(point,hole)));
+      const exposedEdgeInside=(polys,other)=>{
+        for(const poly of polys) {
+          const ring=poly[0];
+          for(let i=0;i<ring.length;i++){
+            const p=ring[i],q=ring[(i+1)%ring.length];
+            const mid=move(p,difference(q,p),0.5);
+            const delta=difference(q,p),dist=length(p,q);
+            if(dist<EPS)continue;
+            const side={x:-delta.y/dist*0.0001,y:delta.x/dist*0.0001};
+            if((covers(move(mid,side,1),polys)&&
+                covers(move(mid,side,1),other))||
+               (covers(move(mid,side,-1),polys)&&
+                covers(move(mid,side,-1),other)))return true;
+          }
+        }
+        return false;
+      };
+      if(exposedEdgeInside(first,second)||exposedEdgeInside(second,first))
+        return true;
+      const edges=polys=>polys.flatMap(poly=>poly.flatMap(ring=>
+        ring.map((point,i)=>[point,ring[(i+1)%ring.length]])));
+      const one=edges(first),two=edges(second);
+      for(const [p,q] of one)for(const [s,t] of two){
+        const hit=intersection(p,q,s,t);
+        if(hit!==null&&hit>EPS&&hit<1-EPS)return true;
+      }
+      return false;
+    }
     if (!nearby(a, b, projection)) return false;
     const first = shapeXY(a, projection), second = shapeXY(b, projection);
     if (inside(first[0], second) || inside(second[0], first)) return true;
@@ -246,6 +287,100 @@
     }
     return rings;
   };
+  // True union of stored polygon/multipolygon coverage. The fast contour
+  // union above handles circles, but its historical first-ring projection
+  // would discard GeoJSON islands and holes. For sourced geometries, retain
+  // every ring and keep only boundary segments with coverage on one side.
+  // This computes a paint union of EXISTING coverage, never new reach.
+  const unionCoveragePaths = input => {
+    const records = input.filter(isValid);
+    if (!records.length) return [];
+    if (!records.some(record => geoPaths(record)))
+      return unionContours(records).map(ring => [ring]);
+    const projection = projector(records.map(r => [r.lat, r.lng]));
+    const parts = records.flatMap(record => patchPaths(record).map(poly =>
+      poly.map(ring => {
+        const xy = ring.map(projection.xy);
+        if (xy.length > 1 && length(xy[0], xy[xy.length - 1]) < EPS) xy.pop();
+        return xy;
+      }).filter(ring => ring.length >= 3)
+    )).filter(poly => poly.length);
+    const covered = point => parts.some(poly =>
+      inside(point, poly[0]) && !poly.slice(1).some(hole => inside(point, hole)));
+    const segments = parts.flatMap(poly => poly.flatMap(ring =>
+      ring.map((from, i) => ({from, to:ring[(i + 1) % ring.length]}))
+        .filter(edge => length(edge.from, edge.to) > EPS)));
+    const exposed = [];
+    const seen = new Set();
+    const id = p => Math.round(p.x * 1e5) + ':' + Math.round(p.y * 1e5);
+    segments.forEach((edge, index) => {
+      const delta = difference(edge.to, edge.from);
+      const cuts = [0, 1];
+      segments.forEach((other, otherIndex) => {
+        if (index === otherIndex) return;
+        const t = intersection(edge.from, edge.to, other.from, other.to);
+        if (t !== null && t > EPS && t < 1 - EPS) cuts.push(t);
+      });
+      cuts.sort((a, b) => a - b);
+      for (let i = 1; i < cuts.length; i++) {
+        if (cuts[i] - cuts[i-1] < EPS) continue;
+        const start = move(edge.from, delta, cuts[i-1]);
+        const end = move(edge.from, delta, cuts[i]);
+        const distance = length(start, end);
+        if (distance < EPS) continue;
+        const midpoint = move(start, difference(end, start), 0.5);
+        const normal = {x: -(end.y-start.y)/distance, y: (end.x-start.x)/distance};
+        const offset = Math.min(0.001, Math.max(1e-6, distance * 0.02));
+        const left = covered(move(midpoint, normal, offset));
+        const right = covered(move(midpoint, normal, -offset));
+        if (left === right) continue;
+        // Orient every exterior or hole boundary with covered area on LEFT.
+        const from = left ? start : end, to = left ? end : start;
+        const key = id(from) + '>' + id(to);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        exposed.push({from, to});
+      }
+    });
+    const outgoing = new Map();
+    exposed.forEach((edge, index) => {
+      const key = id(edge.from);
+      if (!outgoing.has(key)) outgoing.set(key, []);
+      outgoing.get(key).push(index);
+    });
+    const remaining = new Set(exposed.map((_, i) => i));
+    const rings = [];
+    while (remaining.size) {
+      let cursor = remaining.values().next().value;
+      const firstKey = id(exposed[cursor].from);
+      const points = [exposed[cursor].from];
+      let closed = false;
+      while (remaining.has(cursor)) {
+        remaining.delete(cursor);
+        const edge = exposed[cursor];
+        if (id(edge.to) === firstKey) {closed = true; break;}
+        points.push(edge.to);
+        const next = (outgoing.get(id(edge.to)) || []).find(i => remaining.has(i));
+        if (next === undefined) break;
+        cursor = next;
+      }
+      if (closed && points.length >= 3) {
+        const signed = points.reduce((sum, p, i) =>
+          sum + cross(p, points[(i + 1) % points.length]), 0);
+        if (Math.abs(signed) > EPS) rings.push({xy:points, signed});
+      }
+    }
+    const outer = rings.filter(ring => ring.signed > 0)
+      .map(ring => ({...ring, holes:[]}));
+    for (const hole of rings.filter(ring => ring.signed < 0)) {
+      const parent = outer.filter(ring => inside(hole.xy[0], ring.xy))
+        .sort((a, b) => a.signed - b.signed)[0];
+      if (parent) parent.holes.push(hole.xy);
+    }
+    return outer.map(part => [part.xy, ...part.holes].map(ring =>
+      ring.map(projection.ll)));
+  };
+
   // Only an explicit priced station-bound link can establish same-service
   // membership. Shared mode labels alone NEVER merge separate operators.
   const stationGroups = (stations, legs, costs = {}) => {
@@ -292,64 +427,71 @@
     return [...groups.values()];
   };
 
-  // Panel C: the transfer seam hugs the CHEAPER service's OUTER reach
-  // boundary, but only its section inside the dearer reach. Not the mid-lens.
+  // Panel C: follow the actual resolved winning coverage boundary within
+  // the losing reach. Stored MultiPolygon islands and hole boundaries are
+  // eligible handovers too; never silently default to the first outer ring.
   const zigzagSeam = (cheap, expensive, lane = 0) => {
     if (!overlaps(cheap, expensive)) return null;
     const projection = projector([[cheap.lat, cheap.lng], [expensive.lat, expensive.lng]]);
-    const cheapRing = shapeXY(cheap, projection), expensiveRing = shapeXY(expensive, projection);
-    const centre = projection.xy([cheap.lat, cheap.lng]);
-    // A midpoint of a cheap-perimeter segment entirely inside the dearer
-    // polygon is the actual changeover from both-reach to dearer-only.
-    const candidates = [];
-    for (let i = 0; i < cheapRing.length; i++) {
-      const a = cheapRing[i], b = cheapRing[(i + 1) % cheapRing.length];
-      const mid = move(a, difference(b, a), 0.5);
-      if (inside(mid, expensiveRing)) {
-        // Prefer the portion facing the dearer centre (the widest lens).
-        const expensiveCentre = projection.xy([expensive.lat, expensive.lng]);
-        candidates.push({i, mid, score: length(mid, expensiveCentre)});
-      }
+    const shape = record => patchPaths(record).map(part => part.map(ring => {
+      const xy=ring.map(projection.xy);
+      if(xy.length>1&&length(xy[0],xy[xy.length-1])<EPS)xy.pop();
+      return xy;
+    }).filter(ring=>ring.length>=3)).filter(part=>part.length);
+    const cheapParts=shape(cheap),expensiveParts=shape(expensive);
+    const contains=(point,parts)=>parts.some(poly=>
+      inside(point,poly[0])&&!poly.slice(1).some(hole=>inside(point,hole)));
+    const expensiveCentre=projection.xy([expensive.lat,expensive.lng]);
+    const candidates=[];
+    for(const part of cheapParts)for(const ring of part)for(let i=0;i<ring.length;i++){
+      const from=ring[i],to=ring[(i+1)%ring.length];
+      const mid=move(from,difference(to,from),0.5);
+      if(contains(mid,expensiveParts))
+        candidates.push({ring,i,score:length(mid,expensiveCentre)});
     }
-    if (!candidates.length) return null;
-    candidates.sort((a, b) => a.score - b.score);
-    const chosen = candidates[0].i;
-    const ring = cheapRing;
-    const signedArea = ring.reduce((sum, p, i) => sum +
-      cross(p, ring[(i + 1) % ring.length]), 0);
-    for (let scale = 1; scale >= 0.08; scale *= 0.7) {
-      const half = Math.min(0.65, Number(cheap.radiusKm || 2) * 0.14) * scale;
-      const wiggle = 0.035 * scale;
-      const vertices = [];
-      for (let k = 0; k < 9; k++) {
-        const signed = (k / 4 - 1) * half;
-        let index = chosen;
-        let pos = move(ring[index], difference(ring[(index+1)%ring.length],ring[index]),0.5);
-        let remaining = Math.abs(signed);
-        const dir = signed < 0 ? -1 : 1;
-        while (remaining > EPS) {
-          const next = dir > 0 ? ring[(index+1)%ring.length] : ring[index];
-          const dist = length(pos,next);
-          if (dist >= remaining || dist < EPS) {
-            if (dist > EPS) pos=move(pos,difference(next,pos),remaining/dist);
-            break;
+    candidates.sort((a,b)=>a.score-b.score);
+    // Try neighbouring candidate arcs rather than omitting a valid stitch
+    // because a single highly concave edge cannot accommodate nine points.
+    for(const candidate of candidates.slice(0,32)){
+      const {ring,i:chosen}=candidate;
+      for(let scale=1;scale>=0.08;scale*=0.7){
+        const half=Math.min(0.65,Number(cheap.radiusKm||2)*0.14)*scale;
+        const wiggle=0.035*scale;
+        const vertices=[];
+        for(let k=0;k<9;k++){
+          const signed=(k/4-1)*half;
+          let index=chosen;
+          let pos=move(ring[index],
+            difference(ring[(index+1)%ring.length],ring[index]),0.5);
+          let remaining=Math.abs(signed);
+          const dir=signed<0?-1:1;
+          while(remaining>EPS){
+            const next=dir>0?ring[(index+1)%ring.length]:ring[index];
+            const dist=length(pos,next);
+            if(dist>=remaining||dist<EPS){
+              if(dist>EPS)pos=move(pos,difference(next,pos),remaining/dist);
+              break;
+            }
+            remaining-=dist;
+            pos=next;
+            index=(index+dir+ring.length)%ring.length;
           }
-          remaining -= dist;
-          pos=next;
-          index=(index+dir+ring.length)%ring.length;
+          const p0=ring[index],p1=ring[(index+1)%ring.length];
+          const tangent=difference(p1,p0),norm=length(p0,p1);
+          if(norm<EPS){vertices.length=0;break;}
+          const left={x:-tangent.y/norm,y:tangent.x/norm};
+          const mid=move(p0,tangent,0.5);
+          const inward=contains(move(mid,left,0.0001),cheapParts)
+            ? left:{x:-left.x,y:-left.y};
+          vertices.push(move(pos,inward,wiggle*(1+(k%2?0.6:0))));
         }
-        const p0=ring[index],p1=ring[(index+1)%ring.length];
-        const tangent=difference(p1,p0), norm=length(p0,p1);
-        if (norm<EPS) {vertices.length=0;break;}
-        const inward=signedArea>=0
-          ? {x:-tangent.y/norm,y:tangent.x/norm}
-          : {x:tangent.y/norm,y:-tangent.x/norm};
-        vertices.push(move(pos,inward,wiggle * (1 + (k % 2 ? 0.6 : 0))));
+        if(vertices.length!==9)continue;
+        const kmLength=vertices.slice(1).reduce((sum,p,i)=>
+          sum+length(p,vertices[i]),0);
+        if(kmLength<=1.8&&vertices.every(p=>
+          contains(p,cheapParts)&&contains(p,expensiveParts)))
+          return vertices.map(projection.ll);
       }
-      if (vertices.length!==9) continue;
-      const kmLength=vertices.slice(1).reduce((sum,p,i)=>sum+length(p,vertices[i]),0);
-      if (kmLength<=1.8 && vertices.every(p=>inside(p,cheapRing)&&inside(p,expensiveRing)))
-        return vertices.map(projection.ll);
     }
     return null;
   };
@@ -533,6 +675,7 @@
   global.GrtransCoverage = Object.freeze({
     kind, patchContour, patchPaths, leafletPaths, coverageTiers, overlaps, stationGroups, unionContours,
     zigzagSeam, stitches, defaultResolutions, airArc, seaLine, routePaths,
+    unionCoveragePaths,
     containsPatch, islandStitchRings
   });
 }(window));
