@@ -162,6 +162,9 @@ final class GrTransportNetworkAdmin
                 $out.='<tr><td>' . $id . '</td>';
                 foreach ($names as $name) $out.='<td>' . self::esc($record[$name] ?? '—') . '</td>';
                 if ($collection==='stations' || $collection==='legs') {
+                    if ($collection==='legs' && $record['to_station_id']!==null) {
+                        $out.='<td>Station-to-station leg (no area coverage)</td>';
+                    } else {
                     $outerKey=$collection==='stations' ? 'outer_radius_km' : 'area_outer_radius_km';
                     $innerKey=$collection==='stations' ? 'inner_radius_km' : 'area_radius_km';
                     $override=$record[$outerKey] ?? null;
@@ -169,6 +172,7 @@ final class GrTransportNetworkAdmin
                     $effective=GrTransportNetworkSettings::effectiveOuterKm($override,(float)$record[$innerKey]);
                     $out.='<td>'.self::esc($inherited ? 'Inherited global' : 'Explicit override')
                         .' · '.self::esc(number_format($effective,2,'.','')).' km</td>';
+                    }
                 }
                 if ($collection==='legs' || $collection==='transfers') {
                     $out.='<td>' . self::esc($record['verified_at'] ?: 'Not yet verified') . '</td>';
@@ -267,7 +271,9 @@ final class GrTransportNetworkAdmin
                     .' · effective '.self::esc(number_format($effective,2,'.','')).' km. '
                     .'Clear the field and save to inherit the current global default ('
                     .self::esc(GrTransportNetworkSettings::get('station_outer_km')).' km). '
-                    .'An explicit override must be at least the normal inner radius.</p>';
+                    .'An explicit override must be at least the normal inner radius.</p>'
+                    .'<button type="button" class="btn btn-default btn-sm grtrans-clear-far"'
+                    .' data-target="grtrans-network-field-'.$key.'">Clear override · inherit global</button>';
             }
             $out.='</div>';
         }

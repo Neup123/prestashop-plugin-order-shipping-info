@@ -1,6 +1,13 @@
 /* The coverage map is a view of the persisted API/repository network, not a second dataset. */
 (function () {
   'use strict';
+  // Clear-back-to-inherit remains usable even if the map library fails.
+  document.querySelectorAll?.('.grtrans-clear-far').forEach(button => {
+    button.addEventListener('click', () => {
+      const input = document.getElementById(button.dataset.target);
+      if (input) input.value = '';
+    });
+  });
   const root = document.getElementById('grtrans-network-map');
   if (!root) return;
   const status = document.getElementById('grtrans-map-status');
