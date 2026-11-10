@@ -8,6 +8,7 @@ class Configuration {
 require_once __DIR__ . '/../grtransportshipping/classes/NetworkSettings.php';
 require_once __DIR__ . '/../grtransportshipping/classes/QuoteCheck.php';
 require_once __DIR__ . '/../grtransportshipping/classes/NetworkFields.php';
+require_once __DIR__ . '/../grtransportshipping/classes/NetworkGraph.php';
 require_once __DIR__ . '/../grtransportshipping/classes/NetworkTariff.php';
 require_once __DIR__ . '/../grtransportshipping/classes/CartQuote.php';
 
@@ -50,8 +51,10 @@ testAssert(GrTransportQuoteCheck::pin($routes,$north(10.001),$naxos['lng'])['quo
     'Configured radius rejects outside point');
 testAssert(GrTransportNetworkSettings::get('nearby_gap_km')===1.5,'Nearby gap persisted');
 testAssert(GrTransportNetworkFields::defaults('stations')['inner_radius_km']===2.0
-    && GrTransportNetworkFields::defaults('stations')['outer_radius_km']===6.0,
-    'New station default rings are configurable');
+    && GrTransportNetworkFields::defaults('stations')['outer_radius_km']===null,
+    'New station stores no FAR override and inherits global');
+testAssert(GrTransportNetworkSettings::effectiveOuterKm(null,2)===6.0,
+    'Runtime default governs new station FAR boundary');
 testAssert(GrTransportNetworkFields::defaults('legs')['estimate_low_factor']===0.75
     && GrTransportNetworkFields::defaults('legs')['estimate_high_factor']===1.25,
     'New estimate factor defaults are configurable');
@@ -77,4 +80,27 @@ $reject(['station_inner_km'=>7,'station_outer_km'=>6]);
 $reject(['estimate_low_factor'=>1.5,'estimate_high_factor'=>1.4]);
 $reject(['quote_ttl_minutes'=>1.5]);
 $reject(['max_coverage_km'=>4]);
-echo "Operational defaults, radius inclusivity, conversions and admin setting guards passed\n";
+
+// #112: inherited live defaults and explicit overrides on both patch kinds.
+$station=['id_station'=>77,'lat'=>38,'lng'=>23.7,'inner_radius_km'=>2,'outer_radius_km'=>null];
+$area=['id_leg'=>99,'from_station_id'=>77,'to_station_id'=>null,
+    'area_lat'=>38,'area_lng'=>23.7,'area_radius_km'=>2,'area_outer_radius_km'=>null];
+$north=static fn(float $km) => 38+rad2deg($km/6371.0088);
+testAssert(GrTransportNetworkGraph::candidates([$station],$north(4),23.7)[0]['ring']==='outer',
+    'Station inherits configured global 6 km FAR boundary');
+testAssert(GrTransportNetworkGraph::directAreas([$area],$north(4),23.7)[0]['_ring']==='outer',
+    'Area inherits same global FAR boundary');
+$settings['station_outer_km']=3;
+GrTransportNetworkSettings::save($settings);
+testAssert(GrTransportNetworkGraph::candidates([$station],$north(4),23.7)===[]
+    && GrTransportNetworkGraph::directAreas([$area],$north(4),23.7)===[],
+    'Global FAR change updates inherited station and area reach at lookup time');
+$station['outer_radius_km']=8;
+$area['area_outer_radius_km']=8;
+testAssert(GrTransportNetworkGraph::candidates([$station],$north(7),23.7)[0]['ring']==='outer'
+    && GrTransportNetworkGraph::directAreas([$area],$north(7),23.7)[0]['_ring']==='outer',
+    'Per-place explicit overrides beat global setting');
+testAssert(GrTransportNetworkSettings::effectiveOuterKm(null,4)===4.0,
+    'Inherited FAR extent cannot remove normal reach');
+
+echo "Operational defaults and runtime FAR radius tests passed\\n";

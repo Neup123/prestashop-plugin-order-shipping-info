@@ -130,10 +130,36 @@ testAssert($directLink['quote']['station_name']==='Premium delivery'
 $graph=GrTransportNetworkGraph::routes($overlapNetwork['stations'],$overlapNetwork['legs'],$overlapNetwork['transfers']);
 $plan=GrTransportNetworkResolution::mapPlan($overlapNetwork,$graph['cost']);
 testAssert($plan['links']['leg:34']['winner_key']==='area:34'
-    && $plan['links']['leg:34']['reach_boundary_km']===2.0
+    && $plan['links']['leg:34']['reach_boundary_km']===5.0
     && in_array('area:34',$plan['paint_order'],true),
     'Map consumes server-resolved winner and reach boundary, not a separate cheapest rule');
-$outside=GrTransportNetworkQuote::resolve([],$overlapNetwork,'','',[38.13,23.7]);
+$outside=GrTransportNetworkQuote::resolve([],$overlapNetwork,'','',[38.16,23.7]);
 testAssert($outside['quote']===null,'Override cannot extend service beyond configured coverage');
 
-echo "Network cheapest path, overrides, coverage, direct-area and simulator tests passed\n";
+
+// #112: a direct area's FAR ring shares the consent/warning mechanism.
+$isolatedArea=['stations'=>[['id_station'=>80,'name'=>'Hub','type'=>'other',
+    'lat'=>38,'lng'=>23.7,'inner_radius_km'=>0.5,'outer_radius_km'=>0.5,'is_origin_hub'=>1]],
+    'legs'=>[['id_leg'=>81,'from_station_id'=>80,'to_station_id'=>null,'mode'=>'other',
+    'operator_label'=>'Couriers','price'=>7,'bidirectional'=>0,'area_name'=>'Area delivery',
+    'area_lat'=>39,'area_lng'=>23.7,'area_radius_km'=>2,'area_outer_radius_km'=>null]],
+    'transfers'=>[]];
+$areaNorth=static fn(float $km): float => 39+rad2deg($km/6371.0088);
+$areaFar=GrTransportNetworkQuote::resolve([],$isolatedArea,'','',[$areaNorth(3),23.7],null,
+    'Custom FAR consent notice');
+testAssert($areaFar['status']==='quoted' && $areaFar['quote']['ring']==='outer'
+    && $areaFar['quote']['extended']===1 && $areaFar['quote']['pickup_only']===0
+    && $areaFar['quote']['notice']==='Custom FAR consent notice',
+    'Direct-area FAR quote uses the existing extended consent marker and notice');
+$areaNormal=GrTransportNetworkQuote::resolve([],$isolatedArea,'','',[$areaNorth(1),23.7]);
+testAssert($areaNormal['quote']['ring']==='inner' && $areaNormal['quote']['extended']===0,
+    'Normal direct area does not require FAR consent');
+$areaOutside=GrTransportNetworkQuote::resolve([],$isolatedArea,'','',[$areaNorth(6),23.7]);
+testAssert($areaOutside['quote']===null,'Inherited area rejects beyond global FAR extent');
+$isolatedArea['legs'][0]['area_outer_radius_km']=8;
+$areaOverride=GrTransportNetworkQuote::resolve([],$isolatedArea,'','',[$areaNorth(7),23.7]);
+testAssert($areaOverride['quote']['extended']===1
+    && $areaOverride['quote']['ring']==='outer',
+    'Area FAR override beats global setting during real quote resolution');
+
+echo "Network cheapest path, FAR areas and simulator tests passed\\n";
