@@ -246,6 +246,100 @@
     }
     return rings;
   };
+  // True union of stored polygon/multipolygon coverage. The fast contour
+  // union above handles circles, but its historical first-ring projection
+  // would discard GeoJSON islands and holes. For sourced geometries, retain
+  // every ring and keep only boundary segments with coverage on one side.
+  // This computes a paint union of EXISTING coverage, never new reach.
+  const unionCoveragePaths = input => {
+    const records = input.filter(isValid);
+    if (!records.length) return [];
+    if (!records.some(record => geoPaths(record)))
+      return unionContours(records).map(ring => [ring]);
+    const projection = projector(records.map(r => [r.lat, r.lng]));
+    const parts = records.flatMap(record => patchPaths(record).map(poly =>
+      poly.map(ring => {
+        const xy = ring.map(projection.xy);
+        if (xy.length > 1 && length(xy[0], xy[xy.length - 1]) < EPS) xy.pop();
+        return xy;
+      }).filter(ring => ring.length >= 3)
+    )).filter(poly => poly.length);
+    const covered = point => parts.some(poly =>
+      inside(point, poly[0]) && !poly.slice(1).some(hole => inside(point, hole)));
+    const segments = parts.flatMap(poly => poly.flatMap(ring =>
+      ring.map((from, i) => ({from, to:ring[(i + 1) % ring.length]}))
+        .filter(edge => length(edge.from, edge.to) > EPS)));
+    const exposed = [];
+    const seen = new Set();
+    const id = p => Math.round(p.x * 1e5) + ':' + Math.round(p.y * 1e5);
+    segments.forEach((edge, index) => {
+      const delta = difference(edge.to, edge.from);
+      const cuts = [0, 1];
+      segments.forEach((other, otherIndex) => {
+        if (index === otherIndex) return;
+        const t = intersection(edge.from, edge.to, other.from, other.to);
+        if (t !== null && t > EPS && t < 1 - EPS) cuts.push(t);
+      });
+      cuts.sort((a, b) => a - b);
+      for (let i = 1; i < cuts.length; i++) {
+        if (cuts[i] - cuts[i-1] < EPS) continue;
+        const start = move(edge.from, delta, cuts[i-1]);
+        const end = move(edge.from, delta, cuts[i]);
+        const distance = length(start, end);
+        if (distance < EPS) continue;
+        const midpoint = move(start, difference(end, start), 0.5);
+        const normal = {x: -(end.y-start.y)/distance, y: (end.x-start.x)/distance};
+        const offset = Math.min(0.001, Math.max(1e-6, distance * 0.02));
+        const left = covered(move(midpoint, normal, offset));
+        const right = covered(move(midpoint, normal, -offset));
+        if (left === right) continue;
+        // Orient every exterior or hole boundary with covered area on LEFT.
+        const from = left ? start : end, to = left ? end : start;
+        const key = id(from) + '>' + id(to);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        exposed.push({from, to});
+      }
+    });
+    const outgoing = new Map();
+    exposed.forEach((edge, index) => {
+      const key = id(edge.from);
+      if (!outgoing.has(key)) outgoing.set(key, []);
+      outgoing.get(key).push(index);
+    });
+    const remaining = new Set(exposed.map((_, i) => i));
+    const rings = [];
+    while (remaining.size) {
+      let cursor = remaining.values().next().value;
+      const firstKey = id(exposed[cursor].from);
+      const points = [exposed[cursor].from];
+      let closed = false;
+      while (remaining.has(cursor)) {
+        remaining.delete(cursor);
+        const edge = exposed[cursor];
+        if (id(edge.to) === firstKey) {closed = true; break;}
+        points.push(edge.to);
+        const next = (outgoing.get(id(edge.to)) || []).find(i => remaining.has(i));
+        if (next === undefined) break;
+        cursor = next;
+      }
+      if (closed && points.length >= 3) {
+        const signed = points.reduce((sum, p, i) =>
+          sum + cross(p, points[(i + 1) % points.length]), 0);
+        if (Math.abs(signed) > EPS) rings.push({xy:points, signed});
+      }
+    }
+    const outer = rings.filter(ring => ring.signed > 0)
+      .map(ring => ({...ring, holes:[]}));
+    for (const hole of rings.filter(ring => ring.signed < 0)) {
+      const parent = outer.filter(ring => inside(hole.xy[0], ring.xy))
+        .sort((a, b) => a.signed - b.signed)[0];
+      if (parent) parent.holes.push(hole.xy);
+    }
+    return outer.map(part => [part.xy, ...part.holes].map(ring =>
+      ring.map(projection.ll)));
+  };
+
   // Only an explicit priced station-bound link can establish same-service
   // membership. Shared mode labels alone NEVER merge separate operators.
   const stationGroups = (stations, legs, costs = {}) => {
@@ -533,6 +627,7 @@
   global.GrtransCoverage = Object.freeze({
     kind, patchContour, patchPaths, leafletPaths, coverageTiers, overlaps, stationGroups, unionContours,
     zigzagSeam, stitches, defaultResolutions, airArc, seaLine, routePaths,
+    unionCoveragePaths,
     containsPatch, islandStitchRings
   });
 }(window));
