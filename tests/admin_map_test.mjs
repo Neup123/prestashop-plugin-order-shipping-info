@@ -241,6 +241,39 @@ const zeroPrice=fixture({stations:[a,b],cost:{1:0,2:0},legs:[{
 assert.ok(!zeroPrice.calls.lines.some(l=>l.options.className==='grtrans-zigzag-stitch'),
   'Equal-cost linked land stations merge without a false cheap-to-expensive transfer seam');
 
+/* #103/F regression: equal-price station-bound union must preserve the
+ * real Polygon/MultiPolygon footprint, including an unfilled postal hole.
+ * The original radius-only CI fixture missed this source-geometry case. */
+const multipart=JSON.stringify({type:'MultiPolygon',coordinates:[
+  [
+    [[23.60,37.90],[23.80,37.90],[23.80,38.10],[23.60,38.10],[23.60,37.90]],
+    [[23.68,37.98],[23.72,37.98],[23.72,38.02],[23.68,38.02],[23.68,37.98]]
+  ],
+  [[[24.00,38.00],[24.08,38.00],[24.08,38.08],[24.00,38.08],[24.00,38.00]]]
+]});
+const storedMulti={...station(1,'Postal islands',38,23.62),
+  coverage_kind:'postal_polygon',coverage_geojson:multipart};
+const adjoining={...station(2,'Bus boundary',38,23.79),
+  outer_radius_km:3,inner_radius_km:1};
+const multipartMerged=fixture({stations:[storedMulti,adjoining],cost:{1:0,2:0},
+  legs:[{...busLeg,price:4}]});
+assert.equal(multipartMerged.calls.polygons.length,2,
+  'Equal-price linked polygon and circle have ONE far and ONE normal layer');
+const mergedPaths=multipartMerged.calls.polygons[0].points;
+assert.equal(mergedPaths.length,2,
+  'Panel F retains the second supplied MultiPolygon island after union');
+assert.ok(mergedPaths.some(poly=>polygonContains([38.04,24.04],poly[0])),
+  'Distant postal polygon island is not silently discarded');
+const polygonWithHole=mergedPaths.find(poly=>poly.length>1);
+assert.ok(polygonWithHole&&polygonContains([38,23.70],polygonWithHole[1]),
+  'Uncovered postal hole remains a hole when adjacent station coverage merges');
+const postalRecord={lat:38,lng:23.62,radiusKm:10,
+  coverage_geojson:multipart,key:'station:1'};
+assert.equal(multipartMerged.geometry.overlaps(postalRecord,
+  {lat:38,lng:23.70,radiusKm:0.2,key:'isolated-in-hole'}),false,
+  'A station entirely inside a saved polygon hole cannot falsely merge');
+console.log('Panel F: polygon/multipolygon union retains all sourced islands and holes');
+
 /* Resolution is a data contract, not hard-coded price interpretation inside
  * the seam painter. An override-aware resolver can replace this map in #107. */
 const explicitBoundary = fixture({
