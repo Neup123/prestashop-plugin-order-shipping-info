@@ -12,7 +12,7 @@ final class GrTransportNetworkSettings
     public const DEFINITIONS = [
         'pin_radius_km'=>['key'=>'GRTRANS_PIN_RADIUS_KM','default'=>25.0,'min'=>0.1,'max'=>1000,'label'=>'Customer map-pin matching radius (km)'],
         'station_inner_km'=>['key'=>'GRTRANS_STATION_INNER_KM','default'=>1.0,'min'=>0,'max'=>5000,'label'=>'New station inner radius default (km)'],
-        'station_outer_km'=>['key'=>'GRTRANS_STATION_OUTER_KM','default'=>5.0,'min'=>0.1,'max'=>5000,'label'=>'New station outer radius default (km)'],
+        'station_outer_km'=>['key'=>'GRTRANS_STATION_OUTER_KM','default'=>5.0,'min'=>0.1,'max'=>5000,'label'=>'Global FAR outer boundary default (km; stations and direct areas)'],
         'max_coverage_km'=>['key'=>'GRTRANS_MAX_COVERAGE_KM','default'=>500.0,'min'=>1,'max'=>5000,'label'=>'Maximum allowed coverage radius (km)'],
         'nearby_gap_km'=>['key'=>'GRTRANS_NEARBY_GAP_KM','default'=>0.0,'min'=>0,'max'=>100,'label'=>'Extra gap permitted for automatic free walk links (km)'],
         'estimate_low_factor'=>['key'=>'GRTRANS_DEFAULT_ESTIMATE_LOW','default'=>0.9,'min'=>0,'max'=>10,'label'=>'New leg estimate lower factor'],
@@ -39,6 +39,15 @@ final class GrTransportNetworkSettings
         $value=(float)$stored;
         return is_finite($value) && $value >= $spec['min'] && $value <= $spec['max']
             ? $value : $default;
+    }
+
+    /** A NULL/empty stored outer radius inherits the live global FAR default.
+     * Never allow a global change to erase a place's normal inner reach. */
+    public static function effectiveOuterKm($override, float $innerKm): float
+    {
+        $outer=($override===null || $override==='')
+            ? self::get('station_outer_km') : (float)$override;
+        return max($innerKm,$outer);
     }
 
     public static function validate(array $raw): array
@@ -103,8 +112,8 @@ final class GrTransportNetworkSettings
             return htmlspecialchars((string)$value,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8');
         };
         $out='<section class="panel" id="grtrans-network-settings"><h3>Transport network operating defaults</h3>'
-            . '<p>All fields already have safe, working defaults. Changes apply to new lookups and new records; '
-            . 'previously saved stations, quoted carts and placed orders are not silently rewritten.</p>'
+            . '<p>All fields already have safe, working defaults. The global FAR boundary applies at lookup and map render time to stations and areas set to inherit; '
+            . 'explicit overrides stay unchanged. Existing quotes and orders are not rewritten.</p>'
             . '<form method="post" action="'.$action.'#grtrans-network-settings">'
             . '<input type="hidden" name="token" value="'.$csrf.'">'
             . '<input type="hidden" name="grtrans_network_action" value="save_operational_settings">';

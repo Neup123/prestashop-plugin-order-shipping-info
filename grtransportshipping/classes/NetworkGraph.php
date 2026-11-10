@@ -112,9 +112,11 @@ final class GrTransportNetworkGraph
             $km=GrTransportNetworkFields::distanceKm($lat,$lng,(float)$station['lat'],(float)$station['lng']);
             $shape=($station['coverage_kind'] ?? 'radius')!=='radius' &&
                 !empty($station['coverage_geojson']);
+            $outerKm=GrTransportNetworkSettings::effectiveOuterKm(
+                $station['outer_radius_km'] ?? null,(float)$station['inner_radius_km']);
             $covered=$shape
                 ? GrTransportNetworkGeometry::contains($station['coverage_geojson'],$lat,$lng)
-                : $km<=(float)$station['outer_radius_km'];
+                : $km<=$outerKm;
             if (!$covered) continue;
             $ring=$km<=(float)$station['inner_radius_km'] ? 'inner' : 'outer';
             $candidates[]=['station_id'=>(int)$station['id_station'],'ring'=>$ring,'distance_km'=>$km];
@@ -129,11 +131,17 @@ final class GrTransportNetworkGraph
             if (!empty($leg['to_station_id']) || $leg['area_lat']===null || $leg['area_lng']===null) continue;
             $shape=($leg['area_coverage_kind'] ?? 'radius')!=='radius' &&
                 !empty($leg['area_coverage_geojson']);
+            $km=GrTransportNetworkFields::distanceKm($lat,$lng,
+                (float)$leg['area_lat'],(float)$leg['area_lng']);
+            $outerKm=GrTransportNetworkSettings::effectiveOuterKm(
+                $leg['area_outer_radius_km'] ?? null,(float)$leg['area_radius_km']);
             $covered=$shape
                 ? GrTransportNetworkGeometry::contains($leg['area_coverage_geojson'],$lat,$lng)
-                : GrTransportNetworkFields::distanceKm($lat,$lng,
-                    (float)$leg['area_lat'],(float)$leg['area_lng'])<=(float)$leg['area_radius_km'];
-            if ($covered) $matches[]=$leg;
+                : $km<=$outerKm;
+            if ($covered) {
+                $leg['_ring']=$km<=(float)$leg['area_radius_km'] ? 'inner' : 'outer';
+                $matches[]=$leg;
+            }
         }
         return $matches;
     }

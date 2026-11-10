@@ -14,14 +14,16 @@ final class GrTransportNetworkResolution
         foreach ($network['stations'] ?? [] as $station) {
             $patches['station:'.(int)$station['id_station']]=[
                 'precedence'=>$station['patch_precedence'] ?? 'none',
-                'radius_km'=>(float)$station['outer_radius_km'],
+                'radius_km'=>GrTransportNetworkSettings::effectiveOuterKm(
+                    $station['outer_radius_km'] ?? null,(float)$station['inner_radius_km']),
             ];
         }
         foreach ($network['legs'] ?? [] as $leg) {
             if (!empty($leg['to_station_id']) || !isset($leg['area_lat'],$leg['area_lng'])) continue;
             $patches['area:'.(int)$leg['id_leg']]=[
                 'precedence'=>$leg['patch_precedence'] ?? 'none',
-                'radius_km'=>(float)$leg['area_radius_km'],
+                'radius_km'=>GrTransportNetworkSettings::effectiveOuterKm(
+                    $leg['area_outer_radius_km'] ?? null,(float)$leg['area_radius_km']),
             ];
         }
         return $patches;

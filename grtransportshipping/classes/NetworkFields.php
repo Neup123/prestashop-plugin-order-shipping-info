@@ -18,7 +18,7 @@ final class GrTransportNetworkFields
                 return [
                     'name'=>['text',190], 'type'=>['choice',['bus','ferry','airport','other']],
                     'address_text'=>['text',500], 'lat'=>['latitude'], 'lng'=>['longitude'],
-                    'inner_radius_km'=>['range',0,GrTransportNetworkSettings::get('max_coverage_km')], 'outer_radius_km'=>['range',0,GrTransportNetworkSettings::get('max_coverage_km')],
+                    'inner_radius_km'=>['range',0,GrTransportNetworkSettings::get('max_coverage_km')], 'outer_radius_km'=>['nullable_range',0,GrTransportNetworkSettings::get('max_coverage_km')],
                     'is_origin_hub'=>['bool'],
                     'coverage_kind'=>['choice',['radius','postal_polygon','walking_isochrone']],
                     'coverage_geojson'=>['geojson_polygon'],
@@ -39,6 +39,7 @@ final class GrTransportNetworkFields
                     'transit_max_hours'=>['range',0,GrTransportNetworkSettings::get('max_leg_hours')],
                     'area_name'=>['text',190], 'area_lat'=>['nullable_latitude'],
                     'area_lng'=>['nullable_longitude'], 'area_radius_km'=>['range',0,GrTransportNetworkSettings::get('max_coverage_km')],
+                    'area_outer_radius_km'=>['nullable_range',0,GrTransportNetworkSettings::get('max_coverage_km')],
                     'area_coverage_kind'=>['choice',['radius','postal_polygon','walking_isochrone']],
                     'area_coverage_geojson'=>['geojson_polygon'],
                     'route_geojson'=>['geojson_line'],
@@ -70,7 +71,7 @@ final class GrTransportNetworkFields
             case 'stations': return [
                 'name'=>'', 'type'=>'bus', 'address_text'=>'', 'lat'=>null, 'lng'=>null,
                 'inner_radius_km'=>GrTransportNetworkSettings::get('station_inner_km'),
-                'outer_radius_km'=>GrTransportNetworkSettings::get('station_outer_km'), 'is_origin_hub'=>0,
+                'outer_radius_km'=>null, 'is_origin_hub'=>0,
                 'coverage_kind'=>'radius','coverage_geojson'=>'',
                 'patch_precedence'=>'none',
             ];
@@ -83,6 +84,7 @@ final class GrTransportNetworkFields
                 'lead_hours'=>0, 'preparation_hours'=>0,
                 'transit_min_hours'=>0, 'transit_max_hours'=>0,
                 'area_name'=>'', 'area_lat'=>null, 'area_lng'=>null, 'area_radius_km'=>0,
+                'area_outer_radius_km'=>null,
                 'area_coverage_kind'=>'radius','area_coverage_geojson'=>'','route_geojson'=>'',
                 'patch_precedence'=>'none','override_winner'=>'none',
             ];
@@ -116,7 +118,10 @@ final class GrTransportNetworkFields
         $output = [];
         foreach ($fields as $key=>$spec) {
             if (!array_key_exists($key,$input)) {
-                if (in_array($key,['patch_precedence','override_winner'],true)) {
+                if (in_array($key,['outer_radius_km','area_outer_radius_km'],true)) {
+                    // Old API/CSV payloads may omit these optional overrides.
+                    $input[$key]=null;
+                } elseif (in_array($key,['patch_precedence','override_winner'],true)) {
                     $input[$key]='none';
                 } else {
                     throw new InvalidArgumentException('Missing network field: ' . $key);
@@ -184,8 +189,8 @@ final class GrTransportNetworkFields
             if ($output['coverage_kind']!=='radius' && $output['coverage_geojson']==='') {
                 throw new InvalidArgumentException('Postal/isochrone coverage requires a real GeoJSON polygon');
             }
-            if ($output['outer_radius_km']<$output['inner_radius_km'] || $output['outer_radius_km']<=0) {
-                throw new InvalidArgumentException('Outer station radius must be positive and at least the inner radius');
+            if ($output['outer_radius_km']!==null && ($output['outer_radius_km']<$output['inner_radius_km'] || $output['outer_radius_km']<=0)) {
+                throw new InvalidArgumentException('Outer station radius override must be positive and at least the inner radius');
             }
         } elseif ($entity==='legs') {
             if ($output['area_coverage_kind']!=='radius' && $output['area_coverage_geojson']==='') {
@@ -208,13 +213,18 @@ final class GrTransportNetworkFields
                 }
                 if ($output['to_station_id']===$output['from_station_id']) throw new InvalidArgumentException('A leg must connect distinct stations');
                 if ($output['patch_precedence']!=='none') throw new InvalidArgumentException('Patch precedence requires a direct-area leg');
-                if ($output['area_lat']!==null || $output['area_lng']!==null || $output['area_radius_km']>0 ||
+                if ($output['area_lat']!==null || $output['area_lng']!==null || $output['area_radius_km']>0 || $output['area_outer_radius_km']!==null ||
                     $output['area_coverage_geojson']!=='' || $output['area_coverage_kind']!=='radius') {
                     throw new InvalidArgumentException('A station leg cannot also be a direct area service');
                 }
             } elseif ($output['area_lat']===null || $output['area_lng']===null ||
                 ($output['area_radius_km']<=0 && $output['area_coverage_kind']==='radius')) {
                 throw new InvalidArgumentException('Direct service requires area centre and coverage radius');
+            } else {
+                if ($output['area_outer_radius_km']!==null &&
+                    ($output['area_outer_radius_km']<$output['area_radius_km'] || $output['area_outer_radius_km']<=0)) {
+                    throw new InvalidArgumentException('Outer area radius override must be positive and at least the normal area radius');
+                }
             }
         } elseif ($entity==='branches') {
             if ($output['name']==='') throw new InvalidArgumentException('Branch name is required');
