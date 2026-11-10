@@ -128,9 +128,12 @@ try {
   const seamRing = page.locator('#grtrans-network-map path.grtrans-linked-island-perimeter');
   await seamRing.first().waitFor({ timeout: 20000 });
   assert.ok(await seamRing.count() >= 1, 'Panel H: rendered area has a linked island stitch');
-  const frameFreeSea = page.locator('#grtrans-network-map path.grtrans-organic-patch[stroke="none"][fill-opacity="0.24"]');
-  await frameFreeSea.first().waitFor({ timeout: 20000 });
-  assert.ok(await frameFreeSea.count() >= 1, 'Panel H: unframed dynamic sea fill is rendered');
+  const farSea = page.locator('#grtrans-network-map path.grtrans-organic-patch.grtrans-tier-far[stroke="none"][fill-opacity="0.16"]');
+  const normalSea = page.locator('#grtrans-network-map path.grtrans-organic-patch.grtrans-tier-normal[stroke="none"][fill-opacity="0.36"]');
+  await farSea.first().waitFor({ timeout: 20000 });
+  await normalSea.first().waitFor({ timeout: 20000 });
+  assert.ok(await farSea.count() >= 1 && await normalSea.count() >= 1,
+    'Panels H/I: unframed FAR area and stronger normal-area tier are rendered');
 
   // Editing the SAME area leg must preserve NULL in Db::update as well.
   const areaRow = page.locator('#grtrans-network table').nth(1)
@@ -146,6 +149,26 @@ try {
     'Direct-area to_station_id must remain SQL NULL after UPDATE');
   assert.equal(Number(savedArea.area_radius_km), 26,
     'The updated area geometry must be persisted and served to the map');
+  assert.equal(savedArea.area_outer_radius_km, null,
+    'An area starts inherited and remains NULL when the normal radius changes');
+  await areaRow.getByRole('link', { name: 'Edit' }).click();
+  form = page.locator('#grtrans-network-editor form');
+  await form.locator('input[name="area_outer_radius_km"]').fill('30');
+  await form.getByRole('button', { name: 'Save changes' }).click();
+  await page.getByText('Network record updated.', { exact: true }).first().waitFor({ timeout: 20000 });
+  savedArea = await storedArea();
+  assert.equal(Number(savedArea.area_outer_radius_km), 30,
+    'Admin persists an explicit area FAR override in km');
+  await areaRow.getByRole('link', { name: 'Edit' }).click();
+  form = page.locator('#grtrans-network-editor form');
+  await form.getByRole('button', { name: 'Clear override · inherit global' }).last().click();
+  assert.equal(await form.locator('input[name="area_outer_radius_km"]').inputValue(), '',
+    'Clear control empties the per-area FAR override');
+  await form.getByRole('button', { name: 'Save changes' }).click();
+  await page.getByText('Network record updated.', { exact: true }).first().waitFor({ timeout: 20000 });
+  savedArea = await storedArea();
+  assert.equal(savedArea.area_outer_radius_km, null,
+    'Clearing the area override saves a real SQL NULL for global inheritance');
   await seamRing.first().waitFor({ timeout: 20000 });
   console.log('LIVE PANEL H: admin area INSERT/UPDATE preserved SQL NULL, sea fill + island stitch rendered');
 

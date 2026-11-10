@@ -13,7 +13,7 @@ require_once __DIR__ . '/NetworkResolution.php';
 final class GrTransportNetworkQuote
 {
     public const DEFAULT_EXTENDED_NOTICE =
-        'Extended pickup area: reaching the collection station may require a long walk. Consider this before choosing this delivery method.';
+        'FAR service zone: your destination is beyond the normal coverage boundary. Confirm that you want to proceed with this delivery method.';
 
     public static function resolve(array $flatRoutes,array $network,string $postcode,string $city,
         ?array $coords=null,?array $originIds=null,string $extendedNotice='',?array $parcel=null,array $branchByOrigin=[]): array
@@ -63,12 +63,15 @@ final class GrTransportNetworkQuote
             $prefix['edges'][]=$edge;
             $prefix['total']=round($prefix['total']+$edge['price'],2);
             $prefix['destination_station_id']=null;
+            $ring=$service['_ring'];
+            $notice=$ring==='outer'
+                ? ($extendedNotice!=='' ? $extendedNotice : self::DEFAULT_EXTENDED_NOTICE)
+                : 'Direct delivery to your address within the service area.';
             $choices[]=self::choice($prefix,
                 (string)($service['area_name'] ?: 'Direct area delivery'),
                 (string)$service['mode'],
                 (string)$graph['stations'][$prefix['origin_hub_id']]['name'],0,
-                'Direct delivery to your address within the service area.',
-                'direct',null,0,$parcel ?? [],$branchByOrigin,'area:'.(int)$service['id_leg']);
+                $notice,$ring,null,0,$parcel ?? [],$branchByOrigin,'area:'.(int)$service['id_leg']);
         }
         if (!$choices) return $manual;
         $selected=GrTransportNetworkResolution::choose($choices,$network);

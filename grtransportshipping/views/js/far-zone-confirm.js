@@ -60,7 +60,7 @@
     if (!section || confirmed(section)) return;
     event.preventDefault();
     event.stopImmediatePropagation();
-    notice(section, 'Far from the station: tick the box and confirm before continuing to payment.');
+    notice(section, 'FAR service zone: tick the box and confirm before continuing to payment.');
     const checkbox = section.querySelector('.grtransport-far-ack');
     if (checkbox) checkbox.focus();
     section.scrollIntoView({block:'center',behavior:'smooth'});

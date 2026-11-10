@@ -100,6 +100,7 @@ final class GrTransportNetworkAdmin
         $mapData=array_intersect_key($data,array_flip(['stations','legs','transfers']));
         $mapData['resolution']=GrTransportNetworkResolution::mapPlan($mapData,$route['cost']);
         $mapConfig=json_encode($mapData+['cost'=>$cost,'nearbyGapKm'=>GrTransportNetworkSettings::get('nearby_gap_km'),
+            'farDefaultKm'=>GrTransportNetworkSettings::get('station_outer_km'),
             'leafletImagePath'=>_MODULE_DIR_ . $module->name . '/views/vendor/leaflet/images/'],JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_THROW_ON_ERROR);
         $base=self::esc((_MODULE_DIR_ . $module->name . '/')) . 'views/';
         $out='<section class="panel" id="grtrans-network">'
@@ -109,7 +110,7 @@ final class GrTransportNetworkAdmin
             . 'equal-cost linked land patches merge without an internal seam. '
             . 'Distant flights have symbolic arcs; ferries have dashed straight lines; '
             . 'station-bound land follows its recorded/derived road (price gradient if costs differ). '
-            . 'Dynamic services are unbroken area seas; linked islands have perimeter stitches. '
+            . 'Direct areas have normal and lighter FAR tiers; linked islands have perimeter stitches. '
             . 'Click a station, choose Link, and click its destination.</p>'
             . '<link rel="stylesheet" href="' . $base . 'vendor/leaflet/leaflet.css">'
             . '<link rel="stylesheet" href="' . $base . 'css/network-admin.css">'
@@ -154,11 +155,25 @@ final class GrTransportNetworkAdmin
             $names=array_keys(GrTransportNetworkFields::fields($collection));
             foreach ($names as $name) $out.='<th>' . self::esc(str_replace('_',' ',$name)) . '</th>';
             if ($collection==='legs' || $collection==='transfers') $out.='<th>Last verified (UTC)</th>';
+            if ($collection==='stations' || $collection==='legs') $out.='<th>FAR default / override</th>';
             $out.='<th>Actions</th></tr></thead><tbody>';
             foreach ($data[$collection] as $record) {
                 $id=(int)$record[GrTransportNetworkFields::IDS[$collection]];
                 $out.='<tr><td>' . $id . '</td>';
                 foreach ($names as $name) $out.='<td>' . self::esc($record[$name] ?? '—') . '</td>';
+                if ($collection==='stations' || $collection==='legs') {
+                    if ($collection==='legs' && $record['to_station_id']!==null) {
+                        $out.='<td>Station-to-station leg (no area coverage)</td>';
+                    } else {
+                    $outerKey=$collection==='stations' ? 'outer_radius_km' : 'area_outer_radius_km';
+                    $innerKey=$collection==='stations' ? 'inner_radius_km' : 'area_radius_km';
+                    $override=$record[$outerKey] ?? null;
+                    $inherited=$override===null || $override==='';
+                    $effective=GrTransportNetworkSettings::effectiveOuterKm($override,(float)$record[$innerKey]);
+                    $out.='<td>'.self::esc($inherited ? 'Inherited global' : 'Explicit override')
+                        .' · '.self::esc(number_format($effective,2,'.','')).' km</td>';
+                    }
+                }
                 if ($collection==='legs' || $collection==='transfers') {
                     $out.='<td>' . self::esc($record['verified_at'] ?: 'Not yet verified') . '</td>';
                 }
@@ -199,8 +214,10 @@ final class GrTransportNetworkAdmin
                 $advancedOpen=false;
             }
             $type=$definition[0];
+            $farField=in_array($key,['outer_radius_km','area_outer_radius_km'],true);
+            $label=$farField ? 'FAR outer boundary override (km)' : ucfirst(str_replace('_',' ',$key));
             $out.='<div class="form-group"><label for="grtrans-network-field-' . $key . '">'
-                . self::esc(ucfirst(str_replace('_',' ',$key))) . '</label>';
+                . self::esc($label) . '</label>';
             $value=$values[$key] ?? '';
             if ($type==='choice' || $type==='bool'
                 || ($type==='id' && $key!=='id_product') || $type==='nullable_id') {
@@ -242,14 +259,28 @@ final class GrTransportNetworkAdmin
                 $out.='<input class="form-control" id="grtrans-network-field-' . $key . '" name="' . $key . '"'
                     . ' value="' . self::esc($value) . '"'
                     . ($type==='text' ? ' maxlength="' . (int)$definition[1] . '"' : '')
-                    . ($type!=='text' ? ' type="number" step="any" min="0"' : '') . '>';
+                     . ($type!=='text' ? ' type="number" step="any" min="0"' : '')
+                    . ($farField ? ' placeholder="Inherit global FAR boundary"' : '') . '>';
+            }
+            if ($farField) {
+                $inner=$key==='outer_radius_km' ? (float)$values['inner_radius_km'] : (float)$values['area_radius_km'];
+                $inherited=$value===null || $value==='';
+                $effective=GrTransportNetworkSettings::effectiveOuterKm($value,$inner);
+                $out.='<p class="help-block">'
+                    .self::esc($inherited ? 'Inheriting global FAR default' : 'Explicit FAR override')
+                    .' · effective '.self::esc(number_format($effective,2,'.','')).' km. '
+                    .'Clear the field and save to inherit the current global default ('
+                    .self::esc(GrTransportNetworkSettings::get('station_outer_km')).' km). '
+                    .'An explicit override must be at least the normal inner radius.</p>'
+                    .'<button type="button" class="btn btn-default btn-sm grtrans-clear-far"'
+                    .' data-target="grtrans-network-field-'.$key.'">Clear override · inherit global</button>';
             }
             $out.='</div>';
         }
         if ($advancedOpen) $out.='</details>';
         $out.='<button class="btn btn-primary" name="grtrans_network_submit" value="1">'
             . ($selected ? 'Save changes' : 'Create record') . '</button></form></div>';
-        $out.='<h4>Extended pickup notice</h4><p>This warning is displayed at checkout when a destination is served only by a station outer ring.</p>'
+        $out.='<h4>Extended pickup notice</h4><p>This warning is displayed at checkout when a destination is in a station or direct-area FAR ring.</p>'
             . '<form method="post" action="' . $url . '#grtrans-network">'
             . '<input type="hidden" name="token" value="' . $csrf . '">'
             . '<input type="hidden" name="grtrans_network_action" value="save_extended_notice">'

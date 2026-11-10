@@ -24,6 +24,12 @@ fails(static function () use ($station) {
 fails(static function () use ($station) {
     GrTransportNetworkFields::normalize('stations',$station+['admin_token'=>'forged']);
 },'Unknown fields accepted');
+testAssert(GrTransportNetworkFields::normalize('stations',
+    array_replace($station,['outer_radius_km'=>null]))['outer_radius_km']===null,
+    'Station FAR override can be cleared to inherit');
+fails(static function () use ($station) {
+    GrTransportNetworkFields::normalize('stations',array_replace($station,['outer_radius_km'=>0]));
+},'Zero station FAR override must be rejected');
 testAssert(GrTransportNetworkFields::normalize('stations',$station)['patch_precedence']==='none',
     'Pre-existing stations default to no override without extra configuration');
 testAssert(GrTransportNetworkFields::normalize('stations',
@@ -41,6 +47,20 @@ $direct=array_replace($direct,[
 ]);
 testAssert(GrTransportNetworkFields::normalize('legs',$direct)['price']===0.0,
     'Free direct-area courier must be valid');
+testAssert(GrTransportNetworkFields::defaults('legs')['area_outer_radius_km']===null
+    && GrTransportNetworkFields::normalize('legs',$direct)['area_outer_radius_km']===null,
+    'New and old direct areas inherit global FAR unless explicitly overridden');
+testAssert(GrTransportNetworkFields::normalize('legs',array_replace($direct,
+    ['area_outer_radius_km'=>8]))['area_outer_radius_km']===8.0,
+    'Direct area accepts an explicit absolute-km FAR override');
+fails(static function () use ($direct) {
+    GrTransportNetworkFields::normalize('legs',array_replace($direct,
+        ['area_outer_radius_km'=>5]));
+},'Area FAR override must be at least normal area radius');
+fails(static function () use ($direct) {
+    GrTransportNetworkFields::normalize('legs',array_replace($direct,
+        ['area_outer_radius_km'=>0]));
+},'Zero area FAR override must be rejected');
 fails(static function () use ($direct) {
     GrTransportNetworkFields::normalize('legs',array_replace($direct,['to_station_id'=>4]));
 },'Station-to-station leg must not also have area geometry');
@@ -195,6 +215,11 @@ if (!function_exists('pSQL')) {
 class Db {
     public static array $rows=['station'=>[1=>['id_station'=>1],2=>['id_station'=>2]],'leg'=>[]];
     public static int $updates=0;
+    public static array $executedSql=[];
+    public static array $schema=[
+        'station'=>['outer_radius_km'=>'NO'],
+        'leg'=>['area_radius_km'=>'NO'],
+    ];
     public static function getInstance(): self { static $instance; return $instance ??= new self; }
     public function getRow(string $sql)
     {
@@ -205,14 +230,36 @@ class Db {
     }
     public function update(string $table, array $row, string $where): bool
     {
-        if ($table!=='grtrans_leg' || !preg_match('/^id_leg = ([0-9]+)$/', $where, $m)) {
+        if (!preg_match('/^grtrans_(station|leg)$/',$table,$which)
+            || !preg_match('/^id_(?:station|leg) = ([0-9]+)$/', $where, $m)) {
             throw new RuntimeException('Unexpected update in test');
         }
         ++self::$updates;
         $values=array_map(static function ($value) {
             return is_array($value) && $value===['type'=>'sql','value'=>'NULL'] ? null : $value;
         }, $row);
-        self::$rows['leg'][(int)$m[1]]=array_replace(self::$rows['leg'][(int)$m[1]], $values);
+        self::$rows[$which[1]][(int)$m[1]]=array_replace(self::$rows[$which[1]][(int)$m[1]], $values);
+        return true;
+    }
+    public function executeS(string $sql): array
+    {
+        if (!preg_match('/^SHOW COLUMNS FROM `ps_grtrans_(station|leg)`$/',$sql,$m)) {
+            throw new RuntimeException('Unexpected schema read in test: '.$sql);
+        }
+        $rows=[];
+        foreach (self::$schema[$m[1]] as $field=>$nullable) {
+            $rows[]=['Field'=>$field,'Null'=>$nullable];
+        }
+        return $rows;
+    }
+    public function execute(string $sql): bool
+    {
+        self::$executedSql[]=$sql;
+        if (str_contains($sql,'MODIFY COLUMN `outer_radius_km`')) {
+            self::$schema['station']['outer_radius_km']='YES';
+        } elseif (str_contains($sql,'ADD COLUMN `area_outer_radius_km`')) {
+            self::$schema['leg']['area_outer_radius_km']='YES';
+        } else throw new RuntimeException('Unexpected schema write in test: '.$sql);
         return true;
     }
 }
@@ -259,4 +306,30 @@ $zeroCentre=GrTransportNetworkFields::normalize('legs',array_replace($direct,[
 testAssert($zeroCentre['area_lat']===0.0 && $zeroCentre['area_lng']===0.0,
     'Direct-area coordinates at (0,0) must keep their valid existing meaning');
 
-echo "Station, graph, safe transfers, direct area, API permissions and #109 re-save tests passed\\n";
+
+ // #112: clearing FAR overrides saves SQL NULL, never the numeric zero.
+Db::$rows['station'][1]=array_replace($valid,['id_station'=>1]);
+$cleared=array_replace($valid,['outer_radius_km'=>null]);
+testAssert(GrTransportNetworkRepository::save('stations',$cleared,1)===1
+    && Db::$rows['station'][1]['outer_radius_km']===null,
+    'Clearing station FAR override persists NULL');
+Db::$rows['leg'][9]=array_replace($direct,['id_leg'=>9,'area_outer_radius_km'=>8]);
+testAssert(GrTransportNetworkRepository::save('legs',['area_outer_radius_km'=>null],9)===9
+    && Db::$rows['leg'][9]['area_outer_radius_km']===null,
+    'Clearing direct-area FAR override persists NULL');
+// Migration alters the old NOT NULL station column in place without rewriting
+// saved values; existing station radii therefore remain explicit overrides.
+if (!defined('_PS_VERSION_')) define('_PS_VERSION_','9.2.1');
+if (!function_exists('bqSQL')) { function bqSQL(string $v): string { return $v; } }
+require_once __DIR__.'/../grtransportshipping/upgrade/upgrade-0.13.0.php';
+$oldValue=Db::$rows['station'][1]['inner_radius_km'];
+testAssert(upgrade_module_0_13_0(null)===true
+    && count(Db::$executedSql)===2
+    && str_contains(Db::$executedSql[0],'MODIFY COLUMN `outer_radius_km` DECIMAL(8,2) NULL')
+    && str_contains(Db::$executedSql[1],'ADD COLUMN `area_outer_radius_km` DECIMAL(8,2) NULL'),
+    'Upgrade modifies station nullability in place and adds nullable area field');
+testAssert(Db::$rows['station'][1]['inner_radius_km']===$oldValue
+    && upgrade_module_0_13_0(null)===true && count(Db::$executedSql)===2,
+    'Upgrade preserves station record and is idempotent');
+
+echo "Station, graph, FAR SQL/migration, direct area and API tests passed\\n";
