@@ -73,6 +73,12 @@ jobs:
           TEST_ADMIN_PASSWORD: OnlyForEphemeralCI123!
         run: |
           ADMIN_URL="$(cat /tmp/grtrans-admin-url)" node tests/browser-map-workspace.mjs
+      - name: Verify spatial polygons, radius handles, direct areas and stored routes
+        env:
+          TEST_ADMIN_EMAIL: ci@example.invalid
+          TEST_ADMIN_PASSWORD: OnlyForEphemeralCI123!
+        run: |
+          ADMIN_URL="$(cat /tmp/grtrans-admin-url)" node tests/browser-map-spatial-editing.mjs
       - name: Prepare disposable Greek checkout
         env:
           TEST_CUSTOMER_PASSWORD: BrowserOnlyCiPassword123

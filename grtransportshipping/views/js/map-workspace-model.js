@@ -5,7 +5,8 @@
   else host.GrtransMapWorkspaceModel = api;
 })(typeof window === 'object' ? window : this, function () {
   'use strict';
-  const MODES = Object.freeze(['select','place','move','connect-leg','connect-transfer','preview','draw','edit-coverage']);
+  const MODES = Object.freeze(['select','place','move','connect-leg','connect-transfer','preview','draw','edit-coverage',
+    'place-area','radius','edit-route']);
   const ENTITY = Object.freeze(['stations','legs','transfers','branches','branch_stock']);
   const number = value => Number(value);
   const validPoint = point => point && point.lat !== null && point.lng !== null
@@ -57,7 +58,7 @@
     return [];
   };
   const recordId = (entity, record) => number(record && record[{stations:'id_station', legs:'id_leg',transfers:'id_transfer',branches:'id_branch',branch_stock:'id_branch_stock'}[entity]]);
-  const needsDraft = mode => ['place','move','connect-leg','connect-transfer'].includes(mode);
-  const modesEnabled = mode => MODES.includes(mode) && !['draw','edit-coverage'].includes(mode);
+  const needsDraft = mode => ['place','move','connect-leg','connect-transfer','draw','edit-coverage','place-area','radius','edit-route'].includes(mode);
+  const modesEnabled = mode => MODES.includes(mode);
   return Object.freeze({MODES,ENTITY,validPoint,normalizedPoint,nudge,pair,originFor,recordsAt,recordId,needsDraft,modesEnabled});
 });

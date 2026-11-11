@@ -29,6 +29,8 @@ jobs:
         run: node tests/compact_records_test.cjs
       - name: Stage-1 workspace interaction model
         run: node tests/map_workspace_model_test.cjs
+      - name: Stage-2 spatial form and GeoJSON geometry contract
+        run: node tests/map_spatial_model_test.cjs
       - name: Order charged amount adjustment contract
         run: php tests/order_charge_test.php
       - name: Validate demo seed format
