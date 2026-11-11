@@ -1,0 +1,543 @@
+/* Stage 1: task-oriented admin workspace. Map paint, geometry and persistence are owned by existing code. */
+(() => {
+  'use strict';
+  const root = document.getElementById('grtrans-configure');
+  const network = root?.querySelector('#grtrans-network');
+  const bridge = window.GrtransMapBridge;
+  const model = window.GrtransMapWorkspaceModel;
+  if (!network || !bridge || !model || !window.L) return;
+  const byId = id => document.getElementById(id);
+  const text = (tag, value, cls = '') => {
+    const el = document.createElement(tag);
+    if (cls) el.className = cls;
+    if (value !== undefined) el.textContent = value;
+    return el;
+  };
+  const node = (tag, cls = '') => text(tag, undefined, cls);
+  const status = byId('grtrans-map-status');
+  const mapRoot = byId('grtrans-network-map');
+  const editor = byId('grtrans-network-editor');
+  const originalNav = network.querySelector('.grtrans-network-toolbar');
+  const lists = [...network.querySelectorAll('section.grtrans-network-list')];
+  if (!mapRoot || !editor || !originalNav || !lists.length) return;
+  const storedKey = 'grtrans-map-workspace-view';
+  const modeKey = 'grtrans-map-workspace-intent';
+  const form = editor.querySelector('form');
+  const formEntity = form?.querySelector('[name="network_entity"]')?.value || '';
+  const formId = Number(form?.querySelector('[name="network_id"]')?.value || 0);
+  const recordData = bridge.data;
+  const tabs = [...originalNav.querySelectorAll('a')];
+  const entities = model.ENTITY;
+  let activeEntity = entities.includes(formEntity) ? formEntity : 'stations';
+  let selected = null, firstStation = 0, mode = 'select';
+  let originalPosition = null, originalFields = null, originalPair = null;
+  let draftMarker = null, dragMarker = null, selectionOverlay = null;
+  let stockFilter = 0, working = false;
+  const stage = node('div','grtrans-map-workspace');stage.id = 'grtrans-map-workspace';
+  const tools = node('div','grtrans-map-workspace-tools');
+  tools.setAttribute('role','toolbar');tools.setAttribute('aria-label','Service map editing tools');
+  const body = node('div','grtrans-map-workspace-body');
+  const mapColumn = node('div','grtrans-map-column');
+  const side = node('aside','grtrans-map-sidebar');side.setAttribute('aria-label','Manage selected network records');
+  const mapDock = node('div','grtrans-map-dock');
+  const navDock = node('div','grtrans-map-nav');
+  const listDock = node('div','grtrans-map-lists');
+  const context = node('div','grtrans-map-context');context.setAttribute('aria-live','polite');
+  const editorDock = node('div','grtrans-map-editor-dock');
+  const feedback = node('output','grtrans-map-feedback');feedback.setAttribute('aria-live','polite');
+  const mapAnchor = network.querySelector('h3');
+  mapAnchor.textContent='Service map';
+  mapAnchor.after(stage);
+  stage.append(tools,body);body.append(mapColumn,side);
+  mapColumn.append(mapDock,feedback);
+  side.append(navDock,listDock,context,editorDock);
+  const intro = mapAnchor.nextElementSibling === stage ? stage.nextElementSibling : null;
+  if (intro?.tagName === 'P' && intro !== status?.parentElement) {
+    const help = node('details','grtrans-map-help');help.append(text('summary','About this map'));
+    help.append(intro);stage.before(help);
+  }
+  mapDock.append(mapRoot);
+  for (const id of ['grtrans-zone-legend','grtrans-network-map-tools','grtrans-preview-status','grtrans-map-link-form']) {
+    const el = byId(id);if (el) mapDock.append(el);
+  }
+  const oldTools = byId('grtrans-network-map-tools');if (oldTools) oldTools.hidden = true;
+  const legacyLinkForm = byId('grtrans-map-link-form');if (legacyLinkForm) legacyLinkForm.hidden = true;
+  const oldPreviewStatus = byId('grtrans-preview-status');if (oldPreviewStatus) oldPreviewStatus.hidden = true;
+  const newStatus = text('span','Select a station or record to begin.','grtrans-map-status');
+  newStatus.setAttribute('role','status');newStatus.setAttribute('aria-live','polite');
+  tools.append(newStatus);
+  navDock.append(originalNav);
+  for (const list of lists) listDock.append(list);
+  editorDock.append(editor);
+  const objectNames={stations:'station',legs:'transport connection',transfers:'station transfer',
+    branches:'dispatch location',branch_stock:'product availability'};
+  const editHeading=editor.querySelector('h4');
+  if(editHeading&&formEntity)editHeading.textContent=(formId>0?'Edit ':'Add ')+(objectNames[formEntity]||'record');
+  const modeButtons = new Map();
+  const toolsGroup = node('div','grtrans-mode-buttons');
+  const modes = [
+    ['select','near_me','Select'], ['place','add_location_alt','Place station'],
+    ['move','open_with','Move station'], ['connect-leg','timeline','Connect stations'],
+    ['connect-transfer','device_hub','Add transfer'], ['preview','route','Preview route'],
+    ['draw','polyline','Draw area (Stage 2)'], ['edit-coverage','edit_location','Edit coverage (Stage 2)']
+  ];
+  for (const [key,icon,label] of modes) {
+    const button=node('button','btn btn-default grtrans-map-mode');
+    button.type='button';button.dataset.grtransMode=key;
+    button.title=label;button.setAttribute('aria-label',label);button.setAttribute('aria-pressed','false');
+    button.append(text('span',icon,'material-icons'),text('span',label,'grtrans-map-mode-caption'));
+    if (!model.modesEnabled(key)) {button.disabled=true;button.title=label+' — available in map editing stage 2';}
+    toolsGroup.append(button);modeButtons.set(key,button);
+    button.addEventListener('click',()=>switchMode(key));
+  }
+  tools.prepend(toolsGroup);
+  const actions=node('div','grtrans-map-draft-actions');actions.hidden=true;
+  const centreButton=text('button','Use map centre','btn btn-default btn-sm');centreButton.type='button';
+  const nudgeLabel=text('span','Move tentative position:','sr-only');actions.append(centreButton,nudgeLabel);
+  const moves=[['ArrowUp','north','keyboard_arrow_up'],['ArrowDown','south','keyboard_arrow_down'],
+    ['ArrowLeft','west','keyboard_arrow_left'],['ArrowRight','east','keyboard_arrow_right']];
+  for (const [key,label,icon] of moves) {
+    const b=node('button','btn btn-default btn-sm');b.type='button';b.title='Move '+label;
+    b.setAttribute('aria-label','Move tentative point '+label);b.append(text('span',icon,'material-icons'));
+    b.addEventListener('click',event=>nudge(key,event.shiftKey));actions.append(b);
+  }
+  const cancel=text('button','Cancel draft','btn btn-default btn-sm');cancel.type='button';
+  cancel.addEventListener('click',()=>switchMode('select'));actions.append(cancel);
+  const expand=node('button','btn btn-default grtrans-map-expand');expand.type='button';
+  expand.title='Expand or exit fullscreen map';expand.setAttribute('aria-label','Expand or exit fullscreen map');
+  expand.append(text('span','fullscreen','material-icons'),text('span','Expand','grtrans-map-mode-caption'));
+  tools.append(expand,actions);
+  const notice = (message,error = false) => {
+    newStatus.textContent=message;
+    feedback.textContent=error ? message : '';
+    feedback.dataset.state=error ? 'error' : '';
+  };
+  function getMapPoint() {const p=bridge.map.getCenter();return {lat:p.lat,lng:p.lng};}
+  const pointFields=()=>[form?.querySelector('[name="lat"]'),form?.querySelector('[name="lng"]')];
+  const matchingEditor=(entity,id)=>form && formEntity===entity && formId===id;
+  const saveView=()=>{
+    const centre=getMapPoint();const view={lat:centre.lat,lng:centre.lng,zoom:bridge.map.getZoom()};
+    try {sessionStorage.setItem(storedKey,JSON.stringify(view));} catch(_) { /* optional */ }
+  };
+  function visit(entity,id=0,nextMode=mode) {
+    saveView();
+    try {sessionStorage.setItem(modeKey,nextMode);} catch(_) { /* optional */ }
+    const url=new URL(location.href);
+    url.searchParams.set('network_entity',entity);
+    if (id > 0) url.searchParams.set('network_edit',String(id));
+    else url.searchParams.delete('network_edit');
+    url.hash='grtrans-map-workspace';
+    location.assign(url.toString());
+  }
+  function restoreView() {
+    try {
+      const v=JSON.parse(sessionStorage.getItem(storedKey)||'null');
+      if (v && model.validPoint(v) && Number.isFinite(Number(v.zoom))) {
+        bridge.map.setView([v.lat,v.lng],Math.max(2,Math.min(19,v.zoom)),{animate:false});
+      }
+    } catch(_) { /* ignored */ }
+  }
+  function highlight(entity,id,pan = true) {
+    if (selectionOverlay) {bridge.map.removeLayer(selectionOverlay);selectionOverlay=null;}
+    const origin=model.originFor(recordData,entity,id);
+    if (origin>0) {
+      bridge.focusStation(origin);
+      const station=bridge.station(origin);
+      if (station && pan) bridge.map.panTo([Number(station.lat),Number(station.lng)],{animate:false});
+    } else bridge.clearFocus();
+    if (entity==='legs'||entity==='transfers') {
+      const record=(recordData[entity]||[]).find(r=>model.recordId(entity,r)===Number(id));
+      const from=record && bridge.station(record.from_station_id);
+      const to=record && bridge.station(record.to_station_id);
+      if (from&&to) {
+        selectionOverlay=L.polyline([[Number(from.lat),Number(from.lng)],[Number(to.lat),Number(to.lng)]],{
+          color:'#0a4fa1',weight:5,opacity:.8,dashArray:'5 5',interactive:false,
+          className:'grtrans-map-selection-overlay'
+        }).addTo(bridge.map);
+      }
+    }
+  }
+  function activateRow(entity,id) {
+    if (!entities.includes(entity)||id<=0) return;
+    setActive(entity);
+    const section=listDock.querySelector('[data-grtrans-entity="'+entity+'"]');
+    const row=[...(section?.querySelectorAll('tr[data-grtrans-record-id]')||[])].find(r=>Number(r.dataset.grtransRecordId)===Number(id));
+    const button=row?.querySelector('[data-grtrans-select-record]');
+    if (button && button.getAttribute('aria-pressed')!=='true') button.click();
+    else { selected={entity,id};highlight(entity,id);showContext(); }
+  }
+  function setActive(entity) {
+    if (!entities.includes(entity)) return;
+    activeEntity=entity;
+    for (const list of lists) list.hidden=list.dataset.grtransEntity!==entity;
+    for (const link of tabs) {
+      const linked=new URL(link.href,location.href).searchParams.get('network_entity');
+      const yes=linked===entity;link.setAttribute('aria-current',String(yes));link.classList.toggle('grtrans-active-tab',yes);
+    }
+    editorDock.hidden=formEntity!==entity;
+    showContext();
+  }
+  function showContext() {
+    context.replaceChildren();
+    const title=text('strong',selected&&selected.entity===activeEntity ? 'Selected record' : 'Next action');
+    const description=text('p',selected&&selected.entity===activeEntity
+      ? 'Select Edit to change this record; use the map for its location or connection.'
+      : 'Select an item in the list or start a map tool. Changes require a visible save.');
+    context.append(title,description);
+    if (selected && (activeEntity==='stations'||activeEntity==='branches')) {
+      const stationId=selected.entity==='stations' ? selected.id
+        : selected.entity==='branches' ? model.originFor(recordData,'branches',selected.id) : 0;
+      const s=bridge.station(stationId);
+      if(s&&Number(s.is_origin_hub)===1){
+        const add=text('button','Add dispatch location here','btn btn-default btn-sm');add.type='button';
+        add.addEventListener('click',()=>{
+          try{sessionStorage.setItem('grtrans-map-selected-station',String(s.id_station));}catch(_){}
+          visit('branches',0,'select');
+        });
+        context.append(add);
+      }
+    }
+    if (selected?.entity==='branches' && activeEntity==='branches') {
+      const stock=text('button','Manage products at this location','btn btn-default btn-sm');stock.type='button';
+      stock.addEventListener('click',()=>{stockFilter=selected.id;try{sessionStorage.setItem('grtrans-map-selected-branch',String(stockFilter));}catch(_){}setActive('branch_stock');filterStock();});
+      context.append(stock);
+    }
+    if (form && !editorDock.hidden) {
+      const id=Number(form.querySelector('[name="network_id"]')?.value||0);
+      const target=text('p',id>0?'Editing record #'+id+'. Save changes when ready.':'Adding a new record. Select a map tool or complete the fields.','grtrans-map-editor-hint');
+      context.append(target);
+    } else {
+      const add=text('button','Add '+activeEntity.replace('_',' '),'btn btn-default btn-sm');add.type='button';
+      add.addEventListener('click',()=>visit(activeEntity,0,'select'));context.append(add);
+    }
+  }
+  function filterStock() {
+    const section=listDock.querySelector('[data-grtrans-entity="branch_stock"]');
+    if (!section||!stockFilter) return;
+    const rows=section.querySelectorAll('tr[data-grtrans-record-id]');
+    rows.forEach(row=>{const branch=Number(row.cells[1]?.textContent.trim());row.hidden=branch!==stockFilter;});
+    const filter=text('p','Showing products at dispatch location #'+stockFilter+'.','grtrans-map-filter-note');
+    const clear=text('button','Show all products','btn btn-default btn-sm');clear.type='button';
+    clear.addEventListener('click',()=>{stockFilter=0;rows.forEach(row=>row.hidden=false);filter.remove();});
+    filter.append(clear);section.prepend(filter);
+  }
+  function revertDraft() {
+    if (draftMarker) {bridge.map.removeLayer(draftMarker);draftMarker=null;}
+    if (dragMarker) {
+      dragMarker.dragging?.disable();
+      if (originalPosition) dragMarker.setLatLng(originalPosition);
+      dragMarker=null;
+    }
+    originalPosition=null;firstStation=0;
+    const alert=editor.querySelector('.grtrans-map-unsaved');alert?.remove();
+    if (originalFields) {
+      const [lat,lng]=pointFields();
+      if(lat)lat.value=originalFields[0];
+      if(lng)lng.value=originalFields[1];
+    }
+    originalFields=null;
+    if (originalPair) {
+      const from=form?.querySelector('[name="from_station_id"]');
+      const to=form?.querySelector('[name="to_station_id"]');
+      if(from) {from.value=originalPair[0];from.dispatchEvent(new Event('change',{bubbles:true}));}
+      if(to) {to.value=originalPair[1];to.dispatchEvent(new Event('change',{bubbles:true}));}
+    }
+    originalPair=null;
+  }
+  function draft(point) {
+    const p=model.normalizedPoint(point);
+    if (!p||!matchingEditor('stations',mode==='move'?formId:0)) {
+      notice('Choose a valid station position. No changes were saved.',true);return;
+    }
+    const [lat,lng]=pointFields();if(!lat||!lng)return;
+    if(!originalFields)originalFields=[lat.value,lng.value];
+    lat.value=p.lat.toFixed(7);lng.value=p.lng.toFixed(7);
+    lat.dispatchEvent(new Event('input',{bubbles:true}));lng.dispatchEvent(new Event('input',{bubbles:true}));
+    if (mode==='place') {
+      if(!draftMarker) {
+        draftMarker=L.marker([p.lat,p.lng],{draggable:true,opacity:.7,title:'Unsaved station position'}).addTo(bridge.map);
+        draftMarker.on('dragend',()=>{if(mode==='place'&&draftMarker)draft(draftMarker.getLatLng());});
+      } else draftMarker.setLatLng([p.lat,p.lng]);
+    } else if(dragMarker) dragMarker.setLatLng([p.lat,p.lng]);
+    if (!editor.querySelector('.grtrans-map-unsaved')) {
+      const callout=text('p','Position draft — not saved. Save the station, or Cancel draft to revert.','grtrans-map-unsaved');
+      form?.prepend(callout);
+    }
+    notice('Position draft at '+p.lat.toFixed(5)+', '+p.lng.toFixed(5)+'. Save to commit.');
+  }
+  function nudge(key,fine) {
+    if(mode!=='place'&&mode!=='move')return;
+    const current=(mode==='place'&&draftMarker?.getLatLng()) || (mode==='move'&&dragMarker?.getLatLng()) || getMapPoint();
+    const next=model.nudge(current,key,fine);
+    if(next){draft(next);bridge.map.panTo([next.lat,next.lng],{animate:false});}
+  }
+  function enableMove(id) {
+    if(!matchingEditor('stations',id)){visit('stations',id,'move');return;}
+    revertDraft();mode='move';
+    const marker=bridge.marker(id);
+    if(!marker){notice('The selected station is not on this map.',true);return;}
+    dragMarker=marker;originalPosition=marker.getLatLng();
+    marker.dragging?.enable();
+    const finish=()=>{if(mode==='move'&&dragMarker===marker)draft(marker.getLatLng());};
+    marker.off('dragend',marker._grtransStageDrag);
+    marker._grtransStageDrag=finish;marker.on('dragend',finish);
+    notice('Drag the selected station pin, or use the arrow buttons. Save to commit.');
+  }
+  function switchMode(next) {
+    if (!model.modesEnabled(next)) return;
+    if(mode==='preview') bridge.clearPreview();
+    revertDraft();mode=next;working=false;
+    if(next!=='select') bridge.clearLegacy();
+    for (const [key,button] of modeButtons) button.setAttribute('aria-pressed',String(key===next));
+    actions.hidden=next!=='place'&&next!=='move';
+    if(next==='place'&&!matchingEditor('stations',0)){visit('stations',0,'place');return;}
+    if(next==='connect-leg'&&!matchingEditor('legs',0)){visit('legs',0,'connect-leg');return;}
+    if(next==='connect-transfer'&&!matchingEditor('transfers',0)){visit('transfers',0,'connect-transfer');return;}
+    if(next==='move'&&selected?.entity==='stations'){enableMove(selected.id);return;}
+    if(next==='preview'){bridge.startPreview();notice('Choose two map points or station pins to preview a route.');return;}
+    const labels={select:'Select a station, line, or list record.',place:'Choose a map point to place a new station.',
+      move:'Select the station you wish to move.',
+      'connect-leg':'Click a sending station, then a receiving station.',
+      'connect-transfer':'Click the first station, then the second station.'};
+    notice(labels[next]||'Select a map action.');
+  }
+  function stationPick(station) {
+    const id=Number(station.id_station);
+    if(mode==='preview')return false;
+    if(mode==='place'){notice('Click empty map space to place the new station.');return true;}
+    if(mode==='move'){selected={entity:'stations',id};activateRow('stations',id);enableMove(id);return true;}
+    if(mode==='connect-leg'||mode==='connect-transfer'){
+      const entity=mode==='connect-leg'?'legs':'transfers';
+      if(!matchingEditor(entity,0)){visit(entity,0,mode);return true;}
+      if(!firstStation){firstStation=id;bridge.focusStation(id);notice('From '+station.name+'. Select a different destination station.');return true;}
+      const ids=model.pair(firstStation,id);
+      if(!ids){notice('Choose a different destination station.',true);return true;}
+      const source=form.querySelector('[name="from_station_id"]'),target=form.querySelector('[name="to_station_id"]');
+      if(source&&target){
+        if(!originalPair)originalPair=[source.value,target.value];
+        source.value=String(ids.from_station_id);target.value=String(ids.to_station_id);
+        source.dispatchEvent(new Event('change',{bubbles:true}));target.dispatchEvent(new Event('change',{bubbles:true}));
+        bridge.focusStations([ids.from_station_id,ids.to_station_id]);
+        notice('Connection draft: #'+ids.from_station_id+' → #'+ids.to_station_id+'. Set the method and price, then save.');
+        const price=form.querySelector('[name="price"]');price?.focus();
+        const msg=text('p','Connection draft — no new record exists until you save.','grtrans-map-unsaved');
+        form.querySelector('.grtrans-map-unsaved')?.remove();form.prepend(msg);
+      }
+      firstStation=0;return true;
+    }
+    if(activeEntity==='stations'){activateRow('stations',id);return false;}
+    const options=model.recordsAt(recordData,activeEntity,id);
+    if(activeEntity==='branches'&&options.length===0&&Number(station.is_origin_hub)===1){
+      selected={entity:'stations',id};showContext();
+      const add=text('button','Add dispatch location at '+station.name,'btn btn-default btn-sm');
+      add.type='button';add.addEventListener('click',()=>{try{sessionStorage.setItem('grtrans-map-selected-station',String(id));}catch(_){}visit('branches',0,'select');});
+      context.append(add);return true;
+    }
+    if(options.length===1){activateRow(activeEntity,model.recordId(activeEntity,options[0]));return true;}
+    if(options.length>1){showChoices(activeEntity,options,markerPosition(id));return true;}
+    notice('No '+activeEntity.replace('_',' ')+' record is linked to '+station.name+'.');return true;
+  }
+  const markerPosition = id => bridge.station(id) ? [Number(bridge.station(id).lat),Number(bridge.station(id).lng)] : null;
+  function showChoices(entity,records,latlng) {
+    const box=node('div','grtrans-map-choice-list');
+    box.append(text('strong','Choose a '+entity.replace('_',' ')+' record'));
+    for(const record of records){
+      const id=model.recordId(entity,record);
+      const title=record.name||record.operator_label||record.connection_type||('Record #'+id);
+      const button=text('button',title+' (#'+id+')','btn btn-default btn-sm');button.type='button';
+      button.addEventListener('click',()=>{bridge.map.closePopup();activateRow(entity,id);});box.append(button);
+    }
+    L.popup({maxWidth:310}).setLatLng(latlng||bridge.map.getCenter()).setContent(box).openOn(bridge.map);
+  }
+  function mapClick(latlng) {
+    if(mode==='preview')return false;
+    if(mode==='place'){draft(latlng);return true;}
+    if(mode==='move'){notice('Select or drag the station pin to move it.');return true;}
+    if(mode.startsWith('connect')){notice('Choose two station pins, not empty map space.');return true;}
+    return true; // Select mode never mutates coordinate inputs on bare map clicks.
+  }
+  window.GrtransMapWorkspaceHooks={stationPick,mapClick};
+  root.addEventListener('grtrans:record-selected',event=>{
+    const {entity,id}=event.detail||{};
+    if(!entities.includes(entity)||!(Number(id)>0))return;
+    selected={entity,id:Number(id)};highlight(entity,Number(id));showContext();
+  });
+  // Quantity is the one stock property safe to edit independently. The POST still
+  // contains all four original fields and uses the existing signed record writer.
+  let inlineStock = null;
+  function stockQuantityEditor(id) {
+    if (inlineStock) {inlineStock.remove();inlineStock=null;}
+    const section=listDock.querySelector('[data-grtrans-entity="branch_stock"]');
+    const row=[...(section?.querySelectorAll('tr[data-grtrans-record-id]')||[])].find(r=>Number(r.dataset.grtransRecordId)===id);
+    if(!row||!row.cells[4])return;
+    const cell=row.cells[4];
+    const stock=(recordData.branch_stock||[]).find(r=>Number(r.id_branch_stock)===id);
+    if(!stock)return;
+    const controls=node('div','grtrans-inline-quantity');inlineStock=controls;
+    const input=node('input','form-control grtrans-size-s');input.type='number';input.min='0';input.max='2147483647';input.step='1';
+    input.value=String(stock.quantity);input.setAttribute('aria-label','Available units for stock record #'+id);
+    const save=text('button','Save quantity','btn btn-default btn-sm');save.type='button';
+    const result=text('output','','grtrans-inline-state');result.setAttribute('aria-live','polite');
+    controls.append(input,save,result);cell.append(controls);
+    const submit=async()=>{
+      if(working)return;
+      const value=input.value;
+      if(!/^(0|[1-9][0-9]*)$/.test(value)||Number(value)>2147483647){
+        result.textContent='Enter a whole number of available units.';result.dataset.state='error';return;
+      }
+      const csrf=legacyLinkForm?.querySelector('input[name="token"]')?.value;
+      if(!csrf){result.textContent='Administrator session unavailable. Reload Configure.';result.dataset.state='error';return;}
+      const payload=new FormData();
+      payload.set('token',csrf);payload.set('grtrans_network_action','save');
+      payload.set('network_entity','branch_stock');payload.set('network_id',String(id));
+      for(const key of ['id_branch','id_product','id_product_attribute'])payload.set(key,String(stock[key]));
+      payload.set('quantity',value);
+      working=true;save.disabled=true;result.dataset.state='saving';result.textContent='Saving…';
+      try {
+        const response=await fetch(legacyLinkForm.action,{method:'POST',body:payload,credentials:'same-origin',
+          headers:{'X-Requested-With':'XMLHttpRequest'}});
+        if(!response.ok)throw new Error('HTTP '+response.status);
+        const doc=new DOMParser().parseFromString(await response.text(),'text/html');
+        const success=[...doc.querySelectorAll('.alert-success[role="status"]')]
+          .some(node=>node.textContent.includes('Network record updated.'));
+        if(!success){
+          const detail=doc.querySelector('.alert-danger details code')?.textContent || 'The change was not saved.';
+          throw new Error(detail);
+        }
+        stock.quantity=Number(value);
+        const displayed=cell.firstChild;
+        if(displayed?.nodeType===Node.TEXT_NODE)displayed.textContent=value;
+        result.textContent='Saved';result.dataset.state='saved';
+      }catch(error){result.textContent='Not saved: '+error.message;result.dataset.state='error';}
+      finally {working=false;save.disabled=false;}
+    };
+    save.addEventListener('click',submit);
+    input.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();submit();}});
+  }
+  root.addEventListener('grtrans:record-selected',event=>{
+    if(event.detail?.entity==='branch_stock'&&Number(event.detail.id)>0)stockQuantityEditor(Number(event.detail.id));
+    else if(inlineStock){inlineStock.remove();inlineStock=null;}
+  });
+  window.addEventListener('grtrans:map-station-selected',event=>{
+    if(mode==='select'&&activeEntity==='stations')activateRow('stations',Number(event.detail?.id));
+  });
+  window.addEventListener('grtrans:map-record-selected',event=>{
+    const {entity,id}=event.detail||{};if(entities.includes(entity)&&Number(id)>0)activateRow(entity,Number(id));
+  });
+  for(const link of tabs)link.addEventListener('click',event=>{
+    const entity=new URL(link.href,location.href).searchParams.get('network_entity');
+    if(!entities.includes(entity))return;
+    event.preventDefault();if(mode!=='select')switchMode('select');setActive(entity);
+    const url=new URL(location.href);url.searchParams.set('network_entity',entity);
+    history.replaceState(history.state,'',url.toString());
+  });
+  for(const link of editorDock.querySelectorAll('a[href*="network_entity="]')){
+    link.addEventListener('click',saveView);
+  }
+  for(const link of listDock.querySelectorAll('a[href*="network_entity="]')){
+    const url=new URL(link.href,location.href);
+    url.hash='grtrans-map-workspace';link.href=url.toString();link.addEventListener('click',saveView);
+  }
+  const fieldStation=form?.querySelector('[name="origin_station_id"]');
+  if(formEntity==='branches'&&formId===0&&fieldStation){
+    try {const prior=sessionStorage.getItem('grtrans-map-selected-station');
+      if(prior&&[...fieldStation.options].some(option=>option.value===prior))fieldStation.value=prior;
+      sessionStorage.removeItem('grtrans-map-selected-station');}catch(_){}
+  }
+  if(formEntity==='branch_stock'&&formId===0){
+    try {const prior=sessionStorage.getItem('grtrans-map-selected-branch');
+      const branch=form?.querySelector('[name="id_branch"]');
+      if(prior&&branch&&[...branch.options].some(option=>option.value===prior))branch.value=prior;
+      sessionStorage.removeItem('grtrans-map-selected-branch');}catch(_){}
+  }
+  centreButton.addEventListener('click',()=>draft(getMapPoint()));
+  mapRoot.setAttribute('tabindex','0');
+  mapRoot.setAttribute('aria-label','Service map. Use the toolbar to choose Select, Place, Move or Connect.');
+  mapRoot.addEventListener('keydown',event=>{
+    if(event.key==='Enter'&&(mode==='place'||mode==='move')){event.preventDefault();draft(getMapPoint());}
+  });
+  stage.addEventListener('keydown',event=>{
+    if(event.key==='Escape'&&mode!=='select') {event.preventDefault();switchMode('select');}
+    else if(event.key==='Escape'&&stage.classList.contains('grtrans-map-maximized')){
+      stage.classList.remove('grtrans-map-maximized');bridge.map.invalidateSize();
+    }
+    if(mode==='move'&&event.key.startsWith('Arrow') && event.target.closest('.grtrans-map-workspace-tools')) {
+      event.preventDefault();nudge(event.key,event.shiftKey);
+    }
+  });
+  expand.addEventListener('click',()=>{
+    if(document.fullscreenElement===stage){document.exitFullscreen?.();return;}
+    if(stage.requestFullscreen)stage.requestFullscreen().catch(()=>stage.classList.toggle('grtrans-map-maximized'));
+    else stage.classList.toggle('grtrans-map-maximized');
+    setTimeout(()=>bridge.map.invalidateSize(),80);
+  });
+  document.addEventListener('fullscreenchange',()=>{
+    expand.setAttribute('aria-pressed',String(document.fullscreenElement===stage));
+    bridge.map.invalidateSize();
+  });
+  const resize=()=>bridge.map.invalidateSize();
+  if(typeof ResizeObserver==='function')new ResizeObserver(resize).observe(mapDock);
+  for(const entity of entities){
+    const list=listDock.querySelector('[data-grtrans-entity="'+entity+'"]');
+    list?.querySelectorAll('a[href*="network_edit="]').forEach(link=>{const url=new URL(link.href,location.href);
+      url.hash='grtrans-map-workspace';link.href=url.toString();link.addEventListener('click',saveView);});
+  }
+  // A transparent record hit target adds selection without altering coverage
+  // or the persisted geometry/transport paint model. Shared endpoints get one
+  // disambiguation picker instead of choosing a random record.
+  const targets = new Map();
+  for(const entity of ['legs','transfers'])for(const record of recordData[entity]||[]) {
+    const a=bridge.station(record.from_station_id),b=bridge.station(record.to_station_id);
+    if(!a||!b)continue;
+    const key=[Number(a.id_station),Number(b.id_station)].sort((x,y)=>x-y).join(':');
+    if(!targets.has(key))targets.set(key,[]);
+    targets.get(key).push({entity,record});
+  }
+  for(const [key,records] of targets){
+    const [a,b]=key.split(':').map(id=>bridge.station(id));if(!a||!b)continue;
+    const hit=L.polyline([[Number(a.lat),Number(a.lng)],[Number(b.lat),Number(b.lng)]],{
+      color:'#111',opacity:.001,weight:15,interactive:true,className:'grtrans-map-record-hit'}).addTo(bridge.map);
+    hit.on('click',event=>{
+      L.DomEvent.stopPropagation(event);
+      if(mode==='preview') {bridge.map.fire('click',{latlng:event.latlng});return;}
+      if(mode!=='select') {notice('Finish or cancel the active map tool before selecting a connection.');return;}
+      const available=records.filter(item=>item.entity===activeEntity);
+      const choices=available.length?available:records;
+      if(choices.length===1){activateRow(choices[0].entity,model.recordId(choices[0].entity,choices[0].record));return;}
+      const box=node('div','grtrans-map-choice-list');box.append(text('strong','Select a connection'));
+      for(const item of choices){const id=model.recordId(item.entity,item.record);
+        const button=text('button',(item.record.operator_label||item.record.connection_type||item.entity)+' #'+id,'btn btn-default btn-sm');
+        button.type='button';button.addEventListener('click',()=>{bridge.map.closePopup();activateRow(item.entity,id);});box.append(button);}
+      L.popup({maxWidth:310}).setLatLng(event.latlng).setContent(box).openOn(bridge.map);
+    });
+  }
+  restoreView();
+  let initialMode='select';
+  try {initialMode=sessionStorage.getItem(modeKey)||'select';sessionStorage.removeItem(modeKey);}catch(_){}
+  if(!model.modesEnabled(initialMode))initialMode='select';
+  setActive(activeEntity);
+  if(formId>0)activateRow(activeEntity,formId);
+  switchMode(initialMode);
+  if(formEntity==='stations'&&formId>0&&initialMode==='move'&&!dragMarker)enableMove(formId);
+  // Failed POSTs retain the previous submitted position in the server-rendered
+  // form. Show it as a *draft*, never as persisted station coverage.
+  if(formEntity==='stations' && form && editor.querySelector('.grtrans-record-error')) {
+    const [lat,lng]=pointFields();
+    const p=model.normalizedPoint({lat:lat?.value,lng:lng?.value});
+    const saved=formId>0?bridge.station(formId):null;
+    if(p&&(!saved||Math.abs(Number(saved.lat)-p.lat)>0.0000001||Math.abs(Number(saved.lng)-p.lng)>0.0000001)) {
+      draftMarker=L.marker([p.lat,p.lng],{opacity:.7,title:'Not saved — submitted station position'}).addTo(bridge.map);
+      const clear=text('button','Discard unsaved position','btn btn-default btn-sm');clear.type='button';
+      clear.addEventListener('click',()=>{
+        if(draftMarker){bridge.map.removeLayer(draftMarker);draftMarker=null;}
+        if(lat)lat.value=saved?String(saved.lat):'';
+        if(lng)lng.value=saved?String(saved.lng):'';
+        clear.remove();notice('Unsaved position discarded; other entered fields remain.');
+      });
+      editor.querySelector('.grtrans-record-error')?.append(clear);
+      notice('The station change was not saved. Correct the retained draft or discard its position.',true);
+    }
+  }
+  requestAnimationFrame(()=>bridge.map.invalidateSize());
+  window.GrtransMapWorkspace={stage,bridge,selectRecord:activateRow,changeMode:switchMode};
+})();

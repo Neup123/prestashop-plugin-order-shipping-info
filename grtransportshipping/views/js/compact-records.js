@@ -214,7 +214,8 @@
     const keep=KEEP[entity]||[1,2,3,headings.length];
     table.classList.add('grtrans-compact-network');table.dataset.grtransEntity=entity;
     table.querySelectorAll('thead th').forEach((th,i)=>{
-      const old=text(th);th.textContent=FIELDS[old] || old.replace(/_/g,' ');
+      const old=text(th);const key=old.toLowerCase().replace(/\s+/g,'_');
+      th.textContent=FIELDS[old] || FIELDS[key] || old.replace(/_/g,' ');
       if(keep.includes(i+1)) th.classList.add('grtrans-keep');
     });
     const records=rows.map(row=>{

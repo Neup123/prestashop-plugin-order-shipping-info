@@ -154,7 +154,9 @@ return '<div class="alert alert-danger" data-grtrans-autosave-result="error">'
         foreach ($route['cost'] as $id=>$amount) {
             if (is_finite($amount)) $cost[(string)$id]=round($amount,2);
         }
-        $mapData=array_intersect_key($data,array_flip(['stations','legs','transfers']));
+        // Branch and stock context is shop-scoped in snapshot(); expose only
+        // these existing records to the map-side selection UI.
+        $mapData=array_intersect_key($data,array_flip(['stations','legs','transfers','branches','branch_stock']));
         $mapData['resolution']=GrTransportNetworkResolution::mapPlan($mapData,$route['cost']);
         $mapConfig=json_encode($mapData+['cost'=>$cost,'nearbyGapKm'=>GrTransportNetworkSettings::get('nearby_gap_km'),
             'farDefaultKm'=>GrTransportNetworkSettings::get('station_outer_km'),
