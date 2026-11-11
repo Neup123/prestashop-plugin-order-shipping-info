@@ -765,6 +765,10 @@ class Grtransportshipping extends CarrierModule
             .grtrans-editor.is-editing{border-left:5px solid #337ab7}
             .grtrans-editor .help-block{display:block;margin-top:5px}
         </style>';
+        $cityByStation = [];
+        foreach (require __DIR__ . '/data/stations.php' as $station) {
+            $cityByStation[$station['name']] = $station['cities'][0] ?? '';
+        }
         $out .= '<div class="grtrans-route-grid table-responsive"><table class="table table-hover">'
             . '<thead><tr><th>' . $this->escape($this->l('ID')) . '</th><th>' . $this->escape($this->l('Mode')) . '</th>'
             . '<th>' . $this->escape($this->l('From')) . '</th><th>' . $this->escape($this->l('Pickup station')) . '</th>'
@@ -782,7 +786,11 @@ class Grtransportshipping extends CarrierModule
             $modeChoices = GrTransportRouteFields::choices('mode');
             $out .= '<td>' . $this->escape($this->l($modeChoices[$r['mode']] ?? $r['mode'])) . '</td>';
             foreach (['origin_name', 'station_name', 'city', 'postal_prefix', 'price'] as $field) {
-                $out .= '<td>' . $this->escape($r[$field]) . '</td>';
+                $value = $r[$field];
+                if ($field === 'city' && trim((string) $value) === '') {
+                    $value = $cityByStation[$r['station_name']] ?? '';
+                }
+                $out .= '<td>' . $this->escape($value) . '</td>';
             }
             $pickupChoices = GrTransportRouteFields::choices('pickup_only');
             $out .= '<td>' . $this->escape($this->l($pickupChoices[(string) $r['pickup_only']] ?? 'Unknown')) . '</td>'
