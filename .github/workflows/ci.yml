@@ -23,6 +23,10 @@ jobs:
         run: php tests/quote_check_test.php && php tests/quote_page_test.php && php tests/network_branch_test.php && php tests/network_freshness_test.php && php tests/network_timing_test.php && php tests/network_settings_test.php && php tests/network_test.php && php tests/network_quote_test.php && php tests/network_tariff_test.php && php tests/far_zone_test.php && php tests/quote_test.php && php tests/demo_quotes_test.php && php tests/route_state_test.php && php tests/route_fields_test.php && php tests/translation_test.php
       - name: Configure interface settings contract
         run: php tests/configure_ui_test.php
+      - name: Compact network record catalog projection
+        run: php tests/network_catalog_ui_test.php
+      - name: Compact record filtering and ordering
+        run: node tests/compact_records_test.cjs
       - name: Order charged amount adjustment contract
         run: php tests/order_charge_test.php
       - name: Validate demo seed format

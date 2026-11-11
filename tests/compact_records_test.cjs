@@ -1,0 +1,24 @@
+const assert = require('node:assert/strict');
+const {filterRecords,sortRecords,normalize,KEEP,FIELDS,GROUPS,SIZE} =
+  require('../grtransportshipping/views/js/compact-records.js');
+const rows=[
+  {id:1,label:'Αθήνα',search:'Athens ferry 26221',mode:'ferry',availability:'Available',verification:'Unverified',price:12},
+  {id:2,label:'Patras',search:'Patras bus 00011',mode:'bus',availability:'Draft',verification:'Verified',price:5},
+  {id:3,label:'Thessaloniki',search:'Thessaloniki ferry 52001',mode:'ferry',availability:'Suspended',verification:'Verified',price:20},
+];
+assert.deepEqual(filterRecords(rows,'ferry').map(r=>r.id),[1,3]);
+assert.deepEqual(filterRecords(rows,'', {mode:'bus'}).map(r=>r.id),[2]);
+assert.deepEqual(filterRecords(rows,'', {mode:'ferry',availability:'Suspended'}).map(r=>r.id),[3]);
+assert.deepEqual(filterRecords(rows,'', {verification:'Verified'}).map(r=>r.id),[2,3]);
+assert.deepEqual(filterRecords(rows,'no such route'),[]);
+assert.equal(normalize('ÁTHENS'),normalize('athens'));
+assert.deepEqual(sortRecords(rows,'price').map(r=>r.id),[2,1,3]);
+assert.deepEqual(sortRecords(rows,'recent').map(r=>r.id),[3,2,1]);
+assert.deepEqual(sortRecords(rows,'original').map(r=>r.id),[1,2,3]);
+assert.deepEqual(rows.map(r=>r.id),[1,2,3],'Sorting must not mutate the server order');
+assert.deepEqual(KEEP.legs,[1,2,3,4,5,6,27,29],'Leg list must not show all 29 schema fields');
+assert.ok(KEEP.stations.length<14 && KEEP.transfers.length<8);
+assert.equal(FIELDS.area_lat,'Area latitude');
+assert.equal(SIZE.area_lat,'s');
+assert.ok(GROUPS.branch_stock.some(([name,fields])=>fields.includes('id_product_attribute')));
+console.log('Compact record filtering, ordering, terminology and view models passed');

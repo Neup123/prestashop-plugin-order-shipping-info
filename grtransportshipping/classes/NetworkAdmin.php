@@ -7,6 +7,12 @@ require_once __DIR__ . '/NetworkResolution.php';
 /** Operator interface over the exact NetworkRepository/NetworkApi contract. */
 final class GrTransportNetworkAdmin
 {
+    /** Failed network edits are preserved only for this Configure request. */
+    private static ?array $failedDraft=null;
+    private static string $failedEntity='';
+    private static int $failedId=0;
+    private static string $failedMessage='';
+
     public static function handle($module): string
     {
         if (!isset($_POST['grtrans_network_action'])) return '';
@@ -75,10 +81,33 @@ return '<div class="alert alert-danger" data-grtrans-autosave-result="error">'
                     'override_winner'=>$_POST['override_winner'] ?? 'none',
                 ]);
             } else throw new InvalidArgumentException('Unknown network action');
+            $kinds=['stations'=>'Station','legs'=>'Transport connection',
+                'transfers'=>'Station transfer','branches'=>'Dispatch location',
+                'branch_stock'=>'Product availability'];
+            $kind=$kinds[$entity] ?? 'Record';
             $message=($action==='link' || ($action==='save' && $id===0))
                 ? 'Network record created.' : 'Network record updated.';
-            return '<div class="alert alert-success" role="status">' . $message . '</div>';
+            if ($action==='verify') {
+                $current=GrTransportNetworkRepository::find($entity,(int)$id);
+                $detail=$kind.' #'.$id.' checked'
+                    . (!empty($current['verified_at']) ? ' at '.$current['verified_at'].' UTC.' : '.');
+            } elseif ($action==='delete') {
+                $detail=$kind.' #'.$id.' deleted.';
+            } elseif ($action==='save') {
+                $detail=$kind.($id>0 ? ' #'.$id.' saved.' : ' created.');
+            } else {
+                $detail='Station connection saved.';
+            }
+            return '<div class="alert alert-success" role="status"><strong>'
+                .self::esc($module->l($message)).'</strong> '.self::esc($module->l($detail)).'</div>';
         } catch (Throwable $error) {
+            if (isset($action) && $action==='save' && isset($entity) &&
+                in_array($entity,GrTransportNetworkFields::ENTITIES,true)) {
+                self::$failedEntity=$entity;
+                self::$failedDraft=$_POST;
+                self::$failedId=(int)($_POST['network_id'] ?? 0);
+                self::$failedMessage=$error->getMessage();
+            }
             return '<div class="alert alert-danger" role="alert" data-grtrans-autosave-result="error">'
                 .self::esc($module->l('The change was not saved. Check the fields and try again.'))
                 .'<details><summary>'.self::esc($module->l('Technical details')).'</summary><code>'
@@ -99,11 +128,27 @@ return '<div class="alert alert-danger" data-grtrans-autosave-result="error">'
         $entity=isset($_GET['network_entity']) && is_string($_GET['network_entity'])
             && in_array($_GET['network_entity'],GrTransportNetworkFields::ENTITIES,true)
             ? $_GET['network_entity'] : 'stations';
+        // A POST without a network_entity query parameter must stay on the
+        // dataset the merchant just edited, rather than defaulting to Stations.
+        if (isset($_POST['network_entity']) && is_string($_POST['network_entity'])
+            && in_array($_POST['network_entity'],GrTransportNetworkFields::ENTITIES,true)) {
+            $entity=$_POST['network_entity'];
+        }
         $edit=isset($_GET['network_edit']) && is_scalar($_GET['network_edit'])
             ? (int)$_GET['network_edit'] : 0;
+        if (isset($_POST['grtrans_network_action'])
+            && in_array($_POST['grtrans_network_action'],['save','verify'],true)
+            && isset($_POST['network_id']) && is_scalar($_POST['network_id'])) {
+            $edit=max(0,(int)$_POST['network_id']);
+        }
         $selected=$edit>0 ? GrTransportNetworkRepository::find($entity,$edit) : null;
+        $missingTarget=$edit>0 && !$selected;
         $values=array_replace(GrTransportNetworkFields::defaults($entity),
             $selected ? array_intersect_key($selected,GrTransportNetworkFields::fields($entity)) : []);
+        if (self::$failedDraft!==null && self::$failedEntity===$entity && !$missingTarget) {
+            $values=array_replace($values,array_intersect_key(self::$failedDraft,
+                GrTransportNetworkFields::fields($entity)));
+        }
         $route=GrTransportNetworkGraph::routes($data['stations'],$data['legs'],$data['transfers']);
         $cost=[];
         foreach ($route['cost'] as $id=>$amount) {
@@ -208,9 +253,22 @@ return '<div class="alert alert-danger" data-grtrans-autosave-result="error">'
             }
             $out.='</tbody></table></div>';
         }
-        $out.='<div id="grtrans-network-editor" class="panel"><h4>'
-            . ($selected ? 'Edit ' : 'Add ') . self::esc(ucfirst(rtrim($entity,'s'))) . '</h4>'
-            . '<form method="post" action="' . $url . '#grtrans-network-editor">'
+        $out.='<div id="grtrans-network-editor" class="panel">';
+        if ($missingTarget) {
+            $back=$url.'&amp;network_entity='.self::esc($entity).'#grtrans-network-editor';
+            $out.='<div class="alert alert-warning grtrans-record-error" role="alert">'
+                .self::esc($module->l('The selected record no longer exists. No new record has been created.'))
+                .' <a href="'.$back.'">'.self::esc($module->l('Return to this list')).'</a></div>';
+        } else {
+        $out.='<h4>' . ($selected ? 'Edit ' : 'Add ')
+            . self::esc(ucfirst(rtrim($entity,'s'))) . '</h4>';
+        if (self::$failedEntity===$entity && self::$failedMessage!=='') {
+            $out.='<div class="alert alert-danger grtrans-record-error" role="alert">'
+                .self::esc($module->l('Your submitted values are retained below. Correct the fields and save again.'))
+                .'<details><summary>'.self::esc($module->l('Technical details')).'</summary><code>'
+                .self::esc(self::$failedMessage).'</code></details></div>';
+        }
+        $out.='<form method="post" action="' . $url . '#grtrans-network-editor">'
             . '<input type="hidden" name="token" value="' . $csrf . '">'
             . '<input type="hidden" name="grtrans_network_action" value="save">'
             . '<input type="hidden" name="network_entity" value="' . $entity . '">'
@@ -255,7 +313,9 @@ return '<div class="alert alert-danger" data-grtrans-autosave-result="error">'
                         $choices[(int)$station['id_station']]=$station['name'];
                     }
                 }
-                $out.='<select class="form-control" id="grtrans-network-field-' . $key . '" name="' . $key . '">';
+                if ($type==='id') $choices=[''=>'Choose a station or dispatch location']+$choices;
+                $out.='<select class="form-control" id="grtrans-network-field-' . $key . '" name="' . $key . '"'
+                    . ($type==='id' ? ' required' : '') . '>';
                 foreach ($choices as $choice=>$label) {
                     $out.='<option value="' . self::esc($choice) . '"'
                         . ((string)$choice===(string)$value ? ' selected' : '') . '>'
@@ -268,10 +328,20 @@ return '<div class="alert alert-danger" data-grtrans-autosave-result="error">'
                     . ' placeholder="GeoJSON geometry [lng,lat], validated; leave blank for radius">'
                     . self::esc($value) . '</textarea>';
             } else {
+                $numberAttributes='';
+                if ($type!=='text') {
+                    $minimum=str_contains($type,'latitude') ? '-90'
+                        : (str_contains($type,'longitude') ? '-180' : '0');
+                    $maximum=str_contains($type,'latitude') ? 90
+                        : (str_contains($type,'longitude') ? 180
+                            : ($type==='nonnegative_int' ? 2147483647 : ($definition[2] ?? null)));
+                    $numberAttributes=' type="number" step="'.($type==='nonnegative_int' ? '1' : 'any')
+                        .'" min="'.$minimum.'"'.($maximum!==null ? ' max="'.self::esc($maximum).'"' : '');
+                }
                 $out.='<input class="form-control" id="grtrans-network-field-' . $key . '" name="' . $key . '"'
                     . ' value="' . self::esc($value) . '"'
                     . ($type==='text' ? ' maxlength="' . (int)$definition[1] . '"' : '')
-                     . ($type!=='text' ? ' type="number" step="any" min="0"' : '')
+                    . $numberAttributes
                     . ($farField ? ' placeholder="Inherit global FAR boundary"' : '') . '>';
             }
             if ($farField) {
@@ -291,7 +361,16 @@ return '<div class="alert alert-danger" data-grtrans-autosave-result="error">'
         }
         if ($advancedOpen) $out.='</details>';
         $out.='<button class="btn btn-primary" name="grtrans_network_submit" value="1">'
-            . ($selected ? 'Save changes' : 'Create record') . '</button></form></div>';
+            . ($selected ? 'Save changes' : 'Create record') . '</button></form>';
+        if ($entity==='branch_stock') {
+            require_once __DIR__ . '/NetworkCatalogOptions.php';
+            $catalog=GrTransportNetworkCatalogOptions::read((int)($values['id_product'] ?? 0));
+            $out.='<script type="application/json" id="grtrans-catalog-options">'
+                .json_encode($catalog,JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_INVALID_UTF8_SUBSTITUTE)
+                .'</script>';
+        }
+        }
+        $out.='</div>';
         $tr=static fn(string $label): string => self::esc($module->l($label));
         $notice=(string)Configuration::get('GRTRANS_EXTENDED_NOTICE');
         $out.='<section class="grtrans-notice-panel"><fieldset class="grtrans-control-group">'
