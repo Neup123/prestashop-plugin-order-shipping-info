@@ -1,0 +1,73 @@
+/* Progressive-enhancement layer for existing record tables and editor forms. */
+#grtrans-configure .grtrans-record-filters {display:flex;flex-wrap:wrap;align-items:end;gap:.5rem .8rem;margin:.7rem 0}
+#grtrans-configure .grtrans-record-filter {display:flex;flex-direction:column;gap:.2rem;margin:0}
+#grtrans-configure .grtrans-filter-caption,#grtrans-configure .grtrans-record-count {font-size:.86rem;color:var(--grtrans-quiet,#566371)}
+#grtrans-configure .grtrans-record-filters input[type=search] {max-width:18rem}
+#grtrans-configure .grtrans-record-filters select {max-width:13rem}
+#grtrans-configure .grtrans-record-count {white-space:nowrap;padding-bottom:.55rem;font-variant-numeric:tabular-nums}
+#grtrans-configure .grtrans-record-empty {margin:1rem 0;color:var(--grtrans-quiet,#566371)}
+#grtrans-configure .grtrans-record-list-head {display:flex;flex-wrap:wrap;align-items:center;gap:.45rem 1rem}
+#grtrans-configure .grtrans-record-list-head>.grtrans-record-filters {flex:1}
+#grtrans-configure .grtrans-record-list-head>a {white-space:nowrap}
+#grtrans-configure .grtrans-active-tab {font-weight:700;background:#e0ebf6;border-color:#98b6ce}
+#grtrans-configure .grtrans-network-toolbar {display:flex;flex-wrap:wrap;align-items:center;gap:.35rem;margin:.65rem 0}
+#grtrans-configure .grtrans-network-toolbar>a {padding:.35rem .6rem;border-radius:5px}
+#grtrans-configure .grtrans-network-list {margin:.7rem 0 1.2rem}
+#grtrans-configure .grtrans-network-list[hidden] {display:none!important}
+#grtrans-configure .grtrans-compact-network th:not(.grtrans-keep),
+#grtrans-configure .grtrans-compact-network td:not(.grtrans-keep) {display:none}
+#grtrans-configure .grtrans-compact-routes th:nth-child(1),
+#grtrans-configure .grtrans-compact-routes td:nth-child(1),
+#grtrans-configure .grtrans-compact-routes th:nth-child(6),
+#grtrans-configure .grtrans-compact-routes td:nth-child(6),
+#grtrans-configure .grtrans-compact-routes th:nth-child(8),
+#grtrans-configure .grtrans-compact-routes td:nth-child(8) {display:none}
+#grtrans-configure .grtrans-compact-network td,#grtrans-configure .grtrans-compact-routes td {vertical-align:middle}
+#grtrans-configure .grtrans-compact-network td.grtrans-keep,#grtrans-configure .grtrans-compact-routes td {max-width:17rem;overflow-wrap:anywhere}
+#grtrans-configure .grtrans-compact-network td.grtrans-keep:last-child {max-width:none}
+#grtrans-configure .grtrans-compact-network tr[hidden],#grtrans-configure .grtrans-compact-routes tr[hidden] {display:none!important}
+#grtrans-configure .grtrans-selected-record>td.grtrans-keep {box-shadow:inset 0 0 0 2px #3977aa}
+#grtrans-configure .grtrans-select-record {border:1px solid var(--grtrans-border,#ccd2d8);border-radius:4px;padding:.25rem .4rem;background:transparent;cursor:pointer;font-size:.82rem}
+#grtrans-configure .grtrans-select-record[aria-pressed=true] {background:#d9e6f3;color:#133d67;font-weight:700}
+#grtrans-configure .grtrans-select-record:focus-visible {outline:2px solid #1756a9;outline-offset:2px}
+#grtrans-configure .grtrans-network-actions {white-space:normal;min-width:12rem}
+#grtrans-configure .grtrans-network-actions .grtrans-select-record {margin-right:.4rem}
+#grtrans-configure .grtrans-network-actions .btn {margin:.1rem;padding:.3rem .45rem}
+#grtrans-configure .grtrans-network-more {display:inline-block;position:relative;vertical-align:middle;margin-left:.2rem}
+#grtrans-configure .grtrans-network-more summary {cursor:pointer;list-style:none;padding:.27rem .5rem;border:1px solid var(--grtrans-border,#ccd2d8);border-radius:4px}
+#grtrans-configure .grtrans-network-more[open] {z-index:70}
+#grtrans-configure .grtrans-network-more[open] form {position:relative;background:var(--grtrans-menu-bg,#fff);margin:.25rem;right:auto;box-shadow:none;display:block}
+#grtrans-configure .grtrans-record-details {display:inline-block;position:relative;vertical-align:middle;margin-left:.25rem}
+#grtrans-configure .grtrans-record-details summary {cursor:pointer;list-style:none;display:inline-block;padding:.27rem .5rem;border:1px solid var(--grtrans-border,#ccd2d8);border-radius:4px;white-space:nowrap}
+#grtrans-configure .grtrans-record-details summary::-webkit-details-marker {display:none}
+#grtrans-configure .grtrans-record-details[open] .grtrans-record-facts {position:absolute;right:0;z-index:60;min-width:min(24rem,90vw);max-width:40rem;max-height:22rem;overflow:auto;background:var(--grtrans-menu-bg,#fff);border:1px solid var(--grtrans-border,#ccd2d8);box-shadow:0 3px 9px #0002;padding:1rem;border-radius:5px}
+#grtrans-configure .grtrans-record-facts {display:grid;grid-template-columns:minmax(7rem,12rem) minmax(6rem,1fr);gap:.35rem .7rem;margin:0}
+#grtrans-configure .grtrans-record-facts dt {font-weight:600;color:var(--grtrans-quiet,#566371);white-space:normal}
+#grtrans-configure .grtrans-record-facts dd {margin:0;white-space:normal;overflow-wrap:anywhere}
+#grtrans-configure .grtrans-long-value {max-height:8rem;overflow:auto;font-family:monospace;font-size:.85rem}
+#grtrans-configure .grtrans-editor-layout {display:flex;flex-wrap:wrap;gap:1rem;align-items:flex-start}
+#grtrans-configure .grtrans-editor-group,#grtrans-configure .grtrans-editor-advanced {min-width:0;width:max-content;max-width:100%;padding:.7rem .9rem;border:1px solid var(--grtrans-border,#ccd2d8);border-radius:5px;margin:.2rem 0}
+#grtrans-configure .grtrans-editor-group legend {width:auto;display:table;font-size:1rem;font-weight:650;margin:0;padding:0 .3rem;border:0}
+#grtrans-configure .grtrans-editor-fields {display:flex;flex-wrap:wrap;gap:.6rem .85rem;align-items:end;max-width:64rem}
+#grtrans-configure .grtrans-editor-fields .form-group {margin:0;display:flex;flex-direction:column;gap:.25rem;min-width:0}
+#grtrans-configure .grtrans-editor-fields .form-group[hidden] {display:none!important}
+#grtrans-configure .grtrans-editor-fields .form-group label {margin:0;font-weight:500}
+#grtrans-configure .grtrans-editor-fields .help-block {font-size:.84rem;max-width:36ch;margin:.2rem 0}
+#grtrans-configure .grtrans-editor-fields textarea {resize:vertical;max-width:100%}
+#grtrans-configure .grtrans-editor-advanced summary,#grtrans-configure .grtrans-id-fallback summary {cursor:pointer}
+#grtrans-configure .grtrans-id-fallback {margin-top:.35rem}
+#grtrans-configure .grtrans-select-search {margin-bottom:.25rem}
+#grtrans-configure #grtrans-network-editor .grtrans-size-lt {max-width:min(40rem,100%)}
+#grtrans-configure #grtrans-network-editor .grtrans-size-s {max-width:9.5rem}
+#grtrans-configure #grtrans-network-editor .grtrans-size-m {max-width:18rem}
+#grtrans-configure #grtrans-network-editor .grtrans-size-l {max-width:27rem}
+#grtrans-configure #grtrans-network-editor .form-group [aria-invalid=true] {border-color:#ac3729}
+#grtrans-configure .grtrans-record-error {max-width:48rem;margin:.75rem 0}
+#grtrans-configure .grtrans-record-error details {margin:.4rem 0}
+@media(max-width:830px){
+  #grtrans-configure .grtrans-record-list-head {display:block}
+  #grtrans-configure .grtrans-editor-layout {display:block}
+  #grtrans-configure .grtrans-editor-group,#grtrans-configure .grtrans-editor-advanced {margin:.6rem 0}
+  #grtrans-configure .grtrans-record-details[open] .grtrans-record-facts {right:auto;left:-12rem;min-width:min(18rem,86vw)}
+}
+@media(prefers-color-scheme:dark){#grtrans-configure .grtrans-active-tab {background:#294b66;color:#fff}#grtrans-configure .grtrans-select-record[aria-pressed=true] {background:#294b66;color:#fff}}
