@@ -11,7 +11,7 @@
 #grtrans-configure .grtrans-map-draft-actions[hidden] {display:none}
 #grtrans-configure .grtrans-map-draft-actions .material-icons {font-size:1.15rem}
 #grtrans-configure .grtrans-map-expand {display:flex;align-items:center;gap:.25rem;white-space:nowrap}
-#grtrans-configure .grtrans-map-workspace-body {display:grid;grid-template-columns:minmax(0,1fr) minmax(19rem,29rem);gap:.7rem;align-items:start}
+#grtrans-configure .grtrans-map-workspace-body {display:grid;grid-template-columns:minmax(0,1fr) 29rem;gap:.7rem;align-items:start}
 #grtrans-configure .grtrans-map-column {min-width:0}
 #grtrans-configure .grtrans-map-dock {min-width:0;position:relative}
 #grtrans-configure #grtrans-network-map {height:clamp(34rem,72vh,75rem);min-height:34rem;max-width:100%;margin:0;border:1px solid var(--grtrans-map-edge)}
@@ -55,7 +55,7 @@
 #grtrans-configure .grtrans-map-workspace:fullscreen .grtrans-map-sidebar,
 #grtrans-configure .grtrans-map-workspace.grtrans-map-maximized .grtrans-map-sidebar {max-height:calc(100vh - 6rem)}
 @media(max-width:1120px) {
-  #grtrans-configure .grtrans-map-workspace-body {grid-template-columns:minmax(0,1fr) minmax(16rem,24rem)}
+  #grtrans-configure .grtrans-map-workspace-body {grid-template-columns:minmax(0,1fr) 24rem}
   #grtrans-configure .grtrans-map-mode-caption {display:none}
 }
 @media(max-width:760px) {
