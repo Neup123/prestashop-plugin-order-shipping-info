@@ -133,6 +133,22 @@
     item.appendChild(name);
     legend.appendChild(item);
   });
+  if (legend) {
+    const keyItem = document.createElement('span');
+    keyItem.className = 'grtrans-zone-key';
+    keyItem.setAttribute('role', 'listitem');
+    const help = document.createElement('button');
+    help.type = 'button';
+    help.className = 'grtrans-help-button';
+    help.textContent = '?';
+    const symbolKey = 'Strong fill: normal reach; lighter fill: FAR extended reach. '
+      + 'Zigzag: priced handover; arc: flight; dashed straight line: ferry. '
+      + 'Land line: recorded or derived road; stitches: linked islands.';
+    help.title = symbolKey;
+    help.setAttribute('aria-label', 'Map symbol key: ' + symbolKey);
+    keyItem.appendChild(help);
+    legend.appendChild(keyItem);
+  }
   const color = type => baseColor[type] || baseColor.other;
   // Keep seam layers separate from the route preview (#96), which can hide
   // schematic joins to expose actual travel paths without touching coverage.

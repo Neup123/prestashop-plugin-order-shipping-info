@@ -734,13 +734,13 @@ class Grtransportshipping extends CarrierModule
         $out .= '<div class="panel" id="grtrans-routes"><h3>' . $this->escape($this->l('Greek public transport routes')) . '</h3>'
             . '<div class="alert alert-warning grtrans-demo-seed-warning" role="status">'
             . '<strong>' . $this->escape($this->l('Seeded demo routes start Available and can immediately quote if this carrier is enabled.')) . '</strong> '
-            . $this->escape($this->l('These are invented estimates, not verified freight tariffs. Before accepting live orders, mark demo routes Draft or replace them with verified rates.')) . '</div>'
+            . $this->escape($this->l('Before accepting live orders, mark demo routes Draft or replace them with verified rates.')) . '</div>'
             . '<div class="alert alert-info grtrans-scope-info" role="note">'
-            . '<strong>' . $this->escape($this->l('Multistore: route records are shared by all shops.')) . '</strong> '
-            . $this->escape($this->l('Editing, suspending or deleting a route here changes destination matching in every shop. Each shop must separately check its transport carrier, delivery zones and customer groups.')) . '</div>';
-        $out .= '<p><strong>' . $this->escape($this->l('Draft:')) . '</strong> ' . $this->escape($this->l('no quote and no block.'))
+            . '<strong>' . $this->escape($this->l('Multistore: route records are shared by all shops.')) . '</strong></div>';
+        $out .= '<details class="grtrans-route-status-help"><summary>'
+            . $this->escape($this->l('Availability help')) . '</summary><p><strong>' . $this->escape($this->l('Draft:')) . '</strong> ' . $this->escape($this->l('no quote and no block.'))
             . ' <strong>' . $this->escape($this->l('Available:')) . '</strong> ' . $this->escape($this->l('matching quotes can be sold.'))
-            . ' <strong>' . $this->escape($this->l('Suspended:')) . '</strong> ' . $this->escape($this->l('A specific rule blocks broader regional quotes for that destination, including existing rules. Cart quotes already pinned may remain valid for 30 minutes.')) . '</p>';
+            . ' <strong>' . $this->escape($this->l('Suspended:')) . '</strong> ' . $this->escape($this->l('A specific rule blocks broader regional quotes for that destination, including existing rules. Cart quotes already pinned may remain valid for 30 minutes.')) . '</p></details>';
         foreach ($warnings as $warning) {
             $out .= '<div class="alert alert-warning">' . $this->escape(sprintf(
                 $this->l('Suspended route #%d shadows available regional route #%d; no fallback price will be offered.'),

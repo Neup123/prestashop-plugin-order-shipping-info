@@ -179,11 +179,6 @@
   }
   function showContext() {
     context.replaceChildren();
-    const title=text('strong',selected&&selected.entity===activeEntity ? 'Selected record' : 'Next action');
-    const description=text('p',selected&&selected.entity===activeEntity
-      ? 'Select Edit to change this record; use the map for its location or connection.'
-      : 'Select an item in the list or start a map tool. Changes require a visible save.');
-    context.append(title,description);
     if (selected && (activeEntity==='stations'||activeEntity==='branches')) {
       const stationId=selected.entity==='stations' ? selected.id
         : selected.entity==='branches' ? model.originFor(recordData,'branches',selected.id) : 0;
