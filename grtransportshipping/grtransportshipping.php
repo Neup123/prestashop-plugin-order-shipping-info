@@ -630,6 +630,7 @@ class Grtransportshipping extends CarrierModule
         $out='<div id="grtrans-configure"><link rel="stylesheet" href="'.$assets.'css/configure-admin.css">'
             .'<link rel="stylesheet" href="'.$assets.'css/compact-records.css">'
             .'<link rel="stylesheet" href="'.$assets.'css/map-workspace.css">'
+            .'<link rel="stylesheet" href="'.$assets.'css/map-spatial-editor.css">'
             .GrTransportNetworkAdmin::handle($this);
         $submitted = null;
         $fieldErrors = [];
@@ -946,7 +947,9 @@ class Grtransportshipping extends CarrierModule
             . '<script src="'.$assets.'js/configure-admin.js"></script>'
             . '<script src="'.$assets.'js/compact-records.js"></script>'
             . '<script src="'.$assets.'js/map-workspace-model.js"></script>'
-            . '<script src="'.$assets.'js/map-workspace.js"></script></div>';
+            . '<script src="'.$assets.'js/map-workspace.js"></script>'
+            . '<script src="'.$assets.'js/map-spatial-model.js"></script>'
+            . '<script src="'.$assets.'js/map-spatial-editor.js"></script></div>';
     }
 
     /** One named-field collection shared by saving and failed-save re-rendering. */

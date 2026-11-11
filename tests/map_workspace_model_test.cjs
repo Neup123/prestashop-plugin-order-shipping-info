@@ -1,9 +1,12 @@
 const assert=require('node:assert/strict');
 const path=require('node:path');
 const model=require(path.join(__dirname,'../grtransportshipping/views/js/map-workspace-model.js'));
-assert.deepEqual(model.MODES,['select','place','move','connect-leg','connect-transfer','preview','draw','edit-coverage']);
-assert.ok(model.MODES.every(mode=>mode==='draw'||mode==='edit-coverage'?!model.modesEnabled(mode):model.modesEnabled(mode)));
+assert.deepEqual(model.MODES,['select','place','move','connect-leg','connect-transfer','preview','draw','edit-coverage',
+  'place-area','radius','edit-route']);
+assert.ok(model.MODES.every(mode=>model.modesEnabled(mode)),'Stage-2 spatial modes are available');
 assert.equal(model.needsDraft('move'),true);
+assert.equal(model.needsDraft('draw'),true);
+assert.equal(model.needsDraft('radius'),true);
 assert.equal(model.needsDraft('preview'),false);
 assert.equal(model.validPoint({lat:-33.9,lng:-70.67}),true);
 assert.equal(model.validPoint({lat:90.0001,lng:0}),false);

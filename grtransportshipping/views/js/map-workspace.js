@@ -79,7 +79,7 @@
     ['select','near_me','Select'], ['place','add_location_alt','Place station'],
     ['move','open_with','Move station'], ['connect-leg','timeline','Connect stations'],
     ['connect-transfer','device_hub','Add transfer'], ['preview','route','Preview route'],
-    ['draw','polyline','Draw area (Stage 2)'], ['edit-coverage','edit_location','Edit coverage (Stage 2)']
+    ['draw','polyline','Draw area'], ['edit-coverage','edit_location','Edit coverage']
   ];
   for (const [key,icon,label] of modes) {
     const button=node('button','btn btn-default grtrans-map-mode');
@@ -285,6 +285,7 @@
   }
   function switchMode(next) {
     if (!model.modesEnabled(next)) return;
+    if (window.GrtransMapSpatialEditor?.beforeSwitch?.(next) === false) return;
     if(mode==='preview') bridge.clearPreview();
     revertDraft();mode=next;working=false;
     if(next!=='select') bridge.clearLegacy();
@@ -300,6 +301,7 @@
       'connect-leg':'Click a sending station, then a receiving station.',
       'connect-transfer':'Click the first station, then the second station.'};
     notice(labels[next]||'Select a map action.');
+    window.GrtransMapSpatialEditor?.afterSwitch?.(next);
   }
   function stationPick(station) {
     const id=Number(station.id_station);
@@ -539,5 +541,6 @@
     }
   }
   requestAnimationFrame(()=>bridge.map.invalidateSize());
-  window.GrtransMapWorkspace={stage,bridge,selectRecord:activateRow,changeMode:switchMode};
+  window.GrtransMapWorkspace={stage,bridge,form,editor,tools,
+    selectRecord:activateRow,selected:()=>selected,getMode:()=>mode,visit,changeMode:switchMode};
 })();
