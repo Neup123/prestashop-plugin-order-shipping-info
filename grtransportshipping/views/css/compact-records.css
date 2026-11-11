@@ -25,14 +25,44 @@
 #grtrans-configure .grtrans-compact-network td,#grtrans-configure .grtrans-compact-routes td {vertical-align:middle}
 #grtrans-configure .grtrans-compact-network td.grtrans-keep,#grtrans-configure .grtrans-compact-routes td {max-width:17rem;overflow-wrap:break-word;word-break:normal}
 #grtrans-configure .grtrans-compact-network td.grtrans-keep:last-child {max-width:none}
-/* The map-sidebar station list shows only name and actions; other facts remain in Details. */
+/* Keep all station summary columns visible in a compact two-line sidebar layout. */
 #grtrans-configure .grtrans-network-list[data-grtrans-entity="stations"] .table-responsive {width:100%;max-width:100%;overflow:visible}
-#grtrans-configure .grtrans-compact-network[data-grtrans-entity="stations"] {width:100%;min-width:0;table-layout:fixed}
-#grtrans-configure .grtrans-compact-network[data-grtrans-entity="stations"] th:not(:nth-child(2)):not(:last-child),
-#grtrans-configure .grtrans-compact-network[data-grtrans-entity="stations"] td:not(:nth-child(2)):not(:last-child) {display:none}
-#grtrans-configure .grtrans-compact-network[data-grtrans-entity="stations"] th:last-child,
-#grtrans-configure .grtrans-compact-network[data-grtrans-entity="stations"] td:last-child {width:10rem;max-width:10rem;white-space:nowrap}
-#grtrans-configure .grtrans-compact-network[data-grtrans-entity="stations"] td:nth-child(2) {max-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;overflow-wrap:normal;word-break:normal}
+#grtrans-configure .grtrans-compact-network[data-grtrans-entity="stations"] {display:block;width:100%;min-width:0;max-width:100%;table-layout:fixed}
+#grtrans-configure .grtrans-compact-network[data-grtrans-entity="stations"] thead,
+#grtrans-configure .grtrans-compact-network[data-grtrans-entity="stations"] tbody {display:block;width:100%;min-width:0}
+#grtrans-configure .grtrans-compact-network[data-grtrans-entity="stations"] tr {
+  display:grid;
+  grid-template-columns:2.25rem minmax(0,1fr) 4.5rem 8.75rem;
+  grid-template-rows:auto auto;
+  column-gap:.2rem;
+  align-items:center;
+  width:100%;
+  min-width:0;
+}
+#grtrans-configure .grtrans-compact-network[data-grtrans-entity="stations"] :is(th,td).grtrans-keep {
+  min-width:0;
+  max-width:none;
+  padding:.2rem .3rem;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  overflow-wrap:normal;
+  word-break:normal;
+}
+#grtrans-configure .grtrans-compact-network[data-grtrans-entity="stations"] :is(th,td):nth-child(1) {grid-column:1;grid-row:1}
+#grtrans-configure .grtrans-compact-network[data-grtrans-entity="stations"] :is(th,td):nth-child(2) {grid-column:2 / 4;grid-row:1}
+#grtrans-configure .grtrans-compact-network[data-grtrans-entity="stations"] :is(th,td):nth-child(3) {grid-column:1;grid-row:2}
+#grtrans-configure .grtrans-compact-network[data-grtrans-entity="stations"] :is(th,td):nth-child(4) {grid-column:2;grid-row:2}
+#grtrans-configure .grtrans-compact-network[data-grtrans-entity="stations"] :is(th,td):nth-child(9) {grid-column:4;grid-row:2}
+#grtrans-configure .grtrans-compact-network[data-grtrans-entity="stations"] :is(th,td):nth-child(13) {grid-column:3;grid-row:2}
+#grtrans-configure .grtrans-compact-network[data-grtrans-entity="stations"] :is(th,td):last-child {
+  grid-column:4;
+  grid-row:1;
+  width:auto;
+  max-width:none;
+  overflow:visible;
+  white-space:nowrap;
+}
 #grtrans-configure .grtrans-compact-network tr[hidden],#grtrans-configure .grtrans-compact-routes tr[hidden] {display:none!important}
 #grtrans-configure .grtrans-selected-record>td.grtrans-keep {box-shadow:inset 0 0 0 2px #3977aa}
 #grtrans-configure .grtrans-network-actions {width:1%;min-width:0;white-space:nowrap}

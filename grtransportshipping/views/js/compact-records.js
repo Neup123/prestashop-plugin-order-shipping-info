@@ -278,9 +278,17 @@
       const old=text(th);const key=old.toLowerCase().replace(/\s+/g,'_');
       th.textContent=FIELDS[old] || FIELDS[key] || old.replace(/_/g,' ');
       if(keep.includes(i+1)) th.classList.add('grtrans-keep');
+      if(entity==='stations' && keep.includes(i+1) && i+1!==headings.length)
+        th.title=th.textContent;
     });
     const records=rows.map(row=>{
-      [...row.cells].forEach((cell,i)=>{if(keep.includes(i+1)) cell.classList.add('grtrans-keep');});
+      [...row.cells].forEach((cell,i)=>{
+        if(keep.includes(i+1)) {
+          cell.classList.add('grtrans-keep');
+          if(entity==='stations' && i+1!==headings.length)
+            cell.title=text(cell);
+        }
+      });
       const id=Number(text(row.cells[0]));
       const record={row,id,entity,label:'',price:0,mode:'',verification:'',search:[...row.cells].map(text).join(' ')};
       if(entity==='stations') {
