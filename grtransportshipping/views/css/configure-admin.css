@@ -1,0 +1,85 @@
+/* Configure shell and ordinary settings: content-sized controls, never schema towers. */
+#grtrans-configure {--grtrans-border:#ccd2d8;--grtrans-quiet:#566371;--grtrans-space:.75rem}
+#grtrans-configure .grtrans-configure-nav {display:flex;flex-wrap:wrap;gap:.65rem;margin:0 0 1rem;align-items:center}
+#grtrans-configure .grtrans-configure-nav a {display:inline-flex;align-items:center;padding:.35rem .7rem;border:1px solid var(--grtrans-border);border-radius:5px;text-decoration:none}
+#grtrans-configure .grtrans-configure-nav a:focus-visible {outline:2px solid #1756a9;outline-offset:2px}
+#grtrans-configure .grtrans-control-group {display:block;min-width:0;width:max-content;max-width:100%;border:1px solid var(--grtrans-border);border-radius:6px;padding:.75rem 1rem 1rem;margin:0}
+#grtrans-configure .grtrans-control-group legend {width:auto;display:table;padding:0 .35rem;margin-left:.2rem;margin-bottom:0;border:0;font-size:1rem;font-weight:650;line-height:1.25}
+#grtrans-configure .grtrans-input-row {display:flex;align-items:flex-end;gap:.8rem 1rem;flex-wrap:wrap}
+#grtrans-configure .grtrans-form-field {display:flex;flex-direction:column;gap:.25rem;max-width:100%;margin:0}
+#grtrans-configure .grtrans-value-control {display:inline-flex;align-items:center;gap:.45rem;max-width:100%}
+#grtrans-configure .grtrans-unit {color:var(--grtrans-quiet);font-variant-numeric:tabular-nums;white-space:nowrap}
+#grtrans-configure .grtrans-size-s {width:9.5rem!important;max-width:100%}
+#grtrans-configure .grtrans-size-m {width:18rem!important;max-width:100%}
+#grtrans-configure .grtrans-size-l {width:27rem!important;max-width:100%}
+#grtrans-configure .grtrans-size-lt {width:min(42rem,100%)!important;max-width:100%}
+#grtrans-configure .grtrans-context-note {font-size:.91em;color:var(--grtrans-quiet);max-width:70ch;margin:.35rem 0 .85rem}
+#grtrans-configure .grtrans-section-heading {display:flex;align-items:center;gap:.65rem;flex-wrap:wrap;margin-bottom:.35rem}
+#grtrans-configure .grtrans-section-heading h3 {margin:0}
+#grtrans-configure .grtrans-form-footer {display:flex;align-items:center;gap:.8rem;flex-wrap:wrap;margin-top:.75rem}
+#grtrans-configure .grtrans-save-state {font-size:.9em;color:var(--grtrans-quiet)}
+#grtrans-configure .grtrans-save-state[data-state="error"] {color:#ad2e21}
+#grtrans-configure .grtrans-save-state[data-state="unsaved"] {font-weight:600}
+#grtrans-configure.grtrans-js .grtrans-fallback-submit {display:none}
+#grtrans-configure .grtrans-settings-panel {margin:1.25rem 0 0}
+#grtrans-configure .grtrans-settings-grid {display:flex;gap:1rem;flex-wrap:wrap;align-items:flex-start}
+#grtrans-configure .grtrans-setting-row {display:grid;grid-template-columns:minmax(13rem,20rem) max-content;align-items:center;gap:.4rem .7rem;margin:.5rem 0}
+#grtrans-configure .grtrans-setting-row label {margin:0;font-weight:500;max-width:32ch}
+#grtrans-configure .grtrans-setting-row .grtrans-value-control {justify-content:flex-start}
+#grtrans-configure .grtrans-switch {width:2rem;height:1.25rem;cursor:pointer;accent-color:#177245}
+#grtrans-configure .grtrans-simulator .grtrans-control-group {margin:.85rem 0}
+#grtrans-configure .grtrans-simulator .grtrans-form-field label {margin:0}
+#grtrans-configure .grtrans-advanced {margin:.7rem 0 0;max-width:100%}
+#grtrans-configure .grtrans-advanced summary {cursor:pointer;color:var(--grtrans-quiet)}
+#grtrans-configure [data-sim-fields][hidden] {display:none!important}
+#grtrans-configure .grtrans-segmented {display:inline-flex;border:1px solid var(--grtrans-border);border-radius:5px;overflow:hidden;margin:.4rem 0 .7rem}
+#grtrans-configure .grtrans-segmented button {border:0;background:transparent;padding:.45rem .8rem;min-height:34px}
+#grtrans-configure .grtrans-segmented button[aria-pressed="true"] {background:#dae7f4;color:#143d60;font-weight:700}
+#grtrans-configure .grtrans-simulator-result {max-width:48rem;margin-top:1rem;border-top:1px solid var(--grtrans-border);padding-top:.9rem}
+#grtrans-configure .grtrans-quote-total {font-weight:700;font-size:1.3rem;margin:.4rem 0}
+#grtrans-configure .grtrans-quote-note {font-size:.72em;font-weight:400;display:block}
+#grtrans-configure .grtrans-result-facts {display:grid;grid-template-columns:max-content minmax(8rem,1fr);gap:.3rem 1rem;margin:.7rem 0}
+#grtrans-configure .grtrans-result-facts dt {color:var(--grtrans-quiet);font-weight:500}
+#grtrans-configure .grtrans-result-facts dd {margin:0}
+#grtrans-configure [data-grtrans-result][data-stale="true"] {opacity:.62}
+#grtrans-configure .grtrans-notice-panel {max-width:46rem;margin:1rem 0 0}
+#grtrans-configure .grtrans-notice-panel textarea {width:100%!important;max-width:100%;resize:vertical}
+#grtrans-configure .grtrans-api-panel {margin:1rem 0 0;max-width:46rem}
+#grtrans-configure .grtrans-api-row {display:flex;align-items:center;flex-wrap:wrap;gap:.5rem;margin:.5rem 0}
+#grtrans-configure .grtrans-api-row .grtrans-api-scope {min-width:8rem;font-weight:600}
+#grtrans-configure .grtrans-secret {overflow-wrap:anywhere;max-width:46rem;display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
+#grtrans-configure .grtrans-secret code {overflow-wrap:anywhere;min-width:0}
+#grtrans-configure .grtrans-route-fieldsets {display:flex;flex-direction:column;gap:.75rem;align-items:flex-start}
+#grtrans-configure .grtrans-route-fieldsets .grtrans-control-group {display:grid;grid-template-columns:repeat(2,max-content);gap:.4rem .85rem;max-width:100%}
+#grtrans-configure .grtrans-route-fieldsets .form-group {margin:0;min-width:0}
+#grtrans-configure .grtrans-route-fieldsets .control-label {display:block;font-weight:500;margin:0 0 .25rem}
+#grtrans-configure .grtrans-route-fieldsets .grtrans-route-switch {display:inline-flex;align-items:center;min-height:2.2rem}
+#grtrans-configure .grtrans-route-fieldsets .help-block {font-size:.85em;max-width:38ch}
+#grtrans-configure .grtrans-actions {min-width:0!important;gap:.4rem!important}
+#grtrans-configure .grtrans-actions .btn {padding:.3rem .5rem}
+#grtrans-configure .grtrans-actions .material-icons {font-size:1.2rem;line-height:1;vertical-align:middle}
+#grtrans-configure .grtrans-row-more {position:relative}
+#grtrans-configure .grtrans-row-more summary {list-style:none;cursor:pointer;padding:.25rem .55rem;border:1px solid var(--grtrans-border);border-radius:4px}
+#grtrans-configure .grtrans-row-more summary::-webkit-details-marker {display:none}
+#grtrans-configure .grtrans-row-more[open] form {position:absolute;z-index:50;right:0;background:var(--grtrans-menu-bg,#fff);border:1px solid var(--grtrans-border);box-shadow:0 3px 8px #0002;padding:.4rem}
+#grtrans-configure .grtrans-route-grid .grtrans-route-location {max-width:28rem;overflow:hidden;text-overflow:ellipsis}
+@media (max-width:850px) {
+  #grtrans-configure .grtrans-route-fieldsets .grtrans-control-group {grid-template-columns:minmax(0,1fr)}
+  #grtrans-configure .grtrans-setting-row {grid-template-columns:minmax(0,1fr);gap:.25rem}
+  #grtrans-configure .grtrans-settings-grid {display:block}
+  #grtrans-configure .grtrans-settings-grid .grtrans-control-group {margin:0 0 .8rem}
+  #grtrans-configure .grtrans-result-facts {grid-template-columns:minmax(0,1fr)}
+}
+@media (prefers-color-scheme:dark) {
+  #grtrans-configure {--grtrans-border:#65717c;--grtrans-quiet:#abb7c2;--grtrans-menu-bg:#252d35}
+  #grtrans-configure .grtrans-segmented button[aria-pressed="true"] {background:#294b66;color:#fff}
+}
+#grtrans-configure .grtrans-setting-label {display:flex;align-items:center;gap:.4rem;min-width:0}
+#grtrans-configure .grtrans-help-button {border:1px solid var(--grtrans-border);border-radius:50%;background:transparent;color:var(--grtrans-quiet);font-size:.75rem;font-weight:700;width:1.35rem;height:1.35rem;flex:none;cursor:help}
+#grtrans-configure .grtrans-help-button:focus-visible {outline:2px solid #1756a9;outline-offset:2px}
+#grtrans-configure .grtrans-switch {appearance:none;-webkit-appearance:none;display:inline-block;position:relative;width:2.35rem;height:1.3rem;min-width:2.35rem;margin:0;border-radius:2rem;border:1px solid #7d8993;background:#c7cdd3;vertical-align:middle;cursor:pointer}
+#grtrans-configure .grtrans-switch::before {content:"";position:absolute;left:.13rem;top:.11rem;width:.92rem;height:.92rem;border-radius:50%;background:#fff;box-shadow:0 1px 2px #0003;transition:transform .12s ease}
+#grtrans-configure .grtrans-switch:checked {background:#237745;border-color:#237745}
+#grtrans-configure .grtrans-switch:checked::before {transform:translateX(1.03rem)}
+#grtrans-configure .grtrans-switch:focus-visible {outline:2px solid #1756a9;outline-offset:3px}
+@media(prefers-reduced-motion:reduce) {#grtrans-configure .grtrans-switch::before {transition:none}}

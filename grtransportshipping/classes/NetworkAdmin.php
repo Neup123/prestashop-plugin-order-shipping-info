@@ -15,13 +15,15 @@ final class GrTransportNetworkAdmin
         $manager=$container ? $container->get(\PrestaShopBundle\Security\Admin\UserTokenManager::class) : null;
         if ($employeeId<=0 || empty($_POST['token']) || !is_string($_POST['token'])
             || !$manager || !$manager->isTokenValid()) {
-            return '<div class="alert alert-danger">Network action rejected: invalid administrator token.</div>';
+return '<div class="alert alert-danger" data-grtrans-autosave-result="error">'
+                . self::esc($module->l('Invalid administrator session. Reload Configure and try again.')) . '</div>';
         }
         try {
             $action=(string)$_POST['grtrans_network_action'];
             if ($action==='save_operational_settings') {
                 GrTransportNetworkSettings::save($_POST);
-                return '<div class="alert alert-success">Network operating defaults saved.</div>';
+                return '<div class="alert alert-success" data-grtrans-autosave-result="ok">'
+                    .self::esc($module->l('Transport settings saved.')).'</div>';
             }
             if ($action==='save_extended_notice') {
                 $notice=$_POST['extended_notice'] ?? '';
@@ -31,14 +33,22 @@ final class GrTransportNetworkAdmin
                 if (!Configuration::updateValue('GRTRANS_EXTENDED_NOTICE',trim($notice))) {
                     throw new RuntimeException('Cannot save extended pickup notice');
                 }
-                return '<div class="alert alert-success">Extended pickup notice saved.</div>';
+                return '<div class="alert alert-success" data-grtrans-autosave-result="ok">'
+                    .self::esc($module->l('Extended pickup notice saved.')).'</div>';
             }
             if ($action==='rotate_read' || $action==='rotate_write') {
                 $scope=$action==='rotate_read' ? 'read' : 'write';
                 $token=GrTransportNetworkApi::rotate($scope);
-                return '<div class="alert alert-warning" role="status">New ' . self::esc($scope)
-                    . ' API token (copy now; it is not stored in plaintext): <code>'
-                    . self::esc($token) . '</code></div>';
+                $copy=self::esc($module->l('Copy token'));
+                return '<div class="alert alert-warning" role="status">'
+                    .'<strong>'.self::esc($module->l('New API token — copy and store it now.')).'</strong>'
+                    .'<div class="grtrans-secret"><code id="grtrans-issued-token">'.self::esc($token).'</code>'
+                    .'<button type="button" class="btn btn-default btn-sm" title="'.$copy.'" aria-label="'.$copy.'"'
+                    .' data-grtrans-copy="grtrans-issued-token"'
+                    .' data-copy-ok="'.self::esc($module->l('Copied')).'"'
+                    .' data-copy-fail="'.self::esc($module->l('Select and copy the token manually')).'">'
+                    .'<span class="material-icons" aria-hidden="true">content_copy</span></button></div>'
+                    .'<p>'.self::esc($module->l('Previous clients using this scope must use the new token. The value is not stored in plaintext.')).'</p></div>';
             }
             $entity=(string)($_POST['network_entity'] ?? '');
             GrTransportNetworkFields::fields($entity);
@@ -69,8 +79,10 @@ final class GrTransportNetworkAdmin
                 ? 'Network record created.' : 'Network record updated.';
             return '<div class="alert alert-success" role="status">' . $message . '</div>';
         } catch (Throwable $error) {
-            return '<div class="alert alert-danger" role="alert">Network action failed: '
-                . self::esc($error->getMessage()) . '</div>';
+            return '<div class="alert alert-danger" role="alert" data-grtrans-autosave-result="error">'
+                .self::esc($module->l('The change was not saved. Check the fields and try again.'))
+                .'<details><summary>'.self::esc($module->l('Technical details')).'</summary><code>'
+                .self::esc($error->getMessage()).'</code></details></div>';
         }
     }
 
@@ -280,23 +292,44 @@ final class GrTransportNetworkAdmin
         if ($advancedOpen) $out.='</details>';
         $out.='<button class="btn btn-primary" name="grtrans_network_submit" value="1">'
             . ($selected ? 'Save changes' : 'Create record') . '</button></form></div>';
-        $out.='<h4>Extended pickup notice</h4><p>This warning is displayed at checkout when a destination is in a station or direct-area FAR ring.</p>'
-            . '<form method="post" action="' . $url . '#grtrans-network">'
-            . '<input type="hidden" name="token" value="' . $csrf . '">'
-            . '<input type="hidden" name="grtrans_network_action" value="save_extended_notice">'
-            . '<textarea class="form-control" name="extended_notice" maxlength="1200" rows="3">'
-            . self::esc(Configuration::get('GRTRANS_EXTENDED_NOTICE')) . '</textarea>'
-            . '<button class="btn btn-primary">Save extended pickup notice</button></form>';
-        $out.='<h4>Programmatic API credentials</h4><p>Issue two independently revocable tokens. '
-            . 'Write tokens grant network administration through the API; read tokens cannot mutate data. '
-            . 'The plaintext token is shown once after rotation; store it securely.</p>';
+        $tr=static fn(string $label): string => self::esc($module->l($label));
+        $notice=(string)Configuration::get('GRTRANS_EXTENDED_NOTICE');
+        $out.='<section class="grtrans-notice-panel"><fieldset class="grtrans-control-group">'
+            .'<legend>'.$tr('Warning for extended-service destinations').'</legend>'
+            .'<p class="grtrans-context-note">'.$tr('This notice appears when a customer chooses an extended service area.').'</p>'
+            .'<form method="post" class="grtrans-autosave" data-grtrans-autosave'
+            .' data-state-saving="'.$tr('Saving…').'" data-state-saved="'.$tr('Saved').'"'
+            .' data-state-unsaved="'.$tr('Unsaved changes').'"'
+            .' data-state-failed="'.$tr('Could not save. Check the notice and try again.').'"'
+            .' action="'.$url.'#grtrans-network">'
+            .'<input type="hidden" name="token" value="'.$csrf.'">'
+            .'<input type="hidden" name="grtrans_network_action" value="save_extended_notice">'
+            .'<label for="grtrans-extended-notice">'.$tr('Customer warning').'</label>'
+            .'<textarea class="form-control grtrans-size-lt" id="grtrans-extended-notice"'
+            .' name="extended_notice" maxlength="1200" rows="3">'.self::esc($notice).'</textarea>'
+            .'<div class="grtrans-form-footer"><output class="grtrans-save-state" data-grtrans-save-status aria-live="polite">'
+            .$tr('Saved').'</output><span class="grtrans-context-note">'
+            .$tr($notice==='' ? 'Using the built-in message.' : 'Using your custom message.').'</span>'
+            .'<button type="submit" class="btn btn-default grtrans-fallback-submit">'.$tr('Save notice').'</button>'
+            .'</div></form></fieldset></section>';
+        $out.='<section class="grtrans-api-panel"><fieldset class="grtrans-control-group">'
+            .'<legend>'.$tr('Developer API access').'</legend>'
+            .'<p class="grtrans-context-note">'.$tr('Read access cannot change data; write access can. Replacing a token disables the previous one.').'</p>';
         foreach (['read','write'] as $scope) {
-            $out.='<form method="post" action="' . $url . '#grtrans-network" class="grtrans-network-inline">'
-                . '<input type="hidden" name="token" value="' . $csrf . '">'
-                . '<button name="grtrans_network_action" value="rotate_' . $scope
-                . '" class="btn btn-warning">Generate / revoke ' . $scope . ' token</button></form> ';
+            $configured=(string)Configuration::get($scope==='read' ? 'GRTRANS_NETWORK_READ_HASH' : 'GRTRANS_NETWORK_WRITE_HASH')!=='';
+            $scopeLabel=$tr($scope==='read' ? 'Read access' : 'Write access');
+            $confirm=self::esc(sprintf($module->l('Replace the %s API token? Existing clients will need the new token.'),$scope));
+            $out.='<div class="grtrans-api-row"><span class="grtrans-api-scope">'.$scopeLabel.'</span>'
+                .'<span class="grtrans-context-note">'.$tr($configured ? 'Configured' : 'Not configured').'</span>'
+                .'<form method="post" action="'.$url.'#grtrans-network"'
+                .' onsubmit="return confirm(&quot;'.$confirm.'&quot;)">'
+                .'<input type="hidden" name="token" value="'.$csrf.'">'
+                .'<button type="submit" name="grtrans_network_action" value="rotate_'.$scope.'"'
+                .' class="btn btn-default btn-sm" title="'.$tr('Replace token').'" aria-label="'.$tr('Replace token').'">'
+                .'<span class="material-icons" aria-hidden="true">autorenew</span></button></form></div>';
         }
-        $out.=GrTransportNetworkSettings::render($url,$csrf);
+        $out.='</fieldset></section>';
+        $out.=GrTransportNetworkSettings::render($url,$csrf,$module);
         $out.='<script src="' . $base . 'vendor/leaflet/leaflet.js"></script>'
             . '<script src="' . $base . 'js/coverage-geometry.js"></script>'
             . '<script src="' . $base . 'js/network-admin.js"></script></section>';

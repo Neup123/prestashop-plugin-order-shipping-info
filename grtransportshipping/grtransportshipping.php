@@ -620,7 +620,15 @@ class Grtransportshipping extends CarrierModule
 
     public function getContent()
     {
-        $out = GrTransportNetworkAdmin::handle($this);
+        // Short authenticated requests reuse the existing form handlers without
+        // re-rendering the entire Configure screen after an autosaved setting.
+        if (Tools::isSubmit('grtrans_autosave') && isset($_POST['grtrans_network_action'])
+            && in_array($_POST['grtrans_network_action'],['save_operational_settings','save_extended_notice'],true)) {
+            return GrTransportNetworkAdmin::handle($this);
+        }
+        $assets=$this->escape(_MODULE_DIR_.$this->name.'/views/');
+        $out='<div id="grtrans-configure"><link rel="stylesheet" href="'.$assets.'css/configure-admin.css">'
+            .GrTransportNetworkAdmin::handle($this);
         $submitted = null;
         $fieldErrors = [];
         $saveError = '';
@@ -705,12 +713,17 @@ class Grtransportshipping extends CarrierModule
                 . '<form method="post" action="' . $action . '"><input type="hidden" name="token" value="' . $csrf . '">'
                 . '<button name="grtrans_repair_carrier" value="1" class="btn btn-warning">' . $this->escape($this->l('Repair transport carrier')) . '</button></form></div>';
         } else {
-            $out .= '<div class="alert alert-success" role="status"><strong>' . $this->escape($this->l('Transport carrier ready')) . '</strong>'
-                . ' — ' . $this->escape(sprintf($this->l('Carrier #%d is available for matching routes.'), (int) $carrierState['id'])) . '</div>';
+            $out .= '<p class="grtrans-context-note" role="status">'
+                . $this->escape($this->l('Transport carrier ready')) . '</p>';
         }
         $rows = Db::getInstance()->executeS('SELECT * FROM `' . _DB_PREFIX_ . 'grtrans_route` ORDER BY id_route ASC') ?: [];
         $warnings = GrTransportQuoteEngine::shadowedSuspensions($rows);
-        $out .= '<div class="panel"><h3>' . $this->escape($this->l('Greek public transport routes')) . '</h3>'
+        $out.='<nav class="grtrans-configure-nav" aria-label="'.$this->escape($this->l('Configure sections')).'">'
+            .'<a href="#grtrans-routes">'.$this->escape($this->l('Priced routes')).'</a>'
+            .'<a href="#grtrans-network">'.$this->escape($this->l('Service map and network')).'</a>'
+            .'<a href="#grtrans-network-settings">'.$this->escape($this->l('Transport settings')).'</a>'
+            .'<a href="#grtrans-simulator">'.$this->escape($this->l('Test a transport price')).'</a></nav>';
+        $out .= '<div class="panel" id="grtrans-routes"><h3>' . $this->escape($this->l('Greek public transport routes')) . '</h3>'
             . '<div class="alert alert-warning grtrans-demo-seed-warning" role="status">'
             . '<strong>' . $this->escape($this->l('Seeded demo routes start Available and can immediately quote if this carrier is enabled.')) . '</strong> '
             . $this->escape($this->l('These are invented estimates, not verified freight tariffs. Before accepting live orders, mark demo routes Draft or replace them with verified rates.')) . '</div>'
@@ -770,16 +783,23 @@ class Grtransportshipping extends CarrierModule
                 . $this->escape($this->l(GrTransportRouteState::STATE_LABELS[$status])) . '</span></td>'
                 . '<td><span class="grtrans-pill ' . ($isDemo ? 'grtrans-demo' : 'grtrans-verified') . '">'
                 . $this->escape($isDemo ? $this->l('Unverified estimate') : $this->l('Operator-confirmed')) . '</span></td>';
+            $editLabel=$this->escape($this->l('Edit'));
+            $moreLabel=$this->escape($this->l('More actions'));
             $out .= '<td><div class="grtrans-actions">'
-                . '<a class="btn btn-default btn-sm" href="' . $action . '&amp;grtrans_edit=' . $id
-                . '#grtrans-route-editor">' . $this->escape($this->l('Edit')) . '</a>'
+                . '<a class="btn btn-default btn-sm" title="'.$editLabel.'" aria-label="'.$editLabel.'" href="'
+                . $action . '&amp;grtrans_edit=' . $id . '#grtrans-route-editor">'
+                . '<span class="material-icons" aria-hidden="true">edit</span></a>'
+                . '<details class="grtrans-row-more"><summary title="'.$moreLabel.'" aria-label="'.$moreLabel.'">⋯</summary>'
                 . '<form method="post" action="' . $action . '"><input type="hidden" name="id_route" value="'
                 . $id . '"><input type="hidden" name="token" value="' . $csrf . '">'
                 . '<button type="submit" class="btn btn-danger btn-sm" name="grtrans_delete" value="1"'
                 . ' onclick="return confirm(&quot;' . $this->escape(sprintf($this->l('Delete route #%d? This cannot be undone.'), $id))
-                . '&quot;)">' . $this->escape($this->l('Delete')) . '</button></form></div></td></tr>';
+                . '&quot;)">' . $this->escape($this->l('Delete')) . '</button></form></details></div></td></tr>';
         }
-        $out .= '</tbody></table></div></div>';
+        $out .= '</tbody></table></div>';
+        if (!$rows) $out.='<p class="grtrans-context-note">'
+            .$this->escape($this->l('No priced routes yet. Add one using the editor below.')).'</p>';
+        $out.='</div>';
 
         // Edit intent comes only from the route the user opened, in the URL,
         // and is cryptographically bound to the employee's form submission.
@@ -823,7 +843,24 @@ class Grtransportshipping extends CarrierModule
             $out .= '<input type="hidden" name="grtrans_edit_proof" value="'
                 . $this->escape($this->routeEditProof($editId)) . '">';
         }
+        $labels=['mode'=>'Transport method','origin_name'=>'Sending terminal',
+            'station_name'=>'Collection station','city'=>'Destination city',
+            'postal_prefix'=>'Postcode starts with','price'=>'Parcel price',
+            'pickup_only'=>'Collection at station required','route_status'=>'Availability',
+            'demo'=>'Unverified estimate','notice'=>'Message shown to customer'];
+        $groups=['mode'=>'Transport','city'=>'Destination',
+            'price'=>'Price and availability','notice'=>'Customer message'];
+        $sizes=['mode'=>'m','origin_name'=>'l','station_name'=>'l','city'=>'m',
+            'postal_prefix'=>'s','price'=>'s','route_status'=>'m','notice'=>'lt'];
+        $out.='<div class="grtrans-route-fieldsets">';
+        $open=false;
         foreach (GrTransportRouteFields::formFields() as $field => $spec) {
+            if (isset($groups[$field])) {
+                if ($open) $out.='</fieldset>';
+                $out.='<fieldset class="grtrans-control-group"><legend>'
+                    .$this->escape($this->l($groups[$field])).'</legend>';
+                $open=true;
+            }
             $value = $submitted !== null && array_key_exists($field, $submitted)
                 ? (string) $submitted[$field] : (string) ($editing[$field] ?? $spec['default']);
             $hasError = isset($fieldErrors[$field]);
@@ -832,11 +869,17 @@ class Grtransportshipping extends CarrierModule
             $helpId = $fieldId . '-help';
             $out .= '<div class="form-group' . ($hasError ? ' has-error' : '') . '">'
                 . '<label class="control-label" for="' . $fieldId . '">'
-                . $this->escape($this->l($spec['label'])) . '</label>';
+                . $this->escape($this->l($labels[$field])) . '</label>';
             $aria = $hasError ? ' aria-invalid="true" aria-describedby="' . $errorId . '"' : '';
-            if ($spec['kind'] === 'select') {
+            if ($field==='pickup_only' || $field==='demo') {
+                $out.='<div class="grtrans-route-switch">'
+                    .'<input type="hidden" name="'.$field.'" value="0">'
+                    .'<input type="checkbox" class="grtrans-switch" role="switch" id="'.$fieldId.'" name="'.$field.'" value="1"'
+                    .($value==='1'?' checked':'').$aria.'></div>';
+            } elseif ($spec['kind'] === 'select') {
                 $choices = GrTransportRouteFields::choices($field);
-                $out .= '<select class="form-control" id="' . $fieldId . '" name="' . $field . '"' . $aria . '>';
+                $out .= '<select class="form-control grtrans-size-' . ($sizes[$field] ?? 'm')
+                    . '" id="' . $fieldId . '" name="' . $field . '"' . $aria . '>';
                 // Even an invalid submitted choice is not silently replaced
                 // with the first valid option after a failed save.
                 if (!array_key_exists($value, $choices)) {
@@ -850,17 +893,35 @@ class Grtransportshipping extends CarrierModule
                 }
                 $out .= '</select>';
             } elseif ($spec['kind'] === 'textarea') {
-                $out .= '<textarea class="form-control" rows="3" id="' . $fieldId . '" name="'
+                $out .= '<textarea class="form-control grtrans-size-lt" rows="3" id="' . $fieldId . '" name="'
                     . $field . '" maxlength="' . GrTransportRouteFields::limit($field)
                     . '"' . $aria . '>' . $this->escape($value) . '</textarea>';
             } else {
-                $out .= '<input class="form-control" id="' . $fieldId . '" name="' . $field
+                $out .= '<input class="form-control grtrans-size-' . ($sizes[$field] ?? 'm')
+                    . '" id="' . $fieldId . '" name="' . $field
                     . '" value="' . $this->escape($value) . '" maxlength="'
-                    . GrTransportRouteFields::limit($field) . '"' . $aria . '>';
+                    . GrTransportRouteFields::limit($field) . '"'
+                    . (in_array($field,['origin_name','station_name','city'],true)
+                        ? ' list="grtrans-suggest-'.$field.'"' : '')
+                    . ($field==='price' ? ' inputmode="decimal"' : '')
+                    . ($field==='postal_prefix' ? ' inputmode="numeric"' : '')
+                    . $aria . '>';
+                if (in_array($field,['origin_name','station_name','city'],true)) {
+                    $out.='<datalist id="grtrans-suggest-'.$field.'">';
+                    $seen=[];
+                    foreach ($rows as $known) {
+                        $suggestion=trim((string)($known[$field] ?? ''));
+                        if ($suggestion==='' || isset($seen[$suggestion])) continue;
+                        $seen[$suggestion]=true;
+                        $out.='<option value="'.$this->escape($suggestion).'">';
+                    }
+                    $out.='</datalist>';
+                }
             }
             if (isset($spec['help'])) {
-                $out .= '<span class="help-block" id="' . $helpId . '">'
-                    . $this->escape($this->l($spec['help'])) . '</span>';
+                $help=$this->escape($this->l($spec['help']));
+                $out.='<button type="button" class="grtrans-help-button"'
+                    .' title="'.$help.'" aria-label="'.$help.'">?</button>';
             }
             if ($hasError) {
                 $out .= '<span class="help-block text-danger" id="' . $errorId . '">'
@@ -868,13 +929,19 @@ class Grtransportshipping extends CarrierModule
             }
             $out .= '</div>';
         }
+        if ($open) $out.='</fieldset>';
+        $out.='</div>';
         if ($editing && empty($editing['demo']) && !empty($editing['verified_at'])) {
             $out .= '<p>' . $this->escape($this->l('Operator-confirmed:')) . ' ' . $this->escape($editing['verified_at'])
                 . ' ' . $this->escape($this->l('by employee #')) . (int) $editing['verified_by_employee'] . '</p>';
         }
-        $out .= '<button type="submit" name="grtrans_save" value="1" class="btn btn-primary">'
-            . $this->escape($editing ? $this->l('Save route changes') : $this->l('Add route')) . '</button></form></section>';
-        return $out . GrTransportNetworkAdmin::render($this) . GrTransportNetworkSimulator::render($this);
+        $out .= '<div class="grtrans-form-footer"><button type="submit" name="grtrans_save" value="1" class="btn btn-primary">'
+            . $this->escape($editing ? $this->l('Save route changes') : $this->l('Add route'))
+            . '</button><output class="grtrans-save-state" data-grtrans-route-state'
+            . ' data-unsaved-label="'.$this->escape($this->l('Unsaved changes')).'" aria-live="polite">'
+            . $this->escape($this->l('Changes apply when you save.')).'</output></div></form></section>';
+        return $out . GrTransportNetworkAdmin::render($this) . GrTransportNetworkSimulator::render($this)
+            . '<script src="'.$assets.'js/configure-admin.js"></script></div>';
     }
 
     /** One named-field collection shared by saving and failed-save re-rendering. */
