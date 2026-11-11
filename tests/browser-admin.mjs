@@ -85,23 +85,23 @@ try {
 
   // Invalid edit: multiple named fields, exact submitted values retained,
   // inline validation, and the form/error is visible after POST navigation.
-  await form.locator('input[name="origin_name"]').fill('Retain this origin after error');
-  await form.locator('input[name="station_name"]').fill('');
+  await form.locator('select[name="origin_name"]').selectOption('Athens Kifisos KTEL');
+  await form.locator('select[name="station_name"]').selectOption('');
   await form.locator('input[name="postal_prefix"]').fill('12A');
   await form.locator('input[name="price"]').fill('16.23');
   await form.locator('button[name="grtrans_save"]').click();
   await page.getByText('Route not saved.', {exact:false}).first().waitFor({timeout:20000});
   form = page.locator('form').filter({has:page.locator('button[name="grtrans_save"]')}).first();
   assert.equal(new URL(page.url()).hash, '#grtrans-route-editor');
-  assert.equal(await form.locator('input[name="origin_name"]').inputValue(), 'Retain this origin after error');
-  assert.equal(await form.locator('input[name="station_name"]').inputValue(), '');
+  assert.equal(await form.locator('select[name="origin_name"]').inputValue(), 'Athens Kifisos KTEL');
+  assert.equal(await form.locator('select[name="station_name"]').inputValue(), '');
   assert.equal(await form.locator('input[name="postal_prefix"]').inputValue(), '12A');
   assert.equal(await form.locator('input[name="price"]').inputValue(), '16.23');
   assert.match(await page.locator('#grtrans-form-errors').innerText(),
     /Destination pickup station cannot be empty/);
   assert.match(await page.locator('#grtrans-form-errors').innerText(),
     /Postal prefix must contain only digits/);
-  assert.equal(await form.locator('input[name="station_name"]').getAttribute('aria-invalid'), 'true');
+  assert.equal(await form.locator('select[name="station_name"]').getAttribute('aria-invalid'), 'true');
   assert.equal(await form.locator('input[name="postal_prefix"]').getAttribute('aria-invalid'), 'true');
   assert.ok(await page.locator('#grtrans-form-errors').isVisible());
   const errorViewport = await editor.evaluate(el => {
@@ -117,7 +117,7 @@ try {
   // #46: On the actual PrestaShop BO editor a malformed comma amount
   // must show a field-named error, while a genuine decimal comma is saved
   // to the same numeric EUR field (no browser-side conversion shortcut).
-  await form.locator('input[name="station_name"]').fill('Patras KTEL station');
+  await form.locator('select[name="station_name"]').selectOption('Patras KTEL station');
   await form.locator('input[name="postal_prefix"]').fill('262');
   await form.locator('input[name="price"]').fill('12,5,0');
   await form.locator('button[name="grtrans_save"]').click();
@@ -178,8 +178,8 @@ try {
     'Add form must not expose Route ID, not even as a zero-valued input');
   assert.equal(await addForm.locator('input[name="grtrans_edit_proof"]').count(), 0);
   await addForm.locator('select[name="mode"]').selectOption('ferry');
-  await addForm.locator('input[name="origin_name"]').fill('Port of Lavrio');
-  await addForm.locator('input[name="station_name"]').fill('CI temporary port');
+  await addForm.locator('select[name="origin_name"]').selectOption('Port of Lavrio');
+  await addForm.locator('select[name="station_name"]').selectOption('Kea Korissia Port');
   await addForm.locator('input[name="city"]').fill('CI Town');
   await addForm.locator('input[name="postal_prefix"]').fill('ABC');
   await addForm.locator('input[name="price"]').fill('6.75');
@@ -191,7 +191,7 @@ try {
   await page.getByText('Route not saved.', {exact:false}).first().waitFor({timeout:20000});
   addForm = page.locator('form').filter({has:page.locator('button[name="grtrans_save"]')}).first();
   assert.match(await page.locator('#grtrans-form-errors').innerText(), /Postal prefix must contain only digits/);
-  assert.equal(await addForm.locator('input[name="station_name"]').inputValue(), 'CI temporary port');
+  assert.equal(await addForm.locator('select[name="station_name"]').inputValue(), 'Kea Korissia Port');
   assert.equal(await addForm.locator('textarea[name="notice"]').inputValue(), 'CI customer collection note');
   assert.equal(await addForm.locator('input[name="postal_prefix"]').inputValue(), 'ABC');
   assert.equal(await addForm.locator('input[name="id_route"]').count(), 0);
@@ -202,7 +202,7 @@ try {
   await page.getByText('Route dataset updated', {exact:false}).first().waitFor({timeout:20000});
   let inserted = page.locator('.grtrans-route-grid tbody tr').filter({hasText:'99998'});
   assert.equal(await inserted.count(), 1, 'New route should appear in admin table');
-  assert.equal((await inserted.locator('td').nth(3).innerText()).trim(), 'CI temporary port');
+  assert.equal((await inserted.locator('td').nth(3).innerText()).trim(), 'Kea Korissia Port');
   assert.equal((await inserted.locator('td').nth(8).innerText()).trim(), 'Available');
   assert.equal((await inserted.locator('td').nth(9).innerText()).trim(), 'Unverified estimate');
   const deletedId = (await inserted.locator('td').first().innerText()).trim();

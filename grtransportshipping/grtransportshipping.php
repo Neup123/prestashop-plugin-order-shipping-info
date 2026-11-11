@@ -885,7 +885,7 @@ class Grtransportshipping extends CarrierModule
             } elseif ($field === 'origin_name' || $field === 'station_name') {
                 // The route contract stores station names, not station IDs.
                 $out .= '<select class="form-control grtrans-size-l" id="' . $fieldId
-                    . '" name="' . $field . '" data-grtrans-station-picker required' . $aria . '>'
+                    . '" name="' . $field . '" data-grtrans-station-picker' . $aria . '>'
                     . '<option value=""' . ($value === '' ? ' selected' : '') . '>'
                     . $this->escape($this->l('Choose a station')) . '</option>';
                 $matchedStation = false;
