@@ -27,6 +27,8 @@ jobs:
         run: php tests/network_catalog_ui_test.php
       - name: Compact record filtering and ordering
         run: node tests/compact_records_test.cjs
+      - name: Stage-1 workspace interaction model
+        run: node tests/map_workspace_model_test.cjs
       - name: Order charged amount adjustment contract
         run: php tests/order_charge_test.php
       - name: Validate demo seed format

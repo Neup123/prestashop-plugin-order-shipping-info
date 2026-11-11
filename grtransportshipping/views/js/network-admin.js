@@ -145,8 +145,10 @@
       mentalLinks.get(first).add(second);
     }
   };
+  let pinnedOwners=[];
   const restoreFocus = () => {
     patchStyles.forEach((entry, layer) => layer.setStyle(entry.style));
+    if(pinnedOwners.length)focusExactly(pinnedOwners);
   };
   const focusExactly = owners => {
     const selected = new Set(owners);
@@ -367,6 +369,9 @@
     seamLayers.forEach(layer => layer.addTo(map));
   };
   const select = station => {
+    // Stage-1 tools own spatial gestures when selected. The legacy read-only
+    // preview and non-enhanced behavior remain available without the bridge.
+    if (window.GrtransMapWorkspaceHooks?.stationPick?.(station) === true) return;
     if (previewSelecting) {
       addPreviewPin({lat: Number(station.lat), lng: Number(station.lng)});
       return;
@@ -394,6 +399,9 @@
     linking = false;
     selectedButton.disabled = false;
     status.textContent = 'Selected ' + station.name + '. Choose Link to select a second station.';
+    window.dispatchEvent(new CustomEvent('grtrans:map-station-selected', {
+      detail:{id:Number(station.id_station)}
+    }));
   };
   const distance = (a, b) => {
     const r = Math.PI / 180;
@@ -703,9 +711,12 @@
     });
   });
   // Pins are independent even when their filled coverage has one silhouette.
+  // Keep references for reversible draft dragging; the persisted station
+  // coordinates and coverage paint are untouched until the existing Save.
+  const stationMarkers = new Map();
   data.stations.forEach(s => {
     const title = s.name + (Number(s.is_origin_hub) === 1 ? ' · Origin hub' : '');
-    L.marker(point(s), {title: s.name, alt: s.name,
+    const marker = L.marker(point(s), {title: s.name, alt: s.name,
       ...(Number(s.is_origin_hub) === 1 ? {
         icon: new L.Icon.Default({className: 'grtrans-origin-marker'})
       } : {})})
@@ -713,6 +724,16 @@
         L.DomEvent.stopPropagation(event);
         select(s);
       });
+    stationMarkers.set(Number(s.id_station),marker);
+    const element=marker.getElement();
+    if (element) {
+      element.setAttribute('role','button');
+      element.setAttribute('aria-label','Select station '+s.name);
+      element.setAttribute('tabindex','0');
+      element.addEventListener('keydown',event=>{
+        if (event.key==='Enter'||event.key===' ') {event.preventDefault();select(s);}
+      });
+    }
   });
 
   // Retain every priced record. Sea connections are NEVER grouped into a
@@ -771,6 +792,7 @@
       resolutions['transfer:' + transfer.id_transfer] || null);
   });
   map.on('click', event => {
+    if (window.GrtransMapWorkspaceHooks?.mapClick?.(event.latlng) === true) return;
     if (previewSelecting) { addPreviewPin(event.latlng); return; }
     const lat = document.getElementById('grtrans-network-field-lat');
     const lng = document.getElementById('grtrans-network-field-lng');
@@ -788,4 +810,17 @@
     }
   });
   if (coverageBounds.length) map.fitBounds(coverageBounds, { padding: [25, 25], maxZoom: 12 });
+  // An intentionally small adapter: interaction-only calls, no new graph,
+  // pricing, coverage or persistence implementation.
+  window.GrtransMapBridge = {
+    map, data,
+    station:id=>stations.get(Number(id)),
+    marker:id=>stationMarkers.get(Number(id)),
+    focusStation:id=>{pinnedOwners=['station:'+Number(id)];focusExactly(pinnedOwners);},
+    focusStations:ids=>{pinnedOwners=ids.map(id=>'station:'+Number(id));focusExactly(pinnedOwners);},
+    clearFocus:()=>{pinnedOwners=[];restoreFocus();},
+    clearLegacy:()=>{linking=false;linkForm.hidden=true;clearPreview();},
+    startPreview:()=>previewButton?.click(),
+    clearPreview:()=>clearButton?.click()
+  };
 }());
