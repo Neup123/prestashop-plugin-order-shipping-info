@@ -399,9 +399,19 @@
     linking = false;
     selectedButton.disabled = false;
     status.textContent = 'Selected ' + station.name + '. Choose Link to select a second station.';
-    window.dispatchEvent(new CustomEvent('grtrans:map-station-selected', {
-      detail:{id:Number(station.id_station)}
-    }));
+    // A small contract/VM harness may not provide browser event constructors.
+    // Use the owning window realm, and emit only when events are supported.
+    if (typeof window.dispatchEvent === 'function') {
+      const detail = {id:Number(station.id_station)};
+      let event = null;
+      if (typeof window.CustomEvent === 'function') {
+        event = new window.CustomEvent('grtrans:map-station-selected', {detail});
+      } else if (typeof document.createEvent === 'function') {
+        event = document.createEvent('CustomEvent');
+        event.initCustomEvent('grtrans:map-station-selected', false, false, detail);
+      }
+      if (event) window.dispatchEvent(event);
+    }
   };
   const distance = (a, b) => {
     const r = Math.PI / 180;
