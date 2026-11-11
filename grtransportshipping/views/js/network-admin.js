@@ -725,7 +725,7 @@
         select(s);
       });
     stationMarkers.set(Number(s.id_station),marker);
-    const element=marker.getElement();
+    const element=typeof marker.getElement==='function' ? marker.getElement() : null;
     if (element) {
       element.setAttribute('role','button');
       element.setAttribute('aria-label','Select station '+s.name);
