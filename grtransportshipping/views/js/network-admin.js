@@ -16,10 +16,15 @@
     return;
   }
   const data = JSON.parse(root.dataset.config);
-  // Resolve nullable per-place overrides from the live administrator global
-  // before every geometry, union, stitch, tooltip and route-preview operation.
-  const effectiveOuter = (override, inner) => Math.max(Number(inner) || 0,
-    override == null || override === '' ? Number(data.farDefaultKm ?? 5) : Number(override));
+  // Resolve nullable per-place overrides only from the provided configuration.
+  // A valid normal radius itself defines reach; never substitute an arbitrary FAR.
+  const effectiveOuter = (override, inner) => {
+    const normal=Number(inner);
+    const configured=override == null || override === ''
+      ? Number(data.farDefaultKm) : Number(override);
+    const reach=[normal,configured].filter(v=>Number.isFinite(v)&&v>0);
+    return reach.length ? Math.max(...reach) : null;
+  };
   data.stations = data.stations.map(s => ({...s,
     outer_radius_km: effectiveOuter(s.outer_radius_km, s.inner_radius_km)}));
   data.legs = data.legs.map(leg => leg.to_station_id == null ? {...leg,
@@ -84,21 +89,24 @@
   // Consume the server's resolution output; retain #106's standalone fallback.
   const resolutions = (resolution && resolution.links) || data.resolutionByLink ||
     geometry.defaultResolutions(data.legs,data.transfers,costs);
-  // A palette with a different hue for every actual zone, including direct areas.
-  // Stable IDs make the legend independent of painting order and price changes.
-  const zones = data.stations.map(s => ({
+  // A palette with a different hue for every actual source-defined zone.
+  // Records without valid effective reach do not acquire a phantom legend patch.
+  const zones = data.stations.filter(s => geometry.isValid({
+    lat:s.lat,lng:s.lng,radiusKm:s.outer_radius_km,coverage_geojson:s.coverage_geojson
+  })).map(s => ({
     key: 'station:' + s.id_station, name: s.name
   })).concat(data.legs.filter(leg => leg.to_station_id == null &&
-    leg.area_lat != null && leg.area_lng != null &&
-    (Number(leg.area_radius_km) > 0 || !!leg.area_coverage_geojson) &&
-    stations.has(Number(leg.from_station_id))).map(leg => ({
+    stations.has(Number(leg.from_station_id)) && geometry.isValid({
+      lat:leg.area_lat,lng:leg.area_lng,radiusKm:leg.area_outer_radius_km,
+      area_coverage_geojson:leg.area_coverage_geojson
+    })).map(leg => ({
     key: 'area:' + leg.id_leg, name: leg.area_name || 'Direct area #' + leg.id_leg
   }))).sort((a, b) => a.key.localeCompare(b.key));
   const palette = zones.map((zone, index) =>
     'hsl(' + ((17 + 360 * index / zones.length) % 360).toFixed(5) + ' 67% 42%)');
   const zoneColors = new Map(zones.map((zone, index) => [zone.key, palette[index]]));
-  // Only the priced fixed-route LINK (not station-type labels) determines
-  // whether equal-cost, overlapping stations share a service silhouette.
+  // The priced fixed-route link groups equal-cost overlapping stations by
+  // colour and hover, NOT by a synthetic union outline.
   const stationGroups = geometry.stationGroups(data.stations,
     data.legs.filter(leg => !['link_override','patch_precedence'].includes(
       resolutions['leg:' + leg.id_leg]?.reason)), costs);
@@ -135,8 +143,8 @@
     if (!previewActive) layer.addTo(map);
     return layer;
   };
-  // Local organic patch geometry is the base map. Distant air links are the
-  // ONE owner-confirmed symbolic exception; distant land/sea routes stay blank.
+  // Source-defined radius circles and stored polygons form the base map. Air is
+  // the ONE owner-confirmed symbolic exception; distant land/sea routes stay blank.
   const patchStyles = new Map();
   const mentalLinks = new Map();
   const linkGroup = (a, b) => {
@@ -170,16 +178,19 @@
     return layer;
   };
   const stationPatch = station => ({
-    lat: Number(station.lat), lng: Number(station.lng),
-    radiusKm: Number(station.outer_radius_km), key: 'station:' + station.id_station,
+    lat: station.lat, lng: station.lng,
+    radiusKm: station.outer_radius_km, key: 'station:' + station.id_station,
     coverage_kind: station.coverage_kind, coverage_geojson: station.coverage_geojson
   });
   const areaPatch = (leg) => ({
-    lat: Number(leg.area_lat), lng: Number(leg.area_lng),
-    radiusKm: Number(leg.area_outer_radius_km), key: 'area:' + leg.id_leg,
+    lat: leg.area_lat, lng: leg.area_lng,
+    radiusKm: leg.area_outer_radius_km, key: 'area:' + leg.id_leg,
     area_coverage_kind: leg.area_coverage_kind,
     area_coverage_geojson: leg.area_coverage_geojson
   });
+  const reachLayer = (tier,style) => tier.circle
+    ? L.circle(tier.circle.centre,{...style,radius:tier.circle.radiusMeters})
+    : L.polygon(geometry.leafletPaths(tier.paths),style);
   const pairLanes = new Map();
   const drawStitch = (from, to, label, stale, fromOwner, toOwner, lane, decision) => {
     // Adapt #107's resolved winner/radius to #106's unchanged stitch geometry.
@@ -595,34 +606,31 @@
     linking = false;
     status.textContent = 'Transfer creation cancelled.';
   });
-  // The large dynamic service-area patches are the background 'sea'.
-  // Draw stations AFTER them as opaque-edged translucent islands; no holes.
+  // Direct-area paint is behind station paint. Each layer is its actual source
+  // circle or stored polygon, never an ornamental sea boundary.
   data.legs.forEach(leg => {
     const from = stations.get(Number(leg.from_station_id));
-    if (!from || leg.to_station_id != null || leg.area_lat == null ||
-        leg.area_lng == null || (!(Number(leg.area_radius_km) > 0) &&
-        !leg.area_coverage_geojson)) return;
+    if (!from || leg.to_station_id != null ||
+        !geometry.isValid(areaPatch(leg))) return;
     const area = {lat: leg.area_lat, lng: leg.area_lng};
     const c = zoneColors.get('area:' + leg.id_leg);
-    // Paint both area tiers BEFORE the station islands: no holes, rim frame,
-    // or decorative coverage strip is introduced by the far-tier expansion.
+    // Paint both area tiers before station fills, retaining source geometry.
     const owner = 'area:' + leg.id_leg;
     geometry.coverageTiers(areaPatch(leg), leg.area_radius_km).forEach(tier => {
-      if (!tier.paths.length) return;
+      if (!tier.paths.length && !tier.circle) return;
       const far = tier.kind === 'far';
       const style = {pane:'grtrans-coverage-patches', fill:true,
-        className:'grtrans-organic-patch grtrans-tier-' + tier.kind,
+        className:'grtrans-source-patch grtrans-tier-' + tier.kind,
         fillColor:c, color:c, fillOpacity:leg._stale ? (far ? 0.1 : 0.18) : (far ? 0.16 : 0.36),
         stroke:false, opacity:0, weight:0};
-      const layer=L.polygon(geometry.leafletPaths(tier.paths),style).addTo(map)
+      const layer=reachLayer(tier,style).addTo(map)
         .bindTooltip(safeTooltip((leg.area_name || 'Direct area') + ' · ' + fmt(leg.price)
           + ' EUR · ' + (far ? 'FAR zone: customer confirmation required' : 'normal service reach')
           + staleLabel(leg)));
       registerPatch([owner],layer,style);
     });
-    if (leg.area_coverage_geojson && leg.area_coverage_kind !== 'radius') {
-      includeShape(geometry.patchPaths(areaPatch(leg)));
-    } else includeCoverage(point(area), leg.area_outer_radius_km);
+    if (geometry.hasPolygon(areaPatch(leg))) includeShape(geometry.patchPaths(areaPatch(leg)));
+    else includeCoverage(point(area), leg.area_outer_radius_km);
   });
 
   // Use #107's server paint order; #106 fixture fallback remains unchanged.
@@ -637,90 +645,37 @@
     return bCost - aCost;
   });
   painted.forEach(s => {
-    if (s.coverage_geojson && s.coverage_kind !== 'radius') {
-      includeShape(geometry.patchPaths(stationPatch(s)));
-    } else includeCoverage(point(s), s.outer_radius_km);
+    const patch=stationPatch(s);
+    if (!geometry.isValid(patch)) return;
+    if (geometry.hasPolygon(patch)) includeShape(geometry.patchPaths(patch));
+    else includeCoverage(point(s), s.outer_radius_km);
   });
-  const paintedGroups = new Set();
   painted.forEach(s => {
     const group = groupsByStation.get(Number(s.id_station)) || [s];
-    if (group.length > 1) {
-      // ONE true union perimeter for the entire overlapping service.
-      // Every internal circle arc has been discarded by the geometry helper.
-      const groupId = group.map(station => station.id_station).sort((a, b) => a - b).join(',');
-      if (paintedGroups.has(groupId)) return;
-      paintedGroups.add(groupId);
-      const contours = geometry.unionCoveragePaths(group.map(stationPatch));
-      if (contours.length) {
-        const c = zoneColors.get('station:' + group[0].id_station);
-        const owners = group.map(station => 'station:' + station.id_station);
-        const title = safeTooltip(group.map(station => station.name).join(' + ') +
-          ' · merged same-price coverage');
-        const mergedTier = (kind, rings, fillOpacity) => {
-          if (!rings.length) return;
-          const outer = kind === 'far';
-          const style = {pane:'grtrans-coverage-patches',fill:true,
-            className:'grtrans-organic-patch grtrans-tier-'+kind,
-            fillColor:c,color:c,fillOpacity,weight:outer?1:0,
-            stroke:outer,opacity:outer?0.65:0};
-          const latlngs = geometry.leafletPaths(rings);
-          const layer=L.polygon(latlngs,style).addTo(map).bindTooltip(title);
-          registerPatch(owners,layer,style);
-          layer.on('click',event=>{
-            L.DomEvent.stopPropagation(event);
-            const p=[event.latlng.lat,event.latlng.lng];
-            select(group.reduce((best,station)=>
-              distance(p,point(station))<distance(p,point(best))?station:best,group[0]));
-          });
-        };
-        // Outer silhouette merges as ONE border. Inner tier is also unioned
-        // (without any border) so no old internal station circles reappear.
-        mergedTier('far',contours,0.16);
-        const innerRecords=[];
-        group.forEach(station=>{
-          const inner=geometry.coverageTiers(stationPatch(station),
-            station.inner_radius_km).find(tier=>tier.kind==='normal');
-          if (!inner) return;
-          inner.paths.forEach((poly,index)=>{
-            const coordinates=poly.map(ring=>{
-              const closed=ring.concat([ring[0]]);
-              return closed.map(p=>[p[1],p[0]]);
-            });
-            innerRecords.push({lat:station.lat,lng:station.lng,
-              radiusKm:Number(station.inner_radius_km),
-              key:'normal:'+station.id_station+':'+index,
-              coverage_geojson:JSON.stringify({type:'Polygon',coordinates})});
-          });
-        });
-        mergedTier('normal',geometry.unionCoveragePaths(innerRecords),0.42);
-      }
-      return;
-    }
-    const pos = point(s);
     const c = zoneColors.get('station:' + s.id_station);
     const title = s.name + (s.is_origin_hub == 1 ? ' · Origin hub' : '')
       + (Object.prototype.hasOwnProperty.call(costs, s.id_station)
         ? ' · cheapest ' + fmt(costs[s.id_station]) + ' EUR' : ' · no priced path');
     geometry.coverageTiers(stationPatch(s),s.inner_radius_km).forEach(tier=>{
-      if(!tier.paths.length) return;
+      if(!tier.paths.length && !tier.circle) return;
       const style={
         pane:'grtrans-coverage-patches',fill:true,
-        className:'grtrans-organic-patch grtrans-tier-'+tier.kind,
+        className:'grtrans-source-patch grtrans-tier-'+tier.kind,
         fillColor:c,color:c,fillOpacity:tier.fillOpacity,
         opacity:tier.outline?0.6:0,weight:tier.outline?1:0,
         stroke:tier.outline
       };
-      const layer=L.polygon(geometry.leafletPaths(tier.paths),style)
+      const layer=reachLayer(tier,style)
         .addTo(map).bindTooltip(safeTooltip(title+' · '+(tier.kind==='normal'
           ? 'normal service reach' : 'FAR zone: customer confirmation required')));
-      registerPatch(['station:'+s.id_station],layer,style);
+      registerPatch(group.map(station=>'station:'+station.id_station),layer,style);
       layer.on('click',event=>{
         L.DomEvent.stopPropagation(event);
         select(s);
       });
     });
   });
-  // Pins are independent even when their filled coverage has one silhouette.
+  // Pins and their source boundaries remain independent within a shared colour group.
   // Keep references for reversible draft dragging; the persisted station
   // coordinates and coverage paint are untouched until the existing Save.
   const stationMarkers = new Map();

@@ -30,8 +30,8 @@
 <g>
   <rect x="640" y="70" width="580" height="370" rx="12" fill="#fafafa" stroke="#ddd"/>
   <text x="660" y="102" font-size="19" font-weight="bold" fill="#222">B. Overlap, NO link — nothing drawn</text>
-  <path d="M745,165 C800,118 890,128 918,190 C944,248 905,318 838,332 C772,346 705,310 700,245 C696,205 712,190 745,165 Z" fill="#b9a7e6" fill-opacity="0.5"/>
-  <path d="M935,185 C995,142 1080,168 1092,232 C1103,292 1048,340 982,332 C918,324 878,272 893,224 C900,200 912,198 935,185 Z" fill="#a8d8b9" fill-opacity="0.5"/>
+  <circle cx="810" cy="235" r="108" fill="#b9a7e6" fill-opacity="0.5"/>
+  <circle cx="992" cy="245" r="94" fill="#a8d8b9" fill-opacity="0.5"/>
   <text x="930" y="385" font-size="16" text-anchor="middle" fill="#444">both kinds reach here, but no transfer between them —</text>
   <text x="930" y="407" font-size="16" text-anchor="middle" fill="#444">the fills simply blend</text>
 </g>
@@ -40,8 +40,8 @@
 <g>
   <rect x="20" y="470" width="580" height="370" rx="12" fill="#fafafa" stroke="#ddd"/>
   <text x="40" y="502" font-size="19" font-weight="bold" fill="#222">C. Overlap WITH a link — stitch = transfer seam</text>
-  <path d="M105,565 C160,520 248,528 272,590 C295,648 258,712 192,724 C128,736 62,696 58,632 C55,592 72,585 105,565 Z" fill="#b9a7e6" fill-opacity="0.55"/>
-  <path d="M290,578 C348,538 432,556 448,614 C463,668 420,722 358,724 C300,726 252,682 258,626 C261,598 268,592 290,578 Z" fill="#f5b971" fill-opacity="0.55"/>
+  <circle cx="165" cy="630" r="110" fill="#b9a7e6" fill-opacity="0.55"/>
+  <circle cx="360" cy="630" r="100" fill="#f5b971" fill-opacity="0.55"/>
   <polyline points="266,586 280,604 268,620 284,638 270,656 282,674 268,694" fill="none" stroke="#c0392b" stroke-width="3"/>
   <text x="130" y="615" font-size="17" font-weight="bold" fill="#5b4a9e">€5</text>
   <text x="345" y="615" font-size="17" font-weight="bold" fill="#a3540a">€9</text>
@@ -53,8 +53,8 @@
 <g>
   <rect x="640" y="470" width="580" height="370" rx="12" fill="#fafafa" stroke="#ddd"/>
   <text x="660" y="502" font-size="19" font-weight="bold" fill="#222">D. Air — dashed arc + mental connection</text>
-  <path d="M725,640 C765,592 838,596 852,650 C865,700 812,742 760,730 C710,718 692,680 725,640 Z" fill="#b9a7e6" fill-opacity="0.6"/>
-  <path d="M1015,548 C1068,512 1132,544 1128,600 C1124,650 1058,676 1012,644 C972,616 972,580 1015,548 Z" fill="#b9a7e6" fill-opacity="0.6"/>
+  <circle cx="772" cy="670" r="68" fill="#b9a7e6" fill-opacity="0.6"/>
+  <circle cx="1060" cy="590" r="70" fill="#b9a7e6" fill-opacity="0.6"/>
   <path d="M838,612 C895,522 962,520 1032,586" fill="none" stroke="#333" stroke-width="2.5" stroke-dasharray="8 7" marker-end="url(#arr)"/>
   <text x="930" y="775" font-size="16" text-anchor="middle" fill="#444">two distant patches, one flight link — on hover both</text>
   <text x="930" y="797" font-size="16" text-anchor="middle" fill="#444">patches darken together as a single mental unit</text>
@@ -64,8 +64,8 @@
 <g>
   <rect x="20" y="870" width="580" height="370" rx="12" fill="#fafafa" stroke="#ddd"/>
   <text x="40" y="902" font-size="19" font-weight="bold" fill="#222">E. Sea / ferry — dashed STRAIGHT line</text>
-  <path d="M112,1008 C158,964 232,976 234,1036 C236,1092 162,1122 114,1088 C72,1058 70,1046 112,1008 Z" fill="#9fd4d8" fill-opacity="0.65"/>
-  <path d="M408,1000 C456,960 524,978 520,1034 C516,1086 448,1112 404,1080 C366,1052 366,1036 408,1000 Z" fill="#9fd4d8" fill-opacity="0.65"/>
+  <circle cx="160" cy="1037" r="77" fill="#9fd4d8" fill-opacity="0.65"/>
+  <circle cx="447" cy="1036" r="77" fill="#9fd4d8" fill-opacity="0.65"/>
   <line x1="238" y1="1036" x2="402" y2="1034" stroke="#333" stroke-width="2.5" stroke-dasharray="8 7" marker-end="url(#arr)"/>
   <text x="310" y="1185" font-size="16" text-anchor="middle" fill="#444">like air, but straight, + mental link — each priced pair</text>
   <text x="310" y="1207" font-size="16" text-anchor="middle" fill="#444">is its own vessel; the origin patch is only the stitch point</text>
@@ -74,14 +74,15 @@
 <!-- PANEL F -->
 <g>
   <rect x="640" y="870" width="580" height="370" rx="12" fill="#fafafa" stroke="#ddd"/>
-  <text x="660" y="902" font-size="19" font-weight="bold" fill="#222">F. Land, SAME price — merge + solid line</text>
+  <text x="660" y="902" font-size="19" font-weight="bold" fill="#222">F. Land, SAME price — shared colour + solid line</text>
   <path d="M675,1082 C740,1052 770,1044 812,1038 C870,1031 935,1032 992,1034 C1055,1036 1120,1052 1175,1070" fill="none" stroke="#e3e3e3" stroke-width="16"/>
-  <path d="M718,972 C782,940 862,956 902,1002 C946,954 1040,948 1082,998 C1122,1046 1096,1112 1032,1126 C982,1137 936,1112 908,1078 C876,1114 800,1132 746,1102 C692,1072 668,1012 718,972 Z" fill="#a8d8b9" fill-opacity="0.55"/>
+  <circle cx="812" cy="1038" r="100" fill="#a8d8b9" fill-opacity="0.45" stroke="#5da271" stroke-width="1"/>
+  <circle cx="992" cy="1034" r="100" fill="#a8d8b9" fill-opacity="0.45" stroke="#5da271" stroke-width="1"/>
   <path d="M675,1082 C740,1052 770,1044 812,1038 C870,1031 935,1032 992,1034 C1055,1036 1120,1052 1175,1070" fill="none" stroke="#5da271" stroke-width="5"/>
   <circle cx="812" cy="1038" r="6" fill="#2e6b3e"/>
   <circle cx="992" cy="1034" r="6" fill="#2e6b3e"/>
   <text x="930" y="1185" font-size="16" text-anchor="middle" fill="#444">continuous line in the patches' colour, MORE opaque,</text>
-  <text x="930" y="1207" font-size="16" text-anchor="middle" fill="#444">on the real road; overlapping station patches are ONE patch</text>
+  <text x="930" y="1207" font-size="16" text-anchor="middle" fill="#444">on the real road; both measured source circles stay visible</text>
 </g>
 
 <!-- PANEL G -->
@@ -90,8 +91,8 @@
   <text x="40" y="1302" font-size="19" font-weight="bold" fill="#222">G. Land, price DIFFERS — gradient, no merge</text>
   <path d="M60,1500 C200,1465 380,1460 540,1490" fill="none" stroke="#e3e3e3" stroke-width="16"/>
   <path d="M148,1484 C260,1468 342,1468 452,1484" fill="none" stroke="url(#priceGrad)" stroke-width="7"/>
-  <path d="M82,1386 C126,1350 188,1366 186,1424 C184,1472 120,1494 82,1464 C48,1437 46,1416 82,1386 Z" fill="#7fb2e5" fill-opacity="0.6"/>
-  <path d="M428,1386 C472,1350 534,1366 532,1424 C530,1472 466,1494 428,1464 C394,1437 392,1416 428,1386 Z" fill="#0b3d91" fill-opacity="0.5"/>
+  <circle cx="126" cy="1422" r="70" fill="#7fb2e5" fill-opacity="0.6"/>
+  <circle cx="472" cy="1422" r="70" fill="#0b3d91" fill-opacity="0.5"/>
   <text x="128" y="1432" font-size="17" font-weight="bold" fill="#123f73">€5</text>
   <text x="474" y="1432" font-size="17" font-weight="bold" fill="#ffffff">€9</text>
   <text x="310" y="1580" font-size="16" text-anchor="middle" fill="#444">the connection darkens station to station with the price;</text>
@@ -101,13 +102,13 @@
 <!-- PANEL H -->
 <g>
   <rect x="640" y="1270" width="580" height="370" rx="12" fill="#fafafa" stroke="#ddd"/>
-  <text x="660" y="1302" font-size="19" font-weight="bold" fill="#222">H. Dynamic vehicle — a "sea" with islands</text>
+  <text x="660" y="1302" font-size="19" font-weight="bold" fill="#222">H. Dynamic polygon area — a "sea" with islands</text>
   <path d="M700,1380 C800,1330 1120,1335 1160,1420 C1195,1495 1120,1560 950,1562 C790,1564 690,1520 682,1450 C678,1410 672,1400 700,1380 Z" fill="#bcd9ea" fill-opacity="0.5"/>
-  <path d="M792,1422 C826,1398 870,1418 864,1452 C858,1484 812,1496 786,1473 C762,1452 764,1442 792,1422 Z" fill="#b9a7e6" fill-opacity="0.5"/>
-  <path d="M962,1462 C996,1438 1040,1458 1034,1492 C1028,1524 982,1536 956,1513 C932,1492 934,1482 962,1462 Z" fill="#a8d8b9" fill-opacity="0.5"/>
+  <circle cx="818" cy="1450" r="50" fill="#b9a7e6" fill-opacity="0.5"/>
+  <circle cx="986" cy="1490" r="50" fill="#a8d8b9" fill-opacity="0.5"/>
   <polyline points="878,1450 871,1454 877,1459 869,1462 873,1468 864,1470 867,1476 858,1477 858,1483 849,1482 848,1489 840,1486 837,1493 829,1489 824,1494 818,1490 812,1494 807,1489 799,1493 796,1486 788,1489 787,1482 778,1483 778,1477 769,1476 772,1470 763,1468 767,1462 759,1459 765,1454 758,1450 765,1446 759,1441 767,1438 763,1432 772,1430 769,1424 778,1423 778,1417 787,1418 788,1411 796,1414 799,1407 807,1411 812,1406 818,1410 824,1406 829,1411 837,1407 840,1414 848,1411 849,1418 858,1417 858,1423 867,1424 864,1430 873,1432 869,1438 877,1441 871,1446 878,1450" fill="none" stroke="#c0392b" stroke-width="2.5"/>
   <polyline points="1046,1490 1039,1494 1045,1499 1037,1502 1041,1508 1032,1510 1035,1516 1026,1517 1026,1523 1017,1522 1016,1529 1008,1526 1005,1533 997,1529 992,1534 986,1530 980,1534 975,1529 967,1533 964,1526 956,1529 955,1522 946,1523 946,1517 937,1516 940,1510 931,1508 935,1502 927,1499 933,1494 926,1490 933,1486 927,1481 935,1478 931,1472 940,1470 937,1464 946,1463 946,1457 955,1458 956,1451 964,1454 967,1447 975,1451 980,1446 986,1450 992,1446 997,1451 1005,1447 1008,1454 1016,1451 1017,1458 1026,1457 1026,1463 1035,1464 1032,1470 1041,1472 1037,1478 1045,1481 1039,1486 1046,1490" fill="none" stroke="#c0392b" stroke-width="2.5"/>
-  <text x="930" y="1580" font-size="16" text-anchor="middle" fill="#444">taxi / courier: one area patch that also reaches INTO the islands;</text>
+  <text x="930" y="1580" font-size="16" text-anchor="middle" fill="#444">taxi / courier: stored area polygon reaches INTO the islands;</text>
   <text x="930" y="1602" font-size="16" text-anchor="middle" fill="#444">a LINKED island is stitched all the way around its edge</text>
 </g>
 
@@ -115,8 +116,8 @@
 <g>
   <rect x="20" y="1670" width="1200" height="380" rx="12" fill="#fafafa" stroke="#ddd"/>
   <text x="40" y="1702" font-size="19" font-weight="bold" fill="#222">I. Two-tier patch — inner reach + outer lighter "far" zone with a warning</text>
-  <path d="M120,1790 C220,1725 420,1735 470,1845 C515,1945 400,2020 260,2018 C130,2016 55,1935 75,1855 C85,1812 92,1810 120,1790 Z" fill="#b9a7e6" fill-opacity="0.18"/>
-  <path d="M185,1832 C245,1792 345,1800 368,1862 C390,1922 330,1972 255,1968 C185,1964 138,1912 152,1868 C158,1848 166,1844 185,1832 Z" fill="#b9a7e6" fill-opacity="0.55"/>
+  <circle cx="267" cy="1880" r="151" fill="#b9a7e6" fill-opacity="0.18"/>
+  <circle cx="267" cy="1880" r="88" fill="#b9a7e6" fill-opacity="0.55"/>
   <text x="262" y="1762" font-size="15" text-anchor="middle" fill="#6b5ca5">outer spread — lighter: "far" zone</text>
   <text x="255" y="1905" font-size="15" text-anchor="middle" fill="#5b4a9e">inner reach</text>
   <g>
