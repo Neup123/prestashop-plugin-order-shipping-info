@@ -83,6 +83,42 @@
     node.textContent = String(title);
     return node;
   };
+  // Merchant-provided labels remain text, never tooltip HTML.
+  // The tooltip inherits the actual painted colour of its source element.
+  const bindColoredTooltip = (layer, title, color) => {
+    layer.bindTooltip(safeTooltip(title), {
+      className: 'grtrans-colored-tooltip'
+    });
+    layer.on('tooltipopen', event => {
+      const element = event.tooltip.getElement();
+      if (element) {
+        element.style.setProperty('--grtrans-tooltip-color', color || '#586b7a');
+      }
+    });
+    return layer;
+  };
+  const toggleHoverClass = (layer, className, enabled, color) => {
+    const element = typeof layer.getElement === 'function'
+      ? layer.getElement() : null;
+    if (!element) return;
+    element.classList.toggle(className, enabled);
+    if (enabled) {
+      element.style.setProperty('--grtrans-hover-color', color);
+    } else {
+      element.style.removeProperty('--grtrans-hover-color');
+    }
+  };
+  const makePreviewMarker = (latlng, options) => {
+    const marker = L.marker(latlng, options);
+    bindColoredTooltip(marker, options.alt, '#2259b5');
+    marker.on('mouseover', () => {
+      toggleHoverClass(marker, 'grtrans-hovered-marker', true, '#2259b5');
+    });
+    marker.on('mouseout', () => {
+      toggleHoverClass(marker, 'grtrans-hovered-marker', false);
+    });
+    return marker;
+  };
   const staleLabel = record => record._stale ? ' · STALE (last verified ' + (record.verified_at || 'unknown') + ')' : '';
   const point = s => [Number(s.lat), Number(s.lng)];
   const costs = data.cost || {};
@@ -173,9 +209,37 @@
   };
   const registerPatch = (owners, layer, style) => {
     patchStyles.set(layer, {owners, style});
-    layer.on('mouseover', () => focusOwners(owners));
-    layer.on('mouseout', restoreFocus);
+    layer.on('mouseover', () => {
+      focusOwners(owners);
+      toggleHoverClass(layer, 'grtrans-hovered-patch', true,
+        style.fillColor || style.color);
+    });
+    layer.on('mouseout', () => {
+      toggleHoverClass(layer, 'grtrans-hovered-patch', false);
+      restoreFocus();
+    });
     return layer;
+  };
+  // For invisible hit-targets, highlight only their visible partner.
+  // Explicit rest styles also support the browser-test Leaflet stub, which
+  // does not expose the real Leaflet layer.options property.
+  const registerLineHover = (target, visible, owners, restingStyle) => {
+    const resting = {
+      weight: restingStyle.weight,
+      opacity: restingStyle.opacity
+    };
+    target.on('mouseover', () => {
+      focusExactly(owners);
+      visible.setStyle({
+        weight: Number(resting.weight) + 0.85,
+        opacity: Math.min(0.92, Number(resting.opacity) + 0.12)
+      });
+    });
+    target.on('mouseout', () => {
+      visible.setStyle(resting);
+      restoreFocus();
+    });
+    return target;
   };
   const stationPatch = station => ({
     lat: station.lat, lng: station.lng,
@@ -203,18 +267,19 @@
     const geometryDecision = winnerKey ? {...decision, boundaryOwner: winnerKey} : decision;
     const pieces = geometry.stitches(fromShape, toShape, lane, geometryDecision);
     for (const endpoints of pieces) {
-      paintSeam(L.polyline(endpoints, {
+      const visibleStyle = {
         color: '#637384', weight: 3,
         opacity: stale ? 0.35 : 0.9, dashArray: '3 2', interactive: false,
         className: 'grtrans-zigzag-stitch'
-      }));
+      };
+      const visible = paintSeam(L.polyline(endpoints, visibleStyle));
       const target = paintSeam(L.polyline(endpoints, {
         color: '#637384', weight: 10, opacity: 0.001, interactive: true
-      })).bindTooltip(safeTooltip(label));
+      }));
       // An individual hover target selects only this priced pair. Hovering a
       // multi-vessel origin patch shows its separate, legitimately linked ends.
-      target.on('mouseover', () => focusExactly([fromOwner, toOwner]));
-      target.on('mouseout', restoreFocus);
+      bindColoredTooltip(target, label, '#637384');
+      registerLineHover(target, visible, [fromOwner, toOwner], visibleStyle);
     }
   };
   // Panel H/v7: a priced direct-area leg explicitly joins its boarding
@@ -226,17 +291,18 @@
     const rings = geometry.islandStitchRings(island);
     if (!rings.length) return false;
     rings.forEach(ring => {
-      paintSeam(L.polyline(ring, {
+      const visibleStyle = {
         color: '#ad5165', weight: 1.25, opacity: stale ? 0.22 : 0.55,
         dashArray: '2 5', interactive: false,
         className: 'grtrans-linked-island-perimeter'
-      }));
-      paintSeam(L.polyline(ring, {
+      };
+      const visible = paintSeam(L.polyline(ring, visibleStyle));
+      const target = paintSeam(L.polyline(ring, {
         color: '#ad5165', weight: 10, opacity: 0.001, interactive: true,
         className: 'grtrans-linked-island-perimeter-hover'
-      })).bindTooltip(safeTooltip(label + ' · entire linked island boundary'))
-        .on('mouseover', () => focusExactly(owners))
-        .on('mouseout', restoreFocus);
+      }));
+      bindColoredTooltip(target, label + ' · entire linked island boundary', '#ad5165');
+      registerLineHover(target, visible, owners, visibleStyle);
     });
     return true;
   };
@@ -247,12 +313,13 @@
       color: '#7453a7', weight: 1.85, opacity: stale ? 0.37 : 0.85,
       interactive: false, className: 'grtrans-air-arrow'
     }));
-    paintSeam(L.polyline(arc.points, {
+    const visibleStyle = {
       color: '#7453a7', weight: 1.8, opacity: stale ? 0.35 : 0.78,
       dashArray: '7 7', interactive: true, className: 'grtrans-air-arc'
-    })).bindTooltip(safeTooltip(label + ' · symbolic flight arc; not area coverage'))
-      .on('mouseover', () => focusExactly([fromOwner, toOwner]))
-      .on('mouseout', restoreFocus);
+    };
+    const visible = paintSeam(L.polyline(arc.points, visibleStyle));
+    bindColoredTooltip(visible, label, '#7453a7');
+    registerLineHover(visible, visible, [fromOwner, toOwner], visibleStyle);
     paintArrow(arc.arrow);
     if (arc.reverseArrow) paintArrow(arc.reverseArrow);
   };
@@ -261,12 +328,13 @@
     const sea=geometry.seaLine(from,to);
     if (!sea) return;
     const shade = '#168ca2';
-    paintSeam(L.polyline(sea.points, {
+    const visibleStyle = {
       color: shade, dashArray: '8 7', opacity: stale ? 0.32 : 0.8,
       weight: 2.2, interactive: true, className: 'grtrans-sea-line'
-    })).bindTooltip(safeTooltip(label + ' · vessel connection; NOT maritime coverage'))
-      .on('mouseover', () => focusExactly([fromOwner, toOwner]))
-      .on('mouseout', restoreFocus);
+    };
+    const visible = paintSeam(L.polyline(sea.points, visibleStyle));
+    bindColoredTooltip(visible, label, shade);
+    registerLineHover(visible, visible, [fromOwner, toOwner], visibleStyle);
     paintSeam(L.polyline(sea.arrow, {
       color: shade, opacity: stale ? 0.4 : 0.9,
       weight: 1.7, interactive: false, className: 'grtrans-sea-arrow'
@@ -562,8 +630,7 @@
   function addPreviewPin(latlng) {
     if (!previewSelecting || previewPoints.length >= 2) return;
     previewPoints.push({lat:Number(latlng.lat),lng:Number(latlng.lng)});
-    const marker = L.marker(latlng, {
-      title: 'Preview point ' + previewPoints.length,
+    const marker = makePreviewMarker(latlng, {
       alt: 'Preview point ' + previewPoints.length,
       icon: new L.Icon.Default({className:'grtrans-preview-pin'})
     }).addTo(map);
@@ -623,10 +690,9 @@
         className:'grtrans-source-patch grtrans-tier-' + tier.kind,
         fillColor:c, color:c, fillOpacity:leg._stale ? (far ? 0.1 : 0.18) : (far ? 0.16 : 0.36),
         stroke:false, opacity:0, weight:0};
-      const layer=reachLayer(tier,style).addTo(map)
-        .bindTooltip(safeTooltip((leg.area_name || 'Direct area') + ' · ' + fmt(leg.price)
-          + ' EUR · ' + (far ? 'FAR zone: customer confirmation required' : 'normal service reach')
-          + staleLabel(leg)));
+      const layer=bindColoredTooltip(reachLayer(tier,style).addTo(map),
+        (leg.area_name || 'Direct area #' + leg.id_leg)
+          + ' · ' + (far ? 'Far tier' : 'Normal tier'), c);
       registerPatch([owner],layer,style);
     });
     if (geometry.hasPolygon(areaPatch(leg))) includeShape(geometry.patchPaths(areaPatch(leg)));
@@ -653,9 +719,7 @@
   painted.forEach(s => {
     const group = groupsByStation.get(Number(s.id_station)) || [s];
     const c = zoneColors.get('station:' + s.id_station);
-    const title = s.name + (s.is_origin_hub == 1 ? ' · Origin hub' : '')
-      + (Object.prototype.hasOwnProperty.call(costs, s.id_station)
-        ? ' · cheapest ' + fmt(costs[s.id_station]) + ' EUR' : ' · no priced path');
+    const title = s.name;
     geometry.coverageTiers(stationPatch(s),s.inner_radius_km).forEach(tier=>{
       if(!tier.paths.length && !tier.circle) return;
       const style={
@@ -665,9 +729,8 @@
         opacity:tier.outline?0.6:0,weight:tier.outline?1:0,
         stroke:tier.outline
       };
-      const layer=reachLayer(tier,style)
-        .addTo(map).bindTooltip(safeTooltip(title+' · '+(tier.kind==='normal'
-          ? 'normal service reach' : 'FAR zone: customer confirmation required')));
+      const layer=bindColoredTooltip(reachLayer(tier,style).addTo(map),
+        title+' · '+(tier.kind==='normal' ? 'Normal tier' : 'Far tier'), c);
       registerPatch(group.map(station=>'station:'+station.id_station),layer,style);
       layer.on('click',event=>{
         L.DomEvent.stopPropagation(event);
@@ -681,11 +744,21 @@
   const stationMarkers = new Map();
   data.stations.forEach(s => {
     const title = s.name + (Number(s.is_origin_hub) === 1 ? ' · Origin hub' : '');
-    const marker = L.marker(point(s), {title: s.name, alt: s.name,
+    const color = zoneColors.get('station:' + s.id_station) || '#3874ae';
+    // Omit native title: it duplicates the custom Leaflet tooltip.
+    const marker = L.marker(point(s), {alt: s.name,
       ...(Number(s.is_origin_hub) === 1 ? {
         icon: new L.Icon.Default({className: 'grtrans-origin-marker'})
       } : {})})
-      .addTo(map).bindTooltip(safeTooltip(title)).on('click', event => {
+      .addTo(map);
+    bindColoredTooltip(marker, title, color);
+    marker.on('mouseover', () => {
+      toggleHoverClass(marker, 'grtrans-hovered-marker', true, color);
+    });
+    marker.on('mouseout', () => {
+      toggleHoverClass(marker, 'grtrans-hovered-marker', false);
+    });
+    marker.on('click', event => {
         L.DomEvent.stopPropagation(event);
         select(s);
       });

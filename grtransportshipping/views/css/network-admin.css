@@ -30,3 +30,60 @@
 #grtrans-network-map .grtrans-air-arrow {
   stroke-linejoin:round;stroke-linecap:round
 }
+
+/* #121: Colour is inherited from the hovered map element, not a global
+   white tooltip theme. Keep all rules scoped to the Configure map. */
+#grtrans-network-map .leaflet-tooltip.grtrans-colored-tooltip {
+  --grtrans-tooltip-color: #586b7a;
+  background: var(--grtrans-tooltip-color);
+  border: 1px solid var(--grtrans-tooltip-color);
+  color: #fff;
+  border-radius: 4px;
+  padding: 3px 7px;
+  font-size: 12px;
+  line-height: 1.35;
+  font-weight: 600;
+  max-width: 220px;
+  white-space: normal;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, .45);
+}
+#grtrans-network-map .leaflet-tooltip-top.grtrans-colored-tooltip::before {
+  border-top-color: var(--grtrans-tooltip-color);
+}
+#grtrans-network-map .leaflet-tooltip-bottom.grtrans-colored-tooltip::before {
+  border-bottom-color: var(--grtrans-tooltip-color);
+}
+#grtrans-network-map .leaflet-tooltip-left.grtrans-colored-tooltip::before {
+  border-left-color: var(--grtrans-tooltip-color);
+}
+#grtrans-network-map .leaflet-tooltip-right.grtrans-colored-tooltip::before {
+  border-right-color: var(--grtrans-tooltip-color);
+}
+
+/* Group focus retains its original fill-opacity behavior. Only the exact
+   hovered patch receives this narrow, translucent outline. */
+#grtrans-network-map .grtrans-source-patch.grtrans-hovered-patch {
+  stroke: var(--grtrans-hover-color);
+  stroke-width: 1.5px;
+  stroke-opacity: .55;
+  stroke-linejoin: round;
+}
+
+/* Leaflet positions markers with transform; do not modify their position,
+   intrinsic dimensions or z-index during hover. */
+#grtrans-network-map .grtrans-hovered-marker:not(.grtrans-origin-marker) {
+  filter: brightness(1.12) saturate(1.18)
+    drop-shadow(0 0 4px var(--grtrans-hover-color));
+}
+#grtrans-network-map .grtrans-origin-marker.grtrans-hovered-marker {
+  filter: hue-rotate(175deg) saturate(2.4) brightness(1.1)
+    drop-shadow(0 0 3px #f2a900)
+    drop-shadow(0 0 4px var(--grtrans-hover-color));
+}
+/* Retain preview pin resting hue rotation; highlight both Leaflet hover
+   events and direct CSS :hover (including before event dispatch). */
+#grtrans-network-map .grtrans-preview-pin.grtrans-hovered-marker,
+#grtrans-network-map .grtrans-preview-pin:hover {
+  filter: hue-rotate(90deg) saturate(2.2) brightness(1.1)
+    drop-shadow(0 0 3px var(--grtrans-hover-color, #2259b5));
+}
