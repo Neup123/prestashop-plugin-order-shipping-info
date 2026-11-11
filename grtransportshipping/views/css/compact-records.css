@@ -40,6 +40,7 @@
 #grtrans-configure .grtrans-row-action-strip {display:inline-flex;align-items:center;gap:.18rem;flex-wrap:nowrap;white-space:nowrap;vertical-align:middle}
 #grtrans-configure .grtrans-row-action-strip form {display:inline-flex;align-items:center;flex:0 0 auto;margin:0;padding:0}
 #grtrans-configure .grtrans-row-action-strip :is(.grtrans-row-icon,.grtrans-select-record) {box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;flex:0 0 1.9rem;width:1.9rem;min-width:1.9rem;height:1.9rem;margin:0;padding:0;border:1px solid var(--grtrans-border,#ccd2d8);border-radius:4px;background:transparent;color:inherit;cursor:pointer;line-height:1;text-decoration:none}
+#grtrans-configure .grtrans-row-action-strip .grtrans-row-icon {overflow:hidden}
 #grtrans-configure .grtrans-row-action-strip .btn.grtrans-row-icon {margin:0;padding:0}
 #grtrans-configure .grtrans-row-action-strip .material-icons {font-size:1.05rem;line-height:1}
 #grtrans-configure .grtrans-row-action-strip .grtrans-row-icon[data-grtrans-row-action="delete"] {color:#a52c35}
