@@ -79,6 +79,8 @@ class Grtransportshipping extends CarrierModule
             return false;
         }
         try {
+            require_once __DIR__ . '/classes/StationSeeder.php';
+            GrTransportStationSeeder::seedOnce();
             GrTransportRouteRepository::seedOnce();
         } catch (Throwable $e) {
             PrestaShopLogger::addLog('Transport demo seed failed: ' . $e->getMessage(), 3);
