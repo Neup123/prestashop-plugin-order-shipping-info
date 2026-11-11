@@ -133,7 +133,7 @@
     item.appendChild(name);
     legend.appendChild(item);
   });
-  if (legend) {
+  if (legend && zones.length) {
     const keyItem = document.createElement('span');
     keyItem.className = 'grtrans-zone-key';
     keyItem.setAttribute('role', 'listitem');
