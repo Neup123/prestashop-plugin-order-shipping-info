@@ -110,7 +110,9 @@
   }
   function addDetails(row,headings,hiddenColumns,actions,title) {
     const details=el('details','grtrans-record-details');
-    details.append(el('summary','', 'Details'));
+    const summary=el('summary');
+    iconize(summary,'info_outline','Show details for '+title);
+    details.append(summary);
     const dl=el('dl','grtrans-record-facts');
     hiddenColumns.forEach(index=>{
       const value=text(row.cells[index-1]);
@@ -136,12 +138,71 @@
       detail:{entity:record.entity,id:record.id}}));
   }
   function selectButton(record,rows) {
-    const button=el('button','grtrans-select-record','Select');
+    const button=el('button','grtrans-select-record');
     button.type='button';button.dataset.grtransSelectRecord=String(record.id);
-    button.setAttribute('aria-label','Select '+record.entity.replace('_',' ')+' #'+record.id);
+    iconize(button,'place','Select '+record.entity.replace('_',' ')+' #'+record.id+' on the map');
     button.setAttribute('aria-pressed','false');
     button.addEventListener('click',()=>activateSelection(rows,record,button));
     return button;
+  }
+  function iconize(control,glyph,label) {
+    control.classList.add('grtrans-row-icon');
+    control.setAttribute('aria-label',label);
+    control.title=label;
+    const icon=el('span','material-icons',glyph);
+    icon.setAttribute('aria-hidden','true');
+    control.replaceChildren(icon);
+  }
+  function compactRecordAction(control,record) {
+    if(control.hasAttribute('data-grtrans-select-record')) return;
+    const target=record.label || (record.entity.replace('_',' ')+' #'+record.id);
+    const description=[text(control),control.getAttribute('aria-label'),control.title,
+      control.getAttribute('onclick'),control.value].filter(Boolean).join(' ');
+    const deleting=control.dataset.grtransRowAction==='delete' || /delete|remove/i.test(description)
+      || control.classList.contains('btn-danger');
+    if(control.tagName==='A') {
+      iconize(control,deleting?'delete_outline':'edit',
+        (deleting?'Delete ':'Edit ')+target+' (#'+record.id+')');
+      if(deleting) control.dataset.grtransRowAction='delete';
+    } else if(control.tagName==='BUTTON') {
+      const checking=control.dataset.grtransRowAction==='verify' || /verify|mark checked|mark as checked/i.test(description);
+      const label=deleting?'Delete '+target+' (#'+record.id+')'
+        :checking?'Mark '+target+' as checked'
+        :(description.trim() || 'Action')+' for '+target;
+      iconize(control,deleting?'delete_outline':checking?'fact_check':'more_horiz',label);
+      if(deleting) control.dataset.grtransRowAction='delete';
+    }
+  }
+  function normalizeActionMenu(menu,record) {
+    const controls=[...menu.querySelectorAll('a[href],button,input[type="submit"]')]
+      .filter(control=>!control.closest('summary'));
+    if(!controls.length) {menu.remove();return;}
+    if(controls.length===1) {
+      const form=controls[0].closest('form');
+      menu.replaceWith(form && menu.contains(form)?form:controls[0]);
+      return;
+    }
+    const summary=menu.querySelector(':scope > summary');
+    if(!summary) return;
+    menu.classList.add('grtrans-row-more');
+    iconize(summary,'more_horiz','More actions for '+(record.label || record.entity)+' (#'+record.id+')');
+    const panel=el('div','grtrans-row-menu');
+    [...menu.children].filter(child=>child!==summary).forEach(child=>panel.append(child));
+    menu.append(panel);
+  }
+  function compactRowActions(container,record,rows,headings,detailColumns) {
+    const strip=el('div','grtrans-row-action-strip');
+    container.prepend(strip);
+    strip.append(selectButton(record,rows));
+    for(const child of [...container.children]) {
+      if(child!==strip && (child.matches('a,button,form,details') || child.querySelector('a[href],button,form,details')))
+        strip.append(child);
+    }
+    for(const menu of [...strip.querySelectorAll('details')]) normalizeActionMenu(menu,record);
+    for(const control of strip.querySelectorAll('a,button')) {
+      if(!control.closest('.grtrans-row-more')) compactRecordAction(control,record);
+    }
+    addDetails(record.row,headings,detailColumns,strip,record.label);
   }
   function enhanceRoutes() {
     const table=root.querySelector('#grtrans-routes .grtrans-route-grid table');
@@ -157,8 +218,8 @@
       row.dataset.grtransRecordId=String(id);
       const actions=cells[cells.length-1].querySelector('.grtrans-actions');
       if(actions) {
-        actions.prepend(selectButton(record,rows));
-        addDetails(row,heads,[1,6,8],actions,record.label);
+        cells[cells.length-1].classList.add('grtrans-route-actions');
+        compactRowActions(actions,record,rows,heads,[1,6,8]);
       }
       return record;
     });
@@ -217,12 +278,23 @@
       const old=text(th);const key=old.toLowerCase().replace(/\s+/g,'_');
       th.textContent=FIELDS[old] || FIELDS[key] || old.replace(/_/g,' ');
       if(keep.includes(i+1)) th.classList.add('grtrans-keep');
+      if(entity==='stations' && keep.includes(i+1) && i+1!==headings.length)
+        th.title=th.textContent;
     });
     const records=rows.map(row=>{
-      [...row.cells].forEach((cell,i)=>{if(keep.includes(i+1)) cell.classList.add('grtrans-keep');});
+      [...row.cells].forEach((cell,i)=>{
+        if(keep.includes(i+1)) {
+          cell.classList.add('grtrans-keep');
+          if(entity==='stations' && i+1!==headings.length)
+            cell.title=text(cell);
+        }
+      });
       const id=Number(text(row.cells[0]));
       const record={row,id,entity,label:'',price:0,mode:'',verification:'',search:[...row.cells].map(text).join(' ')};
-      if(entity==='stations') record.label=text(row.cells[1]);
+      if(entity==='stations') {
+        record.label=text(row.cells[1]);
+        row.cells[1].title=record.label;
+      }
       if(entity==='legs') {record.label=text(row.cells[4])||('Connection #'+id);record.mode=text(row.cells[3]);record.price=Number(text(row.cells[5]));record.verification=text(row.cells[26]);}
       if(entity==='transfers') {record.label=text(row.cells[3])+' transfer #'+id;record.price=Number(text(row.cells[4]));record.verification=text(row.cells[6]);}
       if(entity==='branches') record.label=text(row.cells[1]);
@@ -231,15 +303,9 @@
       const actions=row.cells[row.cells.length-1];
       if(actions) {
         actions.classList.add('grtrans-network-actions');
-        actions.prepend(selectButton(record,rows));
-        const anchor=actions.querySelector('a');
-        if(anchor) {
-          anchor.classList.add('grtrans-icon-edit');anchor.title='Edit '+record.label;
-          anchor.setAttribute('aria-label','Edit '+record.label);
-          anchor.innerHTML='<span class="material-icons" aria-hidden="true">edit</span>';
-        }
         const deleteButton=actions.querySelector('button[onclick*="Delete network record"]');
         if(deleteButton) {
+          deleteButton.dataset.grtransRowAction='delete';
           deleteButton.removeAttribute('onclick');
           deleteButton.setAttribute('aria-label','Delete '+record.label);
           const dependency=entity==='stations'?' Connecting services and dispatch locations must be removed first.'
@@ -249,16 +315,10 @@
           });
         }
         const verify=actions.querySelector('button[value="verify"]');
-        if(verify) {verify.textContent='Mark checked';verify.title='Mark '+record.label+' as checked';verify.setAttribute('aria-label','Mark '+record.label+' as checked');}
-        const forms=[...actions.querySelectorAll(':scope > form')];
-        if(forms.length) {
-          const overflow=el('details','grtrans-row-more grtrans-network-more');
-          const summary=el('summary','','⋯');
-          summary.setAttribute('aria-label','More actions for '+record.label);
-          summary.title='More actions for '+record.label;
-          overflow.append(summary);forms.forEach(form=>overflow.append(form));actions.append(overflow);
-        }
-        addDetails(row,headings,headings.map((_,i)=>i+1).filter(n=>!keep.includes(n)&&n!==headings.length),actions,record.label);
+        if(verify) verify.dataset.grtransRowAction='verify';
+        const detailColumns=headings.map((_,i)=>i+1).filter(n=>n!==headings.length
+          && (entity==='stations'?n!==2:!keep.includes(n)));
+        compactRowActions(actions,record,rows,headings,detailColumns);
       }
       return record;
     });

@@ -228,7 +228,6 @@ try {
     assert.match(dialog.message(), /Delete route #/);
     await dialog.accept();
   });
-  await inserted.locator('.grtrans-row-more summary').click();
   await inserted.locator('button[name="grtrans_delete"]').click();
   await page.getByText('Route dataset updated', {exact:false}).first().waitFor({timeout:20000});
   assert.equal(await page.locator('.grtrans-route-grid tbody tr').filter({hasText:'99998'}).count(), 0,
@@ -238,7 +237,6 @@ try {
   const staleForm = page.locator('.grtrans-route-grid tbody tr form').first();
   await staleForm.locator('input[name="id_route"]').evaluate((input,id)=>{input.value=id;},deletedId);
   page.once('dialog', async dialog => await dialog.accept());
-  await staleForm.locator('xpath=ancestor::details[1]/summary').click();
   await staleForm.locator('button[name="grtrans_delete"]').click();
   await page.getByText('Route does not exist', {exact:false}).first().waitFor({timeout:20000});
   assert.doesNotMatch(await page.locator('body').innerText(), /Route dataset updated\./);
