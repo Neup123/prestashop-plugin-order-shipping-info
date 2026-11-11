@@ -112,7 +112,13 @@ assert.equal(original.calls.polygons[0].options.fillOpacity,.16);
 assert.equal(original.calls.polygons[1].options.fillOpacity,.36);
 assert.ok(original.calls.polygons.every(p=>p.options.pane==='grtrans-coverage-patches'));
 assert.equal(original.calls.markers.length,2,'Station pins remain independently clickable');
-assert.equal(original.elements['grtrans-zone-legend'].children.length,3);
+const legendItems = original.elements['grtrans-zone-legend'].children;
+assert.equal(legendItems.filter(item => item.children.some(
+  child => child.className === 'grtrans-zone-swatch')).length, 3,
+  'Legend must retain one swatch item per coverage zone');
+assert.equal(legendItems.filter(item => item.children.some(
+  child => child.className === 'grtrans-help-button')).length, 1,
+  'Legend must contain exactly one map symbol-key help button');
 const radiusRing=original.calls.polygons[2].points;
 assert.ok(Math.max(...radiusRing.map(p=>kmDistance(p,[37.9,23.6]))) -
   Math.min(...radiusRing.map(p=>kmDistance(p,[37.9,23.6]))) < .06,
