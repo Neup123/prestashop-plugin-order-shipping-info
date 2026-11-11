@@ -543,6 +543,16 @@
     }));
     editor.prepend(rejected);
   }
+  // Rendering replaces focused spatial action buttons (for example, Finish ring).
+  // Focus then falls back to document.body, outside the Stage-1 workspace's
+  // Escape listener. Capture Escape while a spatial tool is active so Cancel
+  // always restores the exact pre-draft form values through beforeSwitch.
+  document.addEventListener('keydown', event => {
+    if(event.key!=='Escape'||!isSpatial(mode))return;
+    event.preventDefault();
+    event.stopPropagation();
+    workspace.changeMode('select');
+  },true);
   window.GrtransMapSpatialEditor={beforeSwitch:exit,afterSwitch:enter,discard:restore};
   enter(workspace.getMode());
 })();
