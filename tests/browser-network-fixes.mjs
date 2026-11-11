@@ -130,8 +130,8 @@ try {
   const seamRing = page.locator('#grtrans-network-map path.grtrans-linked-island-perimeter');
   await seamRing.first().waitFor({ timeout: 20000 });
   assert.ok(await seamRing.count() >= 1, 'Panel H: rendered area has a linked island stitch');
-  const farSea = page.locator('#grtrans-network-map path.grtrans-organic-patch.grtrans-tier-far[stroke="none"][fill-opacity="0.16"]');
-  const normalSea = page.locator('#grtrans-network-map path.grtrans-organic-patch.grtrans-tier-normal[stroke="none"][fill-opacity="0.36"]');
+  const farSea = page.locator('#grtrans-network-map path.grtrans-source-patch.grtrans-tier-far[stroke="none"][fill-opacity="0.16"]');
+  const normalSea = page.locator('#grtrans-network-map path.grtrans-source-patch.grtrans-tier-normal[stroke="none"][fill-opacity="0.36"]');
   await farSea.first().waitFor({ timeout: 20000 });
   await normalSea.first().waitFor({ timeout: 20000 });
   assert.ok(await farSea.count() >= 1 && await normalSea.count() >= 1,
