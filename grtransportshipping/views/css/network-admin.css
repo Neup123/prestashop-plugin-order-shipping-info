@@ -20,11 +20,10 @@
 #grtrans-network-map .grtrans-preview-pin {filter:hue-rotate(90deg) saturate(2)}
 #grtrans-network-map-tools {flex-wrap:wrap}
 
-/* Owner drawing #103: rounded, softly edged paint blobs, not hard discs.
-   The polygon topology remains the exact sampled union (no internal arcs). */
-#grtrans-network-map .grtrans-organic-patch {
-  stroke-linecap:round;stroke-linejoin:round;
-  filter:drop-shadow(0 0 1px rgba(50,65,72,.12))
+/* Source geometry paint: native circles use measured radii, stored polygons
+   keep source vertices, islands and holes. No union-contour shadow/filter. */
+#grtrans-network-map .grtrans-source-patch {
+  stroke-linecap:round;stroke-linejoin:round
 }
 #grtrans-network-map .grtrans-zigzag-stitch,
 #grtrans-network-map .grtrans-air-arc,

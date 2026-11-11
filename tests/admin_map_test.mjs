@@ -45,7 +45,18 @@ function fixture(data, options = {}) {
   const L = {
     Icon: {Default: DefaultIcon}, DomEvent: {stopPropagation() {}},
     map() { return map; }, tileLayer() { return {addTo() {}}; },
-    circle(point, options) { return layer('circles', {point, options}); },
+    circle(point, options) {
+      const lat=Number(point[0]),lng=Number(point[1]),km=options.radius/1000;
+      const span=km/111.195,lonSpan=span/Math.cos(lat*Math.PI/180);
+      const points=Array.from({length:144},(_,i)=>{
+        const angle=2*Math.PI*i/144;
+        return [lat+Math.sin(angle)*span,lng+Math.cos(angle)*lonSpan];
+      });
+      const entry={point,points,options};
+      const item=layer('circles',entry);
+      calls.polygons.push(entry); // fixture-only projection for existing paint assertions
+      return item;
+    },
     marker(point, options) { return layer('markers', {point, options}); },
     polyline(points, options) { return layer('lines', {points, options}); },
     polygon(points, options) { return layer('polygons', {points, options}); }
@@ -94,7 +105,8 @@ const original = fixture({
     area_name:'Third area',price:5}]
 });
 assert.equal(original.panes['grtrans-coverage-patches'].style.zIndex,'390');
-assert.equal(original.calls.circles.length,0,'No Leaflet stamped circle paths');
+assert.equal(original.calls.circles.length,6,'Every radius tier uses a native Leaflet circle');
+assert.ok(original.calls.circles.every(c=>Number.isFinite(c.options.radius)&&c.options.radius>0));
 assert.equal(original.calls.polygons.length,6,'Two area tiers first, then two station normal/FAR pairs');
 assert.equal(original.calls.polygons[0].options.fillOpacity,.16);
 assert.equal(original.calls.polygons[1].options.fillOpacity,.36);
@@ -164,6 +176,30 @@ assert.ok(Math.abs(kmDistance(explicitArea.calls.polygons[0].points[0],[39,23.7]
   'Per-area FAR override supersedes global on map');
 assert.equal(inheritedAreaFar.options.stroke,false,'FAR area keeps no deprecated coastline frame');
 console.log('Panel I: station and area FAR inheritance, override and normal tiers passed');
+const undefinedReach=fixture({farDefaultKm:null,stations:[
+  {...station(1,'Unspecified',38,23.7),inner_radius_km:0,outer_radius_km:null},
+  {...station(2,'Invalid coordinates',null,23.8),inner_radius_km:0,outer_radius_km:null}
+],legs:[{id_leg:97,from_station_id:1,to_station_id:null,price:1,
+  area_lat:38.1,area_lng:23.75,area_radius_km:0,area_outer_radius_km:null}]});
+assert.equal(undefinedReach.calls.circles.length,0,
+  'No configured effective radius and no stored geometry paints no circle');
+assert.equal(undefinedReach.calls.polygons.length,0,
+  'No source geometry means no invented coverage polygon');
+assert.equal(undefinedReach.elements['grtrans-zone-legend'].children.length,0,
+  'Unspecified coverage has no false legend patch');
+const inheritedOnly=fixture({farDefaultKm:9,stations:[
+  {...station(1,'Global reach',38,23.7),inner_radius_km:0,outer_radius_km:null}
+]});
+assert.equal(inheritedOnly.calls.circles.length,1,
+  'Valid inherited global radius paints even if normal reach is zero');
+assert.equal(inheritedOnly.calls.circles[0].options.radius,9000);
+const malformedSource=fixture({farDefaultKm:null,stations:[{
+  ...station(1,'Malformed polygon',38,23.7),inner_radius_km:0,
+  outer_radius_km:0,coverage_geojson:'{"type":"Polygon","coordinates":[]}'
+}]});
+assert.equal(malformedSource.calls.polygons.length,0,
+  'Invalid empty GeoJSON may not invent coverage');
+console.log('Panel I/RENDER02: inherited global reach and no-phantom-coverage cases passed');
 
 
 const a=station(1,'Athens',38,23.7);
@@ -210,18 +246,15 @@ const samePrice=fixture({stations:[a,b],cost:{1:5,2:5},legs:[{
   route_geojson:JSON.stringify({type:'LineString',coordinates:[
     [23.7,38],[23.72,38.02],[23.75,38.05]]})
 }]});
-assert.equal(samePrice.calls.polygons.length,2,
-  'Panel F/I: four legacy paths become ONE outer union and ONE inner-tier layer');
-assert.equal(samePrice.calls.circles.length,0,
-  'Panel F: zero internal arcs from former overlapping stamped circles');
-const union=samePrice.calls.polygons[0];
-assert.equal(union.options.pane,'grtrans-coverage-patches');
-assert.ok(union.points.length>150);
-assert.ok(union.points.every((p,i)=>{
-  const q=union.points[(i+1)%union.points.length];
-  const centre=[(p[0]+q[0])/2,(p[1]+q[1])/2];
-  return !(polygonContains(centre,firstBlob)&&polygonContains(centre,secondBlob));
-}), 'Union has zero boundary segments buried inside both original reaches');
+assert.equal(samePrice.calls.polygons.length,4,
+  'Panel F/I: linked stations retain both native far and normal layers');
+assert.equal(samePrice.calls.circles.length,4,
+  'Panel F: four native circle layers; no computed union polygons');
+const sourced=samePrice.calls.circles[0];
+assert.equal(sourced.options.pane,'grtrans-coverage-patches');
+assert.equal(sourced.options.radius,10000);
+assert.ok(!samePrice.calls.polygons.some(p=>
+  p.options.className?.includes('organic')), 'No ornamental union paint');
 await new Promise(resolve=>setImmediate(resolve));
 const solid=samePrice.calls.lines.filter(l=>l.options.className==='grtrans-land-road');
 assert.equal(solid.length,1,'Panel F: same-price land is one solid road line');
@@ -229,12 +262,12 @@ assert.equal(solid[0].points.length,3,'Persisted actual road shape overrides OSR
 assert.equal(solid[0].options.weight,3.5);
 assert.ok(solid[0].options.opacity>.9,'Land line is more opaque than its patches');
 samePrice.elements['grtrans-map-preview'].events.click();
-assert.ok(!union.layer.removed,'Route preview leaves union patch visible');
+assert.ok(!sourced.layer.removed,'Route preview leaves source circle visible');
 samePrice.elements['grtrans-map-preview-clear'].events.click();
 assert.ok(solid.every(l=>!l.layer.removed));
 
 /* Panel F regression: a ferry-type port can be a stop on a BUS leg.
- * Link transport kind and equal route cost, not station type, own the union. */
+ * Link kind and equal cost share colour, not a made-up merged perimeter. */
 const mixedStops = [a, {...b,type:'ferry'}];
 const mixedNoLink = fixture({stations:mixedStops,cost:{1:0,2:0}});
 assert.equal(mixedNoLink.calls.polygons.length,4,
@@ -245,13 +278,12 @@ const mixedBus=fixture({stations:mixedStops,cost:{1:0,2:0},legs:[{
 }]});
 assert.equal(mixedBus.geometry.stationGroups(mixedStops,[{...busLeg,price:5}],{1:0,2:0}).length,1,
   'Bus leg combines mixed station labels at equal route cost (0 = 0)');
-assert.equal(mixedBus.calls.polygons.length,2,
-  'Panel F: bus hub ↔ ferry port makes ONE outer union and ONE normal tier');
-assert.ok(mixedBus.calls.polygons[0].points.every((p,i,ring=mixedBus.calls.polygons[0].points)=>{
-  const q=ring[(i+1)%ring.length];
-  const midpoint=[(p[0]+q[0])/2,(p[1]+q[1])/2];
-  return !(polygonContains(midpoint,firstBlob)&&polygonContains(midpoint,secondBlob));
-}), 'Mixed-label station union has NO buried boundary arcs');
+assert.equal(mixedBus.calls.circles.length,4,
+  'Panel F: mixed bus/ferry station link retains both measured circles');
+assert.equal(mixedBus.calls.polygons.length,4);
+assert.equal(mixedBus.calls.circles[0].options.fillColor,
+  mixedBus.calls.circles[2].options.fillColor,
+  'Equal-price linked stations share colour without unioning boundaries');
 await new Promise(resolve=>setImmediate(resolve));
 const mixedRoad=mixedBus.calls.lines.filter(l=>l.options.className==='grtrans-land-road');
 assert.equal(mixedRoad.length,1,'Mixed-label linked stations keep ONE continuous road');
@@ -263,9 +295,8 @@ const zeroPrice=fixture({stations:[a,b],cost:{1:0,2:0},legs:[{
 assert.ok(!zeroPrice.calls.lines.some(l=>l.options.className==='grtrans-zigzag-stitch'),
   'Equal-cost linked land stations merge without a false cheap-to-expensive transfer seam');
 
-/* #103/F regression: equal-price station-bound union must preserve the
- * real Polygon/MultiPolygon footprint, including an unfilled postal hole.
- * The original radius-only CI fixture missed this source-geometry case. */
+/* #103/F regression: an equal-price group retains every saved polygon ring
+ * beside a separate native circle; no union erases islands or holes. */
 const multipart=JSON.stringify({type:'MultiPolygon',coordinates:[
   [
     [[23.60,37.90],[23.80,37.90],[23.80,38.10],[23.60,38.10],[23.60,37.90]],
@@ -279,22 +310,24 @@ const adjoining={...station(2,'Bus boundary',38,23.79),
   outer_radius_km:3,inner_radius_km:1};
 const multipartMerged=fixture({stations:[storedMulti,adjoining],cost:{1:0,2:0},
   legs:[{...busLeg,price:4}]});
-assert.equal(multipartMerged.calls.polygons.length,2,
-  'Equal-price linked polygon and circle have ONE far and ONE normal layer');
-const mergedPaths=multipartMerged.calls.polygons[0].points;
-assert.equal(mergedPaths.length,2,
-  'Panel F retains the second supplied MultiPolygon island after union');
-assert.ok(mergedPaths.some(poly=>polygonContains([38.04,24.04],poly[0])),
+assert.equal(multipartMerged.calls.polygons.length,4,
+  'Equal-price linked polygon and circle retain separate source tiers');
+assert.equal(multipartMerged.calls.circles.length,2,
+  'The adjoining radius source paints as two native circles');
+const sourcedPaths=multipartMerged.calls.polygons.find(p=>
+  p.points.length===2 && Array.isArray(p.points[0][0][0])).points;
+assert.equal(sourcedPaths.length,2,'Panel F retains both supplied MultiPolygon islands');
+assert.ok(sourcedPaths.some(poly=>polygonContains([38.04,24.04],poly[0])),
   'Distant postal polygon island is not silently discarded');
-const polygonWithHole=mergedPaths.find(poly=>poly.length>1);
+const polygonWithHole=sourcedPaths.find(poly=>poly.length>1);
 assert.ok(polygonWithHole&&polygonContains([38,23.70],polygonWithHole[1]),
-  'Uncovered postal hole remains a hole when adjacent station coverage merges');
+  'Uncovered postal hole remains a hole beside a source circle');
 const postalRecord={lat:38,lng:23.62,radiusKm:10,
   coverage_geojson:multipart,key:'station:1'};
 assert.equal(multipartMerged.geometry.overlaps(postalRecord,
   {lat:38,lng:23.70,radiusKm:0.2,key:'isolated-in-hole'}),false,
   'A station entirely inside a saved polygon hole cannot falsely merge');
-console.log('Panel F: polygon/multipolygon union retains all sourced islands and holes');
+console.log('Panel F: true source polygon islands/holes beside native circles');
 const remoteOverlapStation={...station(2,'At second polygon island',38.04,24.075),
   inner_radius_km:1,outer_radius_km:4};
 const remoteSeamFixture=fixture({stations:[storedMulti,remoteOverlapStation],
@@ -307,7 +340,7 @@ assert.ok(remoteSeam.points.every(point=>point[1]>24.0&&point[1]<24.08),
   'Panel C seam follows actual second source polygon boundary, not first shell');
 assert.ok(lengthKm(remoteSeam.points)<=1.8,
   'MultiPolygon stitch respects the same local seam length cap');
-console.log('Panels C/F: sourced multipolygon boundary and union regressions passed');
+console.log('Panels C/F: sourced multipolygon boundary and source circles passed');
 
 /* Resolution is a data contract, not hard-coded price interpretation inside
  * the seam painter. An override-aware resolver can replace this map in #107. */
@@ -504,8 +537,8 @@ const routing = fixture({
 }});
 assert.equal(routing.calls.markers[0].options.icon.options.className,'grtrans-origin-marker');
 routing.elements['grtrans-map-preview'].events.click();
-assert.equal(routing.calls.polygons.length,4,
-  'One outer union and one inner tier plus the ferry station outer and inner tier');
+assert.equal(routing.calls.polygons.length,6,
+  'All three source stations retain their normal and FAR circle tiers');
 assert.ok(routing.calls.polygons.every(p => !p.layer.removed));
 routing.calls.mapEvents.click({latlng:{lat:38,lng:23.7}});
 routing.calls.mapEvents.click({latlng:{lat:37.1,lng:25.37}});

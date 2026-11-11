@@ -1,6 +1,6 @@
-/* Pure, bundled geometry for the admin visual map.
- * The stored radius is authoritative for pricing; soft blobs are visual hints
- * clipped INSIDE that radius. Union contours include only exposed blob edges. */
+/* Admin geometry helpers for source-defined reach and connection marks.
+ * Radius paint uses native Leaflet circles; stored polygons retain their vertices.
+ * Sampled rings below support only proximity, clipping, and seam calculations. */
 (function (global) {
   'use strict';
   const KM = 111.195;
@@ -29,14 +29,6 @@
   const cross = (a, b) => a.x * b.y - a.y * b.x;
   const difference = (a, b) => ({x: a.x - b.x, y: a.y - b.y});
   const move = (a, b, factor) => ({x: a.x + b.x * factor, y: a.y + b.y * factor});
-  const seed = record => {
-    const token = String(record.key ?? (record.lat + ':' + record.lng));
-    let hash = 2166136261;
-    for (let i = 0; i < token.length; i++) {
-      hash = Math.imul(hash ^ token.charCodeAt(i), 16777619) >>> 0;
-    }
-    return hash / 4294967296 * TAU;
-  };
   const decoded = record => {
     const raw = record.coverage_geojson || record.area_coverage_geojson || '';
     if (!raw) return null;
@@ -45,23 +37,35 @@
       return data.type === 'Feature' ? data.geometry : data;
     } catch (_) {return null;}
   };
+  const validNumber = (value, limit) => value !== null && value !== undefined &&
+    String(value).trim() !== '' && Number.isFinite(Number(value)) &&
+    Math.abs(Number(value)) <= limit;
+  const validRadius = value => validNumber(value, Infinity) && Number(value) > 0;
   const geoPaths = record => {
     const feature = decoded(record);
     if (!feature) return null;
-    const polygon = ring => ring.map(p => [Number(p[1]), Number(p[0])]);
-    if (feature.type === 'Polygon') return [feature.coordinates.map(polygon)];
-    if (feature.type === 'MultiPolygon') return feature.coordinates.map(part => part.map(polygon));
-    return null;
+    const parts = feature.type === 'Polygon' ? [feature.coordinates] :
+      feature.type === 'MultiPolygon' ? feature.coordinates : null;
+    const coordinate = p => Array.isArray(p) && p.length >= 2 &&
+      validNumber(p[0],180) && validNumber(p[1],90);
+    const ringValid = ring => Array.isArray(ring) && ring.length >= 4 &&
+      ring.every(coordinate) &&
+      Number(ring[0][0]) === Number(ring[ring.length-1][0]) &&
+      Number(ring[0][1]) === Number(ring[ring.length-1][1]);
+    if (!Array.isArray(parts) || !parts.length ||
+        parts.some(part => !Array.isArray(part) || !part.length ||
+          part.some(ring => !ringValid(ring)))) return null;
+    return parts.map(part => part.map(ring =>
+      ring.map(p => [Number(p[1]),Number(p[0])])));
   };
-  const isValid = record => Number.isFinite(Number(record.lat)) &&
-    Number.isFinite(Number(record.lng)) &&
-    (Number(record.radiusKm) > 0 || geoPaths(record) !== null);
+  const hasPolygon = record => geoPaths(record) !== null;
+  const isValid = record => validNumber(record.lat,90) &&
+    validNumber(record.lng,180) && (validRadius(record.radiusKm) || hasPolygon(record));
   const patchPaths = record => {
-    // Internal precomputed union contours can be rendered as one island too.
-    if (Array.isArray(record.paths)) return record.paths;
+    if (!isValid(record)) return [];
     const geo = geoPaths(record);
     if (geo) return geo;
-    if (!(Number(record.radiusKm) > 0)) return [];
+    // Sampled edge is for stitches/containment only, not a paint layer.
     return [[patchContour(record)]];
   };
   // Tier model: outer reach is the source's complete coverage shape;
@@ -101,12 +105,23 @@
     return output.length>=3?output:[];
   };
   const coverageTiers = (record, innerRadiusKm) => {
-    const outer=patchPaths(record);
+    if (!isValid(record)) return [];
+    const inner=validRadius(innerRadiusKm) ? Number(innerRadiusKm) : 0;
+    const polygon=geoPaths(record);
+    if (!polygon) {
+      const outerKm=Number(record.radiusKm), centre=[Number(record.lat),Number(record.lng)];
+      const tiers=[{kind:'far',paths:[],circle:{centre,radiusMeters:outerKm*1000},
+        fillOpacity:0.16,outline:true}];
+      if (inner>0) tiers.push({kind:'normal',paths:[],
+        circle:{centre,radiusMeters:Math.min(inner,outerKm)*1000},
+        fillOpacity:0.42,outline:false});
+      return tiers;
+    }
+    const outer=polygon;
     const tiers=[{kind:'far',paths:outer,fillOpacity:0.16,outline:true}];
-    const inner=Number(innerRadiusKm)||0;
-    if (inner<=0 || !outer.length) return tiers;
+    if (inner<=0) return tiers;
     const clip=patchContour({lat:record.lat,lng:record.lng,
-      radiusKm:inner,key:record.key}).slice(0,-0||undefined);
+      radiusKm:inner,key:record.key});
     const normal=[];
     for (const part of outer) {
       if(!part.length)continue;
@@ -122,16 +137,15 @@
   };
   const leafletPaths = paths => paths.length === 1
     ? (paths[0].length === 1 ? paths[0][0] : paths[0]) : paths;
-  // Radius-based walking reach is a true circle, as in panel A. There is no
-  // arbitrary wavy alteration to priced geography. CSS softens its paint edge.
-  const blobRadius = radius => Number(radius);
+  // Constant-radius sampling is only for seam and overlap calculations;
+  // rendered radius reach is a true L.circle with metres from source.
   const shapeXY = (record, projection) => {
     const geometry = geoPaths(record);
     if (geometry) return geometry[0][0].map(projection.xy).slice(0, -1);
     const centre = projection.xy([record.lat, record.lng]);
     return Array.from({length: SAMPLES}, (_, i) => {
       const angle = TAU * i / SAMPLES;
-      const radius = blobRadius(record.radiusKm, angle);
+      const radius = Number(record.radiusKm);
       return {x: centre.x + Math.cos(angle) * radius,
         y: centre.y + Math.sin(angle) * radius};
     });
@@ -225,162 +239,6 @@
     }
     return false;
   };
-  // Union of sampled organic polygons: split each boundary at all intersections,
-  // drop every piece contained by any other patch, then link exposed pieces.
-  // This is NOT overpainting full station discs: no buried boundary survives.
-  const unionContours = input => {
-    const records = input.filter(isValid);
-    if (!records.length) return [];
-    if (records.length === 1) return [patchContour(records[0])];
-    const projection = projector(records.map(record => [record.lat, record.lng]));
-    const shapes = records.map(record => shapeXY(record, projection));
-    const exposed = [];
-    for (let i = 0; i < shapes.length; i++) {
-      const poly = shapes[i];
-      const neighbours = records.map((other, j) => j).filter(j => j !== i &&
-        nearby(records[i], records[j], projection));
-      for (let n = 0; n < poly.length; n++) {
-        const a = poly[n], b = poly[(n + 1) % poly.length];
-        const cuts = [0, 1];
-        for (const j of neighbours) {
-          const other = shapes[j];
-          for (let k = 0; k < other.length; k++) {
-            const t = intersection(a, b, other[k], other[(k + 1) % other.length]);
-            if (t !== null && t > EPS && t < 1 - EPS) cuts.push(t);
-          }
-        }
-        cuts.sort((x, y) => x - y);
-        for (let k = 1; k < cuts.length; k++) {
-          if (cuts[k] - cuts[k - 1] < EPS) continue;
-          const from = move(a, difference(b, a), cuts[k - 1]);
-          const to = move(a, difference(b, a), cuts[k]);
-          const midpoint = {x: (from.x + to.x) / 2, y: (from.y + to.y) / 2};
-          if (neighbours.some(j => inside(midpoint, shapes[j]))) continue;
-          exposed.push({from, to});
-        }
-      }
-    }
-    const id = p => Math.round(p.x * 1e5) + ':' + Math.round(p.y * 1e5);
-    const starts = new Map();
-    exposed.forEach((edge, index) => {
-      const key = id(edge.from);
-      if (!starts.has(key)) starts.set(key, []);
-      starts.get(key).push(index);
-    });
-    const unused = new Set(exposed.map((_, index) => index));
-    const rings = [];
-    while (unused.size) {
-      const initial = unused.values().next().value;
-      const firstKey = id(exposed[initial].from);
-      const points = [exposed[initial].from];
-      let cursor = initial, closed = false;
-      while (unused.has(cursor)) {
-        unused.delete(cursor);
-        const edge = exposed[cursor];
-        if (id(edge.to) === firstKey) {closed = true; break;}
-        points.push(edge.to);
-        const next = (starts.get(id(edge.to)) || []).find(index => unused.has(index));
-        if (next === undefined) break;
-        cursor = next;
-      }
-      if (closed && points.length >= 3) rings.push(points.map(projection.ll));
-    }
-    return rings;
-  };
-  // True union of stored polygon/multipolygon coverage. The fast contour
-  // union above handles circles, but its historical first-ring projection
-  // would discard GeoJSON islands and holes. For sourced geometries, retain
-  // every ring and keep only boundary segments with coverage on one side.
-  // This computes a paint union of EXISTING coverage, never new reach.
-  const unionCoveragePaths = input => {
-    const records = input.filter(isValid);
-    if (!records.length) return [];
-    if (!records.some(record => geoPaths(record)))
-      return unionContours(records).map(ring => [ring]);
-    const projection = projector(records.map(r => [r.lat, r.lng]));
-    const parts = records.flatMap(record => patchPaths(record).map(poly =>
-      poly.map(ring => {
-        const xy = ring.map(projection.xy);
-        if (xy.length > 1 && length(xy[0], xy[xy.length - 1]) < EPS) xy.pop();
-        return xy;
-      }).filter(ring => ring.length >= 3)
-    )).filter(poly => poly.length);
-    const covered = point => parts.some(poly =>
-      inside(point, poly[0]) && !poly.slice(1).some(hole => inside(point, hole)));
-    const segments = parts.flatMap(poly => poly.flatMap(ring =>
-      ring.map((from, i) => ({from, to:ring[(i + 1) % ring.length]}))
-        .filter(edge => length(edge.from, edge.to) > EPS)));
-    const exposed = [];
-    const seen = new Set();
-    const id = p => Math.round(p.x * 1e5) + ':' + Math.round(p.y * 1e5);
-    segments.forEach((edge, index) => {
-      const delta = difference(edge.to, edge.from);
-      const cuts = [0, 1];
-      segments.forEach((other, otherIndex) => {
-        if (index === otherIndex) return;
-        const t = intersection(edge.from, edge.to, other.from, other.to);
-        if (t !== null && t > EPS && t < 1 - EPS) cuts.push(t);
-      });
-      cuts.sort((a, b) => a - b);
-      for (let i = 1; i < cuts.length; i++) {
-        if (cuts[i] - cuts[i-1] < EPS) continue;
-        const start = move(edge.from, delta, cuts[i-1]);
-        const end = move(edge.from, delta, cuts[i]);
-        const distance = length(start, end);
-        if (distance < EPS) continue;
-        const midpoint = move(start, difference(end, start), 0.5);
-        const normal = {x: -(end.y-start.y)/distance, y: (end.x-start.x)/distance};
-        const offset = Math.min(0.001, Math.max(1e-6, distance * 0.02));
-        const left = covered(move(midpoint, normal, offset));
-        const right = covered(move(midpoint, normal, -offset));
-        if (left === right) continue;
-        // Orient every exterior or hole boundary with covered area on LEFT.
-        const from = left ? start : end, to = left ? end : start;
-        const key = id(from) + '>' + id(to);
-        if (seen.has(key)) continue;
-        seen.add(key);
-        exposed.push({from, to});
-      }
-    });
-    const outgoing = new Map();
-    exposed.forEach((edge, index) => {
-      const key = id(edge.from);
-      if (!outgoing.has(key)) outgoing.set(key, []);
-      outgoing.get(key).push(index);
-    });
-    const remaining = new Set(exposed.map((_, i) => i));
-    const rings = [];
-    while (remaining.size) {
-      let cursor = remaining.values().next().value;
-      const firstKey = id(exposed[cursor].from);
-      const points = [exposed[cursor].from];
-      let closed = false;
-      while (remaining.has(cursor)) {
-        remaining.delete(cursor);
-        const edge = exposed[cursor];
-        if (id(edge.to) === firstKey) {closed = true; break;}
-        points.push(edge.to);
-        const next = (outgoing.get(id(edge.to)) || []).find(i => remaining.has(i));
-        if (next === undefined) break;
-        cursor = next;
-      }
-      if (closed && points.length >= 3) {
-        const signed = points.reduce((sum, p, i) =>
-          sum + cross(p, points[(i + 1) % points.length]), 0);
-        if (Math.abs(signed) > EPS) rings.push({xy:points, signed});
-      }
-    }
-    const outer = rings.filter(ring => ring.signed > 0)
-      .map(ring => ({...ring, holes:[]}));
-    for (const hole of rings.filter(ring => ring.signed < 0)) {
-      const parent = outer.filter(ring => inside(hole.xy[0], ring.xy))
-        .sort((a, b) => a.signed - b.signed)[0];
-      if (parent) parent.holes.push(hole.xy);
-    }
-    return outer.map(part => [part.xy, ...part.holes].map(ring =>
-      ring.map(projection.ll)));
-  };
-
   // Only an explicit priced station-bound link can establish same-service
   // membership. Shared mode labels alone NEVER merge separate operators.
   const stationGroups = (stations, legs, costs = {}) => {
@@ -402,10 +260,10 @@
       const from = lookup.get(Number(leg.from_station_id));
       const to = lookup.get(Number(leg.to_station_id));
       // A port can also be a bus/train stop: the LINK kind, not station labels,
-      // determines whether equal-cost overlapping reaches share a silhouette.
+      // determines whether overlapping equal-cost reaches share a service colour.
       if (!from || !to) continue;
-      // Same-priced station reaches unite; expensive and cheaper reaches
-      // must keep their individual fill silhouettes for panel G.
+      // Membership groups share a colour; every source boundary remains separate.
+      // Differently priced reaches retain distinct colours for panel G.
       const fromCost = Number(costs[from.id_station]), toCost = Number(costs[to.id_station]);
       if (!Object.hasOwn(costs, from.id_station) || !Object.hasOwn(costs, to.id_station) ||
           !Number.isFinite(fromCost) || !Number.isFinite(toCost) ||
@@ -673,9 +531,8 @@
     }catch(_){return [];}
   };
   global.GrtransCoverage = Object.freeze({
-    kind, patchContour, patchPaths, leafletPaths, coverageTiers, overlaps, stationGroups, unionContours,
-    zigzagSeam, stitches, defaultResolutions, airArc, seaLine, routePaths,
-    unionCoveragePaths,
-    containsPatch, islandStitchRings
+    kind, patchContour, patchPaths, leafletPaths, coverageTiers, overlaps, stationGroups,
+    hasPolygon, isValid, zigzagSeam, stitches, defaultResolutions, airArc, seaLine,
+    routePaths, containsPatch, islandStitchRings
   });
 }(window));
