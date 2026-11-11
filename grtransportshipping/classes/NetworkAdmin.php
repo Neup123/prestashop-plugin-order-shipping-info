@@ -350,9 +350,11 @@ return '<div class="alert alert-danger" data-grtrans-autosave-result="error">'
                 $inner=$key==='outer_radius_km' ? (float)$values['inner_radius_km'] : (float)$values['area_radius_km'];
                 $inherited=$value===null || $value==='';
                 $effective=GrTransportNetworkSettings::effectiveOuterKm($value,$inner);
-                $out.='<p class="help-block">'
+                $out.='<p class="help-block" data-grtrans-far-default="'
+                    .self::esc(GrTransportNetworkSettings::get('station_outer_km')).'">'
+                    .'<span data-grtrans-far-effective>'
                     .self::esc($inherited ? 'Inheriting global FAR default' : 'Explicit FAR override')
-                    .' · effective '.self::esc(number_format($effective,2,'.','')).' km. '
+                    .' · effective '.self::esc(number_format($effective,2,'.','')).' km.</span> '
                     .'Clear the field and save to inherit the current global default ('
                     .self::esc(GrTransportNetworkSettings::get('station_outer_km')).' km). '
                     .'An explicit override must be at least the normal inner radius.</p>'

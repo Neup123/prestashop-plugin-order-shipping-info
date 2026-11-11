@@ -1,5 +1,5 @@
 /* Configure shell and ordinary settings: content-sized controls, never schema towers. */
-#grtrans-configure {--grtrans-border:#ccd2d8;--grtrans-quiet:#566371;--grtrans-space:.75rem}
+#grtrans-configure {--grtrans-border:#ccd2d8;--grtrans-quiet:#566371;--grtrans-space:.75rem;--grtrans-form-label-column:minmax(12rem,18rem)}
 #grtrans-configure .grtrans-configure-nav {display:flex;flex-wrap:wrap;gap:.65rem;margin:0 0 1rem;align-items:center}
 #grtrans-configure .grtrans-configure-nav a {display:inline-flex;align-items:center;padding:.35rem .7rem;border:1px solid var(--grtrans-border);border-radius:5px;text-decoration:none}
 #grtrans-configure .grtrans-configure-nav a:focus-visible {outline:2px solid #1756a9;outline-offset:2px}
@@ -23,7 +23,7 @@
 #grtrans-configure.grtrans-js .grtrans-fallback-submit {display:none}
 #grtrans-configure .grtrans-settings-panel {margin:1.25rem 0 0}
 #grtrans-configure .grtrans-settings-grid {display:flex;gap:1rem;flex-wrap:wrap;align-items:flex-start}
-#grtrans-configure .grtrans-setting-row {display:grid;grid-template-columns:minmax(13rem,20rem) max-content;align-items:center;gap:.4rem .7rem;margin:.5rem 0}
+#grtrans-configure .grtrans-setting-row {display:grid;grid-template-columns:var(--grtrans-form-label-column) minmax(0,max-content);align-items:center;gap:.4rem .7rem;margin:.5rem 0}
 #grtrans-configure .grtrans-setting-row label {margin:0;font-weight:500;max-width:32ch}
 #grtrans-configure .grtrans-setting-row .grtrans-value-control {justify-content:flex-start}
 #grtrans-configure .grtrans-switch {width:2rem;height:1.25rem;cursor:pointer;accent-color:#177245}
@@ -50,11 +50,13 @@
 #grtrans-configure .grtrans-secret {overflow-wrap:anywhere;max-width:46rem;display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
 #grtrans-configure .grtrans-secret code {overflow-wrap:anywhere;min-width:0}
 #grtrans-configure .grtrans-route-fieldsets {display:flex;flex-direction:column;gap:.75rem;align-items:flex-start}
-#grtrans-configure .grtrans-route-fieldsets .grtrans-control-group {display:grid;grid-template-columns:repeat(2,max-content);gap:.4rem .85rem;max-width:100%}
-#grtrans-configure .grtrans-route-fieldsets .form-group {margin:0;min-width:0}
-#grtrans-configure .grtrans-route-fieldsets .control-label {display:block;font-weight:500;margin:0 0 .25rem}
+#grtrans-configure .grtrans-route-fieldsets .grtrans-control-group {display:grid;grid-template-columns:minmax(0,1fr);gap:.55rem;max-width:100%}
+#grtrans-configure .grtrans-route-fieldsets .form-group {display:grid;grid-template-columns:var(--grtrans-form-label-column) minmax(0,max-content);align-items:start;gap:.25rem .75rem;margin:0;min-width:0;max-width:100%}
+#grtrans-configure .grtrans-route-fieldsets .control-label {display:block;float:none;width:auto;max-width:100%;text-align:left;font-weight:500;margin:0;padding-top:.45rem}
+#grtrans-configure .grtrans-route-field-control {display:flex;align-items:center;flex-wrap:wrap;gap:.3rem;min-width:0;max-width:100%}
+#grtrans-configure .grtrans-route-field-control .grtrans-select-search {flex-basis:100%;margin:0}
 #grtrans-configure .grtrans-route-fieldsets .grtrans-route-switch {display:inline-flex;align-items:center;min-height:2.2rem}
-#grtrans-configure .grtrans-route-fieldsets .help-block {font-size:.85em;max-width:38ch}
+#grtrans-configure .grtrans-route-fieldsets .help-block {font-size:.85em;max-width:38ch;flex-basis:100%}
 #grtrans-configure .grtrans-actions {min-width:0!important;gap:.4rem!important}
 #grtrans-configure .grtrans-actions .btn {padding:.3rem .5rem}
 #grtrans-configure .grtrans-actions .material-icons {font-size:1.2rem;line-height:1;vertical-align:middle}
@@ -64,8 +66,9 @@
 #grtrans-configure .grtrans-row-more[open] form {position:absolute;z-index:50;right:0;background:var(--grtrans-menu-bg,#fff);border:1px solid var(--grtrans-border);box-shadow:0 3px 8px #0002;padding:.4rem}
 #grtrans-configure .grtrans-route-grid .grtrans-route-location {max-width:28rem;overflow:hidden;text-overflow:ellipsis}
 @media (max-width:850px) {
-  #grtrans-configure .grtrans-route-fieldsets .grtrans-control-group {grid-template-columns:minmax(0,1fr)}
+  #grtrans-configure .grtrans-route-fieldsets .form-group,
   #grtrans-configure .grtrans-setting-row {grid-template-columns:minmax(0,1fr);gap:.25rem}
+  #grtrans-configure .grtrans-route-fieldsets .control-label {padding-top:0}
   #grtrans-configure .grtrans-settings-grid {display:block}
   #grtrans-configure .grtrans-settings-grid .grtrans-control-group {margin:0 0 .8rem}
   #grtrans-configure .grtrans-result-facts {grid-template-columns:minmax(0,1fr)}

@@ -79,6 +79,8 @@ class Grtransportshipping extends CarrierModule
             return false;
         }
         try {
+            require_once __DIR__ . '/classes/StationSeeder.php';
+            GrTransportStationSeeder::seedOnce();
             GrTransportRouteRepository::seedOnce();
         } catch (Throwable $e) {
             PrestaShopLogger::addLog('Transport demo seed failed: ' . $e->getMessage(), 3);
@@ -721,6 +723,9 @@ class Grtransportshipping extends CarrierModule
         }
         $rows = Db::getInstance()->executeS('SELECT * FROM `' . _DB_PREFIX_ . 'grtrans_route` ORDER BY id_route ASC') ?: [];
         $warnings = GrTransportQuoteEngine::shadowedSuspensions($rows);
+        $routeStations = Db::getInstance()->executeS(
+            'SELECT `id_station`, `name` FROM `' . _DB_PREFIX_ . 'grtrans_station` ORDER BY `name` ASC, `id_station` ASC'
+        ) ?: [];
         $out.='<nav class="grtrans-configure-nav" aria-label="'.$this->escape($this->l('Configure sections')).'">'
             .'<a href="#grtrans-routes">'.$this->escape($this->l('Priced routes')).'</a>'
             .'<a href="#grtrans-network">'.$this->escape($this->l('Service map and network')).'</a>'
@@ -758,7 +763,6 @@ class Grtransportshipping extends CarrierModule
             .grtrans-actions form{margin:0}
             .grtrans-editor{scroll-margin-top:90px}
             .grtrans-editor.is-editing{border-left:5px solid #337ab7}
-            .grtrans-editor .form-group{max-width:640px}
             .grtrans-editor .help-block{display:block;margin-top:5px}
         </style>';
         $out .= '<div class="grtrans-route-grid table-responsive"><table class="table table-hover">'
@@ -872,13 +876,37 @@ class Grtransportshipping extends CarrierModule
             $helpId = $fieldId . '-help';
             $out .= '<div class="form-group' . ($hasError ? ' has-error' : '') . '">'
                 . '<label class="control-label" for="' . $fieldId . '">'
-                . $this->escape($this->l($labels[$field])) . '</label>';
+                . $this->escape($this->l($labels[$field])) . '</label>'
+                . '<div class="grtrans-route-field-control">';
             $aria = $hasError ? ' aria-invalid="true" aria-describedby="' . $errorId . '"' : '';
             if ($field==='pickup_only' || $field==='demo') {
                 $out.='<div class="grtrans-route-switch">'
                     .'<input type="hidden" name="'.$field.'" value="0">'
                     .'<input type="checkbox" class="grtrans-switch" role="switch" id="'.$fieldId.'" name="'.$field.'" value="1"'
                     .($value==='1'?' checked':'').$aria.'></div>';
+            } elseif ($field === 'origin_name' || $field === 'station_name') {
+                // The route contract stores station names, not station IDs.
+                $out .= '<select class="form-control grtrans-size-l" id="' . $fieldId
+                    . '" name="' . $field . '" data-grtrans-station-picker' . $aria . '>'
+                    . '<option value=""' . ($value === '' ? ' selected' : '') . '>'
+                    . $this->escape($this->l('Choose a station')) . '</option>';
+                $matchedStation = false;
+                foreach ($routeStations as $station) {
+                    $stationName = trim((string) ($station['name'] ?? ''));
+                    if ($stationName === '') continue;
+                    $chosen = !$matchedStation && $value === $stationName;
+                    if ($chosen) $matchedStation = true;
+                    $out .= '<option value="' . $this->escape($stationName) . '"'
+                        . ($chosen ? ' selected' : '') . '>' . $this->escape($stationName)
+                        . ' (#' . (int) $station['id_station'] . ')</option>';
+                }
+                // Editing a historical route must not silently rewrite an unmatched name.
+                if (!$matchedStation && $value !== '' && ($editing !== null || $submitted !== null)) {
+                    $out .= '<option value="' . $this->escape($value) . '" selected data-grtrans-legacy>'
+                        . $this->escape($this->l('Existing value not in stations:')) . ' '
+                        . $this->escape($value) . '</option>';
+                }
+                $out .= '</select>';
             } elseif ($spec['kind'] === 'select') {
                 $choices = GrTransportRouteFields::choices($field);
                 $out .= '<select class="form-control grtrans-size-' . ($sizes[$field] ?? 'm')
@@ -904,13 +932,12 @@ class Grtransportshipping extends CarrierModule
                     . '" id="' . $fieldId . '" name="' . $field
                     . '" value="' . $this->escape($value) . '" maxlength="'
                     . GrTransportRouteFields::limit($field) . '"'
-                    . (in_array($field,['origin_name','station_name','city'],true)
-                        ? ' list="grtrans-suggest-'.$field.'"' : '')
+                    . ($field==='city' ? ' list="grtrans-suggest-city"' : '')
                     . ($field==='price' ? ' inputmode="decimal"' : '')
                     . ($field==='postal_prefix' ? ' inputmode="numeric"' : '')
                     . $aria . '>';
-                if (in_array($field,['origin_name','station_name','city'],true)) {
-                    $out.='<datalist id="grtrans-suggest-'.$field.'">';
+                if ($field==='city') {
+                    $out.='<datalist id="grtrans-suggest-city">';
                     $seen=[];
                     foreach ($rows as $known) {
                         $suggestion=trim((string)($known[$field] ?? ''));
@@ -930,7 +957,7 @@ class Grtransportshipping extends CarrierModule
                 $out .= '<span class="help-block text-danger" id="' . $errorId . '">'
                     . $this->escape($this->l($fieldErrors[$field])) . '</span>';
             }
-            $out .= '</div>';
+            $out .= '</div></div>';
         }
         if ($open) $out.='</fieldset>';
         $out.='</div>';

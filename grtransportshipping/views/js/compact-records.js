@@ -342,6 +342,71 @@
     }
     update();
   }
+  function enhanceRouteStationPickers() {
+    for(const select of root.querySelectorAll('#grtrans-route-editor select[data-grtrans-station-picker]')) {
+      const choices=[...select.options].filter(option=>option.value && !option.hasAttribute('data-grtrans-legacy'));
+      const search=el('input','form-control grtrans-size-m grtrans-select-search');
+      search.type='search';search.placeholder='Filter stations by name or number';
+      search.setAttribute('aria-label','Filter '+(select.labels?.[0]?.textContent?.trim() || 'stations'));
+      search.setAttribute('aria-controls',select.id);
+      const suggestions=el('datalist');suggestions.id='grtrans-station-options-'+select.name;
+      choices.forEach(option=>suggestions.append(new Option(option.textContent)));
+      search.setAttribute('list',suggestions.id);
+      const matches=()=>{
+        const query=normalize(search.value.trim());
+        return choices.filter(option=>normalize(option.textContent).includes(query) || normalize(option.value).includes(query));
+      };
+      const choose=()=>{
+        const found=matches();
+        const query=normalize(search.value.trim());
+        const exact=found.find(option=>normalize(option.textContent)===query || normalize(option.value)===query);
+        const selected=exact || (found.length===1?found[0]:null);
+        if(!query || !selected) return;
+        if(select.value!==selected.value) {
+          select.value=selected.value;
+          select.dispatchEvent(new Event('change',{bubbles:true}));
+        }
+      };
+      search.addEventListener('input',()=>{
+        const found=new Set(matches());
+        choices.forEach(option=>{option.hidden=!found.has(option) && !option.selected;});
+      });
+      search.addEventListener('change',choose);
+      search.addEventListener('keydown',event=>{
+        if(event.key==='Enter') {event.preventDefault();choose();}
+      });
+      select.before(search,suggestions);
+    }
+  }
+  function enhanceFarHelp(form) {
+    for(const [innerName,outerName] of [['inner_radius_km','outer_radius_km'],
+      ['area_radius_km','area_outer_radius_km']]) {
+      const inner=form.querySelector('[name="'+innerName+'"]');
+      const outer=form.querySelector('[name="'+outerName+'"]');
+      const group=outer?.closest('.form-group');
+      const help=group?.querySelector('[data-grtrans-far-default]');
+      const effectiveText=help?.querySelector('[data-grtrans-far-effective]');
+      if(!inner || !outer || !effectiveText) continue;
+      const inheritedDefault=Number(help.dataset.grtransFarDefault);
+      const refresh=()=>{
+        const explicit=outer.value.trim()!=='';
+        const innerValue=inner.value.trim()===''?NaN:Number(inner.value);
+        const outerValue=explicit?Number(outer.value):inheritedDefault;
+        const valid=Number.isFinite(innerValue) && Number.isFinite(outerValue)
+          && !inner.validity?.badInput && !outer.validity?.badInput;
+        effectiveText.textContent=(explicit?'Explicit FAR override':'Inheriting global FAR default')
+          +' · effective '+(valid?Math.max(innerValue,outerValue).toFixed(2):'—')+' km.';
+      };
+      [inner,outer].forEach(input=>{
+        input.addEventListener('input',refresh);
+        input.addEventListener('change',refresh);
+      });
+      group.querySelector('.grtrans-clear-far')?.addEventListener('click',()=>{
+        outer.value='';refresh();
+      });
+      refresh();
+    }
+  }
   function enhanceEditor() {
     const editor=root.querySelector('#grtrans-network-editor');
     const form=editor?.querySelector('form');if(!form) return;
@@ -395,6 +460,7 @@
     if(original)original.remove();
     const commit=form.querySelector('button[name="grtrans_network_submit"]');
     if(commit)commit.before(layout);else form.append(layout);
+    enhanceFarHelp(form);
     if(entity==='legs') {
       const destination=form.querySelector('[name="to_station_id"]');
       const tariff=form.querySelector('[name="tariff_type"]');
@@ -460,5 +526,5 @@
     variantChoice.addEventListener('change',()=>{variant.value=variantChoice.value;});
     syncVariants();
   }
-  enhanceRoutes();enhanceNetwork();enhanceEditor();
+  enhanceRoutes();enhanceNetwork();enhanceRouteStationPickers();enhanceEditor();
 })();
