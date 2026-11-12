@@ -615,6 +615,11 @@
   if(!model.modesEnabled(initialMode))initialMode='select';
   setActive(activeEntity);
   if(formId>0)activateRow(activeEntity,formId);
+  // Keep the updated record visible in its table after a successful signed POST.
+  // Direct ?network_edit visits still focus the chosen record in the context panel.
+  const savedNetworkRecord=[...root.querySelectorAll('.alert-success[role="status"]')]
+    .some(alert=>/Network record (?:updated|created)\./.test(alert.textContent||''));
+  if(formId>0 && !savedNetworkRecord)activateRow(activeEntity,formId);
   switchMode(initialMode);
   if(formEntity==='stations'&&formId>0&&initialMode==='move'&&!dragMarker)enableMove(formId);
   // Failed POSTs retain the previous submitted position in the server-rendered

@@ -166,6 +166,8 @@ try {
   await form.locator('input[name="area_radius_km"]').fill('26');
   await form.getByRole('button', { name: 'Save changes' }).click();
   await page.getByText('Network record updated.', { exact: true }).first().waitFor({ timeout: 20000 });
+  assert.equal(await areaRow.getByRole('link', { name: 'Edit' }).isVisible(),true,
+    'A successful network edit must leave the updated row and its Edit link visible');
   savedArea = await storedArea();
   assert.equal(savedArea.to_station_id, null,
     'Direct-area to_station_id must remain SQL NULL after UPDATE');
