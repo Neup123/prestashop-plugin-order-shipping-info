@@ -6,6 +6,10 @@ const password=process.env.TEST_ADMIN_PASSWORD;
 if(!adminUrl||!user||!password)throw new Error('Missing ephemeral browser test configuration');
 const browser=await chromium.launch({headless:true});
 const page=await browser.newPage({viewport:{width:1440,height:1000}});
+page.on('pageerror',error=>{
+  console.error('[map-workspace pageerror]',error.message);
+  console.error(error.stack||String(error));
+});
 try {
   await page.goto('http://localhost:8080/admin-dev/',{waitUntil:'domcontentloaded',timeout:45000});
   await page.locator('input[name="email"],input[type="email"]').first().fill(user);
@@ -16,7 +20,8 @@ try {
   const stage=page.locator('#grtrans-map-workspace');
   // A stage element can exist before restoreView and Leaflet size reconciliation.
   const waitForWorkspace=async(entity,view=null)=>{
-    await page.waitForFunction(({entity,view})=>{
+    try {
+      await page.waitForFunction(({entity,view})=>{
       const workspace=window.GrtransMapWorkspace;
       if(workspace?.stage?.dataset.grtransViewReady!=='true')return false;
       const list=workspace.stage.querySelector('section.grtrans-network-list:not([hidden])');
@@ -26,6 +31,27 @@ try {
       return Math.abs(centre.lat-view.lat)<1e-5 && Math.abs(centre.lng-view.lng)<1e-5
         && map.getZoom()===view.zoom;
     },{entity,view},{timeout:20000});
+    } catch(error) {
+      let details;
+      try {
+        details=await page.evaluate(expected=>{
+          const workspace=window.GrtransMapWorkspace,bridge=window.GrtransMapBridge;
+          const stage=workspace?.stage||document.querySelector('#grtrans-map-workspace');
+          const lists=stage?[...stage.querySelectorAll('section.grtrans-network-list:not([hidden])')]:[];
+          let center=null,zoom=null,mapError=null,savedView=null;
+          try {if(bridge?.map){const point=bridge.map.getCenter();center={lat:point.lat,lng:point.lng};zoom=bridge.map.getZoom();}}
+          catch(e){mapError=String(e);}
+          try {savedView=sessionStorage.getItem('grtrans-map-workspace-view');}
+          catch(e){savedView='unavailable: '+String(e);}
+          return {url:location.href,workspacePresent:!!workspace,bridgePresent:!!bridge,
+            grtransViewReady:stage?.dataset.grtransViewReady??null,stagePresent:!!stage,
+            visibleListEntities:lists.map(list=>list.dataset.grtransEntity),
+            center,zoom,mapError,expected,savedView};
+        },view);
+      } catch(inspectionError){details={inspectionError:String(inspectionError),expected:view};}
+      console.error('[map-workspace waitForWorkspace timeout] entity='+entity+' '+JSON.stringify(details));
+      throw error;
+    }
   };
   await stage.waitFor({timeout:20000});
   await waitForWorkspace('stations');

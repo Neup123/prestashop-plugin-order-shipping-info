@@ -573,7 +573,8 @@
     expand.setAttribute('aria-pressed',String(document.fullscreenElement===stage));
     bridge.map.invalidateSize();
   });
-  const resize=()=>bridge.map.invalidateSize();
+  // Preserve the camera when a late ResizeObserver callback reconciles layout.
+  const resize=()=>bridge.map.invalidateSize({pan:false});
   if(typeof ResizeObserver==='function')new ResizeObserver(resize).observe(mapDock);
   for(const entity of entities){
     const list=listDock.querySelector('[data-grtrans-entity="'+entity+'"]');
