@@ -58,7 +58,65 @@
     return [];
   };
   const recordId = (entity, record) => number(record && record[{stations:'id_station', legs:'id_leg',transfers:'id_transfer',branches:'id_branch',branch_stock:'id_branch_stock'}[entity]]);
+  // A line is a connected, non-branching chain of existing priced legs, not a new entity.
+  // Labels and modes must agree; unrelated services sharing an operator are not grouped.
+  const lineFor = (data, legId) => {
+    const all=data.legs || [];
+    const chosen=all.find(leg=>number(leg.id_leg)===number(legId));
+    if(!chosen)return null;
+    if(!chosen.to_station_id)return {legs:[chosen],stops:[number(chosen.from_station_id)],reorderable:false,area:true};
+    const same=all.filter(leg=>leg.to_station_id && leg.mode===chosen.mode
+      && leg.operator_label===chosen.operator_label && number(leg.active??1)===1);
+    const connected=new Map([[number(chosen.id_leg),chosen]]);
+    let changed=true;
+    while(changed){
+      changed=false;
+      const stops=new Set([...connected.values()].flatMap(leg=>[number(leg.from_station_id),number(leg.to_station_id)]));
+      for(const leg of same){
+        if(connected.has(number(leg.id_leg)))continue;
+        if(stops.has(number(leg.from_station_id))||stops.has(number(leg.to_station_id))){
+          connected.set(number(leg.id_leg),leg);changed=true;
+        }
+      }
+    }
+    const legs=[...connected.values()];
+    const out=new Map(),incoming=new Map();
+    for(const leg of legs){
+      const from=number(leg.from_station_id),to=number(leg.to_station_id);
+      out.set(from,[...(out.get(from)||[]),leg]);
+      incoming.set(to,(incoming.get(to)||0)+1);
+    }
+    const branched=[...out.values()].some(edges=>edges.length!==1)
+      || [...incoming.values()].some(count=>count!==1);
+    const first=[...out.keys()].filter(id=>!incoming.has(id));
+    if(branched||first.length!==1){
+      return {legs:legs.sort((a,b)=>number(a.stop_order)-number(b.stop_order)||number(a.id_leg)-number(b.id_leg)),
+        stops:[],reorderable:false,area:false};
+    }
+    const ordered=[],stops=[first[0]],seen=new Set();
+    let cursor=first[0];
+    while(out.has(cursor)&&!seen.has(cursor)){
+      seen.add(cursor);
+      const leg=out.get(cursor)[0];ordered.push(leg);
+      cursor=number(leg.to_station_id);stops.push(cursor);
+    }
+    return {legs:ordered,stops,reorderable:ordered.length===legs.length && new Set(stops).size===stops.length,area:false};
+  };
+  const reorderLine = (line, stopIds) => {
+    if(!line?.reorderable||stopIds.length!==line.stops.length
+      ||new Set(stopIds.map(number)).size!==line.stops.length
+      ||line.stops.some(id=>!stopIds.map(number).includes(id))) return null;
+    return line.legs.map((leg,i)=>({...leg,from_station_id:number(stopIds[i]),
+      to_station_id:number(stopIds[i+1]),stop_order:i+1}));
+  };
+  const stationPriceShade = line => {
+    if(!line?.reorderable)return new Map();
+    const cumulative=[0];
+    for(const leg of line.legs)cumulative.push(cumulative[cumulative.length-1]+Math.max(0,number(leg.price)||0));
+    const max=Math.max(...cumulative);
+    return new Map(line.stops.map((id,i)=>[id,max>0?cumulative[i]/max:0]));
+  };
   const needsDraft = mode => ['place','move','connect-leg','connect-transfer','draw','edit-coverage','place-area','radius','edit-route'].includes(mode);
   const modesEnabled = mode => MODES.includes(mode);
-  return Object.freeze({MODES,ENTITY,validPoint,normalizedPoint,nudge,pair,originFor,recordsAt,recordId,needsDraft,modesEnabled});
+  return Object.freeze({MODES,ENTITY,validPoint,normalizedPoint,nudge,pair,originFor,recordsAt,recordId,needsDraft,modesEnabled,lineFor,reorderLine,stationPriceShade});
 });

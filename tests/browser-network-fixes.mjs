@@ -38,7 +38,11 @@ async function checkMarkerAssets(mapSelector, label) {
 
 async function addStation(name, lat, lng, hub) {
   await page.goto(adminUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
+  await page.getByRole('button',{name:'Place station',exact:true}).click();
+  await page.locator('#grtrans-network-editor').waitFor({state:'visible',timeout:20000});
   const form = page.locator('#grtrans-network-editor form');
+  assert.equal((await form.locator('button[name="grtrans_network_submit"]').innerText()).trim(),
+    'Create record','New station form must expose the create action');
   await form.locator('input[name="name"]').fill(name);
   await form.locator('input[name="address_text"]').fill('Ephemeral CI station');
   await form.locator('input[name="lat"]').fill(String(lat));
@@ -83,6 +87,10 @@ try {
     .filter({ hasText: 'CI map source' });
   await stationRow.getByRole('link', { name: 'Edit' }).click();
   let form = page.locator('#grtrans-network-editor form');
+  assert.equal((await form.locator('button[name="grtrans_network_submit"]').innerText()).trim(),
+    'Save changes','Editing a station in place must update the submit action');
+  assert.equal(new URL(await form.getAttribute('action'),page.url()).searchParams.get('network_edit'),source,
+    'Editing must bind the correct GET target as well as the hidden network_id');
   await form.locator('input[name="address_text"]').fill('CI edited station');
   await form.getByRole('button', { name: 'Save changes' }).click();
   await page.getByText('Network record updated.', { exact: true }).first().waitFor({ timeout: 20000 });
@@ -90,7 +98,13 @@ try {
   const legsUrl = new URL(adminUrl);
   legsUrl.searchParams.set('network_entity', 'legs');
   await page.goto(legsUrl.toString(), { waitUntil: 'domcontentloaded', timeout: 45000 });
+  await page.getByRole('button',{name:'Add legs',exact:true}).click();
+  await page.locator('#grtrans-network-editor').waitFor({state:'visible',timeout:20000});
   form = page.locator('#grtrans-network-editor form');
+  assert.equal((await form.locator('button[name="grtrans_network_submit"]').innerText()).trim(),
+    'Create record','Add legs must reset the submit mode');
+  assert.equal(new URL(await form.getAttribute('action'),page.url()).searchParams.has('network_edit'),false,
+    'Create action must not retain a previous record target');
   await form.locator('select[name="from_station_id"]').selectOption(source);
   await form.locator('select[name="to_station_id"]').selectOption(target);
   await form.locator('input[name="operator_label"]').fill('CI leg');
@@ -106,7 +120,13 @@ try {
   // verify that its DB-backed map snapshot has SQL NULL (not numeric zero).
   // A DB seed would bypass the Db::insert/update nullable writer bug.
   await page.goto(legsUrl.toString(), { waitUntil: 'domcontentloaded', timeout: 45000 });
+  await page.getByRole('button',{name:'Add legs',exact:true}).click();
+  await page.locator('#grtrans-network-editor').waitFor({state:'visible',timeout:20000});
   form = page.locator('#grtrans-network-editor form');
+  assert.equal((await form.locator('button[name="grtrans_network_submit"]').innerText()).trim(),
+    'Create record','Add legs must reset the submit mode');
+  assert.equal(new URL(await form.getAttribute('action'),page.url()).searchParams.has('network_edit'),false,
+    'Create action must not retain a previous record target');
   await form.locator('select[name="from_station_id"]').selectOption(source);
   await form.locator('select[name="to_station_id"]').selectOption('');
   await form.locator('select[name="mode"]').selectOption('other');
@@ -146,6 +166,8 @@ try {
   await form.locator('input[name="area_radius_km"]').fill('26');
   await form.getByRole('button', { name: 'Save changes' }).click();
   await page.getByText('Network record updated.', { exact: true }).first().waitFor({ timeout: 20000 });
+  assert.equal(await areaRow.getByRole('link', { name: 'Edit' }).isVisible(),true,
+    'A successful network edit must leave the updated row and its Edit link visible');
   savedArea = await storedArea();
   assert.equal(savedArea.to_station_id, null,
     'Direct-area to_station_id must remain SQL NULL after UPDATE');

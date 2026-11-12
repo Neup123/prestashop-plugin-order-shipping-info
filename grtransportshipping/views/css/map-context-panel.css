@@ -1,0 +1,38 @@
+/* #131 contextual map tools; keep the original administrative tables usable. */
+#grtrans-configure .grtrans-map-sidebar {scrollbar-gutter:auto;overflow-y:auto}
+#grtrans-configure .grtrans-map-sidebar.grtrans-has-context .grtrans-map-nav,
+#grtrans-configure .grtrans-map-sidebar.grtrans-has-context .grtrans-map-lists {display:none}
+#grtrans-configure .grtrans-map-sidebar.grtrans-has-context .grtrans-map-context {margin:0;border-top:0}
+#grtrans-configure .grtrans-map-context h4 {margin:.25rem 0 .65rem;font-size:1.12rem}
+#grtrans-configure .grtrans-context-line-facts {display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:.3rem .65rem;margin:.5rem 0}
+#grtrans-configure .grtrans-context-line-facts dt {color:var(--grtrans-quiet,#566371);font-weight:500}
+#grtrans-configure .grtrans-context-line-facts dd {margin:0;overflow-wrap:anywhere}
+#grtrans-configure .grtrans-context-stops {list-style:none;padding:0;margin:.65rem 0;display:flex;flex-direction:column;gap:.3rem}
+#grtrans-configure .grtrans-context-stop {display:grid;grid-template-columns:1.2rem 1.2rem minmax(5rem,1fr) auto auto;gap:.3rem;align-items:center;padding:.4rem .35rem;background:rgba(44,72,114,calc(var(--grtrans-stop-shade,0) * .44));border:1px solid var(--grtrans-map-edge,#c7d0d8);border-radius:5px}
+#grtrans-configure .grtrans-context-stop.grtrans-dragging {opacity:.45}
+#grtrans-configure .grtrans-stop-drag {cursor:grab;font-size:1.15rem}
+#grtrans-configure .grtrans-stop-name {min-width:0;overflow-wrap:anywhere}
+#grtrans-configure .grtrans-stop-name small {font-size:.75rem;display:block}
+#grtrans-configure .grtrans-context-icon {display:inline-flex;align-items:center;justify-content:center;min-width:1.9rem;min-height:1.9rem;padding:.1rem .25rem}
+#grtrans-configure .grtrans-context-icon .material-icons {font-size:1.05rem}
+#grtrans-configure .grtrans-stop-menu {position:relative}
+#grtrans-configure .grtrans-stop-menu>summary {cursor:pointer;list-style:none}
+#grtrans-configure .grtrans-stop-menu>summary::-webkit-details-marker {display:none}
+#grtrans-configure .grtrans-stop-menu[open]>.grtrans-context-icon {position:absolute;z-index:4;right:0;top:1.8rem;background:var(--grtrans-card-bg,#fff)}
+#grtrans-configure .grtrans-context-station-details {grid-column:1 / -1;min-width:0}
+#grtrans-configure .grtrans-context-station-details>summary {cursor:pointer;font-size:.8rem}
+#grtrans-configure .grtrans-context-station-grid {display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:.2rem .5rem;margin:.45rem 0}
+#grtrans-configure .grtrans-context-station-grid dt {color:var(--grtrans-quiet,#566371);font-weight:500}
+#grtrans-configure .grtrans-context-station-grid dd {margin:0;overflow-wrap:anywhere}
+#grtrans-configure .grtrans-price-variation {display:flex;align-items:center;gap:.4rem;cursor:pointer}
+#grtrans-configure .grtrans-context-note {font-size:.82rem;color:var(--grtrans-quiet,#566371)}
+#grtrans-configure .grtrans-context-feedback {display:block;margin:.5rem 0;font-size:.82rem}
+#grtrans-configure .grtrans-context-feedback[data-state=error] {color:#b8322a}
+#grtrans-configure .grtrans-context-endpoints {display:grid;grid-template-columns:1fr 1fr;gap:.7rem;margin:.65rem 0}
+#grtrans-configure .grtrans-endpoint {display:flex;align-items:flex-start;gap:.3rem;flex-wrap:wrap}
+#grtrans-configure .grtrans-map-editor-dock #grtrans-route-editor {padding:.45rem;margin:.5rem 0;border:0;box-shadow:none}
+#grtrans-configure .grtrans-map-editor-dock #grtrans-route-editor[hidden],
+#grtrans-configure .grtrans-map-editor-dock #grtrans-network-editor[hidden] {display:none!important}
+#grtrans-configure .grtrans-map-editor-dock #grtrans-network-editor [data-grtrans-server-groups] .grtrans-editor-group:first-child .grtrans-editor-fields {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.45rem}
+#grtrans-configure .grtrans-map-editor-dock #grtrans-network-editor [data-grtrans-server-groups] .grtrans-editor-group:first-child .grtrans-editor-fields .form-group {min-width:0}
+@media(max-width:600px){#grtrans-configure .grtrans-map-editor-dock #grtrans-network-editor [data-grtrans-server-groups] .grtrans-editor-group:first-child .grtrans-editor-fields {grid-template-columns:1fr}}

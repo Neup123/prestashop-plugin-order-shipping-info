@@ -5,7 +5,7 @@
   const TITLES = {stations:'Stations', legs:'Transport connections', transfers:'Station transfers',
     branches:'Dispatch locations', branch_stock:'Products available to dispatch'};
   const KEEP = {routes:[1,2,3,4,5,7,9,10,12],
-    stations:[1,2,3,4,9,14,15], legs:[1,2,3,4,5,6,28,30],
+    stations:[1,2,3,4,9,14,15], legs:[1,2,3,4,5,6,28,31],
     transfers:[1,2,3,4,5,8,9], branches:[1,2,3,5], branch_stock:[1,2,3,4,5,7]};
   const FIELDS = {
     id_station:'Record number', id_leg:'Record number', id_transfer:'Record number',
@@ -31,13 +31,13 @@
     origin_station_id:'Dispatch from station', id_product:'Product',
     id_product_attribute:'Product variant', quantity:'Available units',
     'Last verified (UTC)':'Last checked', 'FAR default / override':'Extended reach',
-    Actions:'Actions', ID:'Record number'
+    stop_order:'Stop order on line', Actions:'Actions', ID:'Record number'
   };
   const GROUPS = {
     stations:[['Station',['name','type','address_text','is_origin_hub','active']],
       ['Location and service reach',['lat','lng','inner_radius_km','outer_radius_km','coverage_kind','coverage_geojson']],
       ['Advanced',['patch_precedence']]],
-    legs:[['Connection',['from_station_id','to_station_id','mode','operator_label','bidirectional','active']],
+    legs:[['Connection',['from_station_id','to_station_id','mode','operator_label','bidirectional','active','stop_order']],
       ['Price',['tariff_type','price','rate_per_unit','estimate','estimate_low_factor','estimate_high_factor']],
       ['Timing',['lead_hours','preparation_hours','transit_min_hours','transit_max_hours']],
       ['Direct service area',['area_name','area_lat','area_lng','area_radius_km','area_outer_radius_km','area_coverage_kind','area_coverage_geojson','route_geojson']],

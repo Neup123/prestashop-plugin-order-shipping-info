@@ -81,6 +81,16 @@ check(!GrTransportNetworkRepository::quotePathActive(
     ['source'=>'network','origin_hub_id'=>2,'network_path'=>['edges'=>[]]],$active));
 check(str_contains(file_get_contents(__DIR__.'/../grtransportshipping/classes/NetworkRepository.php'),
     'TINYINT(1) NOT NULL DEFAULT 1'));
+check(GrTransportNetworkFields::fields('legs')['stop_order']===['nonnegative_int']);
+$spatialSource=file_get_contents(__DIR__.'/../grtransportshipping/views/js/map-spatial-editor.js');
+check(str_contains($spatialSource,'nominatim.openstreetmap.org/search?format=json&limit=1&postalcode='));
+check(str_contains($spatialSource,'Postcode not found — enter coordinates manually'));
+check(str_contains($spatialSource,'grtrans-postcode-lookup'));
+check(GrTransportNetworkFields::defaults('legs')['stop_order']===0);
+check(str_contains(file_get_contents(__DIR__.'/../grtransportshipping/classes/NetworkRepository.php'),
+    '`stop_order` INT UNSIGNED NOT NULL DEFAULT 0'));
+check(str_contains(file_get_contents(__DIR__.'/../grtransportshipping/classes/NetworkAdmin.php'),
+    "'stop_order'"));
 check(str_contains(file_get_contents(__DIR__.'/../grtransportshipping/classes/NetworkAdmin.php'),
     'grtrans-disabled-record'));
 check(str_contains(file_get_contents(__DIR__.'/../grtransportshipping/classes/NetworkAdmin.php'),

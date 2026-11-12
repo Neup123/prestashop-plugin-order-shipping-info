@@ -53,6 +53,7 @@ final class GrTransportNetworkFields
                     'patch_precedence'=>['choice',['none','override','yield']],
                     'override_winner'=>['choice',['none','from','to']],
                     'active'=>['bool'],
+                    'stop_order'=>['nonnegative_int'],
                 ];
             case 'branches':
                 return [
@@ -96,7 +97,7 @@ final class GrTransportNetworkFields
                 'area_name'=>'', 'area_lat'=>null, 'area_lng'=>null, 'area_radius_km'=>0,
                 'area_outer_radius_km'=>null,
                 'area_coverage_kind'=>'radius','area_coverage_geojson'=>'','route_geojson'=>'',
-                'patch_precedence'=>'none','override_winner'=>'none','active'=>1,
+                'patch_precedence'=>'none','override_winner'=>'none','active'=>1,'stop_order'=>0,
             ];
             case 'branches': return ['name'=>'', 'origin_station_id'=>0, 'active'=>1];
             case 'branch_stock': return [
@@ -136,6 +137,9 @@ final class GrTransportNetworkFields
                 } elseif ($key==='active') {
                     // Legacy import/API clients omit this newly optional field.
                     $input[$key]=1;
+                } elseif ($key==='stop_order') {
+                    // Existing imports and legs have no ordered stop metadata.
+                    $input[$key]=0;
                 } else {
                     throw new InvalidArgumentException('Missing network field: ' . $key);
                 }
