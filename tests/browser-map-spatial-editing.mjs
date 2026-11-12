@@ -30,6 +30,8 @@ try {
   await stage.locator('#grtrans-network-editor').waitFor({state:'visible',timeout:20000});
   assert.equal(await getForm().locator('[name="network_id"]').inputValue(),String(id),
     'Station Edit must open the correct record in the dock without navigation');
+  assert.equal((await getForm().locator('button[name="grtrans_network_submit"]').innerText()).trim(),
+    'Save changes','Docked station edit must update its submit button');
   await stage.waitFor();
   const stationForm=getForm();
   const beforeShape=await stationForm.locator('[name="coverage_geojson"]').inputValue();

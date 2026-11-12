@@ -76,7 +76,7 @@
   editorDock.append(editor);
   if(routeEditor){editorDock.append(routeEditor);routeEditor.hidden=true;}
   // Retain the submitted edit and the values of any rejected signed network POST.
-  const retainedNetworkDraft=Boolean(editor.querySelector('.grtrans-record-error'));
+  let retainedNetworkDraft=Boolean(editor.querySelector('.grtrans-record-error'));
   editor.hidden=!(formId>0 || retainedNetworkDraft);
   const objectNames={stations:'station',legs:'transport connection',transfers:'station transfer',
     branches:'dispatch location',branch_stock:'product availability'};
@@ -136,10 +136,14 @@
       if(id===0){try{sessionStorage.setItem(pendingAddKey,entity);}catch(_){}}
       visit(entity,id,nextMode);return false;
     }
-    // A failed new-record POST must not be overwritten by creation defaults.
-    if(id===0 && formId===0 && retainedNetworkDraft) {
+    // Reopening a failed server-rendered edit must preserve its submitted values.
+    if(id===formId && retainedNetworkDraft) {
       editor.hidden=false;if(routeEditor)routeEditor.hidden=true;editorDock.hidden=false;
       showContext();return true;
+    }
+    if(retainedNetworkDraft) {
+      // A different record does not inherit the previous record's error chrome.
+      editor.querySelector('.grtrans-record-error')?.remove();retainedNetworkDraft=false;
     }
     const values=id>0?networkRecord(entity,id):recordData.fieldDefaults?.[entity];
     if(!values){notice('Record not in the current dataset. Reload before editing.',true);return false;}
@@ -151,10 +155,25 @@
       if(input.type==='checkbox')input.checked=value==='1';else input.value=value;
     }
     editor.querySelector('h4').textContent=(id?'Edit ':'Add ')+(objectNames[entity]||entity)+(id?' #'+id:'');
+    // The server renders Create/Save and the ready-state label for its initial mode.
+    // In-place editing must synchronize that chrome with the signed network_id.
+    const submit=form.querySelector('button[name="grtrans_network_submit"]');
+    if(submit)submit.textContent=id>0?'Save changes':'Create record';
+    const readyState=editor.querySelector('[data-grtrans-network-state]');
+    if(readyState) {
+      const readyLabel=id>0?'No changes':'Ready to create';
+      readyState.dataset.readyLabel=readyLabel;
+      readyState.dataset.state='ready';readyState.textContent=readyLabel;
+    }
+    const networkUrl=new URL(form.action,location.href);
+    networkUrl.searchParams.set('network_entity',entity);
+    if(id>0)networkUrl.searchParams.set('network_edit',String(id));
+    else networkUrl.searchParams.delete('network_edit');
+    networkUrl.hash='grtrans-network-editor';form.action=networkUrl.toString();
     editor.hidden=false;if(routeEditor)routeEditor.hidden=true;editorDock.hidden=false;
     stage.dispatchEvent(new CustomEvent('grtrans:map-editor-record',
       {detail:{entity,id:Number(id)},bubbles:true}));
-    if(id>0)selected={entity,id:Number(id)};
+    selected=id>0?{entity,id:Number(id)}:null;
     showContext();return true;
   }
   function editRoute(id=0){
@@ -172,6 +191,7 @@
       else input.value=value==null?'':String(value);
     }
     let proof=routeForm.querySelector('[name="grtrans_edit_proof"]');
+    const priorRouteId=Number(new URL(routeForm.action,location.href).searchParams.get('grtrans_edit')||0);
     if(id>0){
       if(!proof){proof=node('input');proof.type='hidden';proof.name='grtrans_edit_proof';routeForm.append(proof);}
       proof.value=row?.dataset.grtransRouteProof||'';
@@ -180,6 +200,15 @@
     url.searchParams.delete('grtrans_edit');if(id>0)url.searchParams.set('grtrans_edit',String(id));
     url.hash='grtrans-route-editor';routeForm.action=url.toString();
     routeEditor.querySelector('h3').textContent=id?'Editing route #'+id:'Add route';
+    const routeSubmit=routeForm.querySelector('button[name="grtrans_save"]');
+    if(routeSubmit)routeSubmit.textContent=id?'Save route changes':'Add route';
+    if(priorRouteId!==Number(id)) {
+      // The server's edit-only notice, verification note, and failure details
+      // describe the previous record and must not leak into the newly opened one.
+      routeEditor.querySelector(':scope > .alert-info')?.remove();
+      routeEditor.querySelector('#grtrans-form-errors')?.remove();
+      routeForm.querySelector(':scope > p')?.remove();
+    }
     routeEditor.classList.toggle('is-editing',id>0);
     routeEditor.hidden=false;editor.hidden=true;editorDock.hidden=false;
     history.replaceState(history.state,'',location.pathname+location.search+'#grtrans-route-editor');

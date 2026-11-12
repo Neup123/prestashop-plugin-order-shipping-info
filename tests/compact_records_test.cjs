@@ -49,6 +49,10 @@ assert.doesNotMatch(styles,/min-width:min\(24rem,90vw\)/);
 assert.match(workspace,/if \(button && !button\.checked\) button\.click\(\)/);
 assert.match(workspace,/grtrans-map-pending-add/,'Explicit Add intent survives entity navigation');
 assert.match(workspace,/add\.addEventListener\('click',\(\)=>editNetwork\(activeEntity,0,'select'\)\)/);
+assert.ok(workspace.includes('button[name="grtrans_network_submit"]'),
+  'Network mode switch must synchronize the visible submit action');
+assert.ok(workspace.includes("id>0?'Save changes':'Create record'"));
+assert.ok(workspace.includes("id?'Save route changes':'Add route'"));
 assert.match(crm,/grtrans-columns:/);
 assert.match(crm,/localStorage\.setItem/);
 assert.match(crm,/grtrans-columns-chooser/);

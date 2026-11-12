@@ -187,6 +187,8 @@ try {
   // F12: the route form is now in the map dock and opens only on demand.
   await page.getByRole('button', {name:'Add priced route'}).click();
   let addForm = page.locator('form').filter({has:page.locator('button[name="grtrans_save"]')}).first();
+  assert.equal((await addForm.locator('button[name="grtrans_save"]').innerText()).trim(),
+    'Add route','Docked route Add must expose its create label');
   assert.equal(await addForm.locator('textarea[name="notice"]').isVisible(), true,
     'Notice must remain visible after add-form navigation');
   assert.equal(await addForm.locator('input[name="id_route"]').count(), 0,
@@ -229,6 +231,8 @@ try {
   if (!(await editAdvancedToggle.isChecked())) await editAdvancedToggle.check();
   assert.equal(await editAdvancedToggle.isChecked(), true, 'Advanced must remain enabled for the edit form');
   form = page.locator('form').filter({has:page.locator('button[name="grtrans_save"]')}).first();
+  assert.equal((await form.locator('button[name="grtrans_save"]').innerText()).trim(),
+    'Save route changes','Docked route Edit must expose the update label');
   await form.locator('select[name="route_status"]').selectOption('suspended');
   await form.locator('input[name="demo"][type="checkbox"]').uncheck();
   await form.locator('button[name="grtrans_save"]').click();
