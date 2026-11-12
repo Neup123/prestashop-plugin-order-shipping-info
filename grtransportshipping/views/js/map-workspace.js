@@ -664,7 +664,10 @@
     else if(requested==='move'&&selected?.entity==='stations')editNetwork('stations',selected.id);
     else if(['draw','edit-coverage','radius','edit-route'].includes(requested)){
       const target=selected?.entity||formEntity;
-      if(target==='stations'||target==='legs')editNetwork(target,selected?.entity===target?selected.id:0);
+      const id=selected?.entity===target?selected.id:0;
+      // Switching spatial tools must not reset the current form's unsaved draft.
+      if((target==='stations'||target==='legs') &&
+        (editor.hidden||editorDock.hidden||!matchingEditor(target,id)))editNetwork(target,id);
     }else if(requested==='place-area')editNetwork('legs',0,'place-area');
   },true);
   // Capture before Leaflet patch/pin/line handlers. Placement is coordinates
