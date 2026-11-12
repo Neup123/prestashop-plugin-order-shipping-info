@@ -18,17 +18,18 @@
 #grtrans-configure .grtrans-network-toolbar .material-icons {font-size:1.1rem;line-height:1}
 #grtrans-configure .grtrans-network-list {margin:.7rem 0 1.2rem}
 #grtrans-configure .grtrans-network-list[hidden] {display:none!important}
-#grtrans-configure .grtrans-compact-network th:not(.grtrans-keep),
-#grtrans-configure .grtrans-compact-network td:not(.grtrans-keep) {display:none}
-#grtrans-configure .grtrans-compact-routes th:nth-child(1),
-#grtrans-configure .grtrans-compact-routes td:nth-child(1),
-#grtrans-configure .grtrans-compact-routes th:nth-child(6),
-#grtrans-configure .grtrans-compact-routes td:nth-child(6),
-#grtrans-configure .grtrans-compact-routes th:nth-child(8),
-#grtrans-configure .grtrans-compact-routes td:nth-child(8) {display:none}
+#grtrans-configure :is(.grtrans-compact-network,.grtrans-compact-routes) th:not(.grtrans-keep),
+#grtrans-configure :is(.grtrans-compact-network,.grtrans-compact-routes) td:not(.grtrans-keep) {display:none}
 #grtrans-configure .grtrans-compact-network td,#grtrans-configure .grtrans-compact-routes td {vertical-align:middle}
 #grtrans-configure .grtrans-compact-network td.grtrans-keep,#grtrans-configure .grtrans-compact-routes td {max-width:17rem;overflow-wrap:break-word;word-break:normal}
 #grtrans-configure .grtrans-compact-network td.grtrans-keep:last-child {max-width:none}
+/* A custom station choice switches the compact two-line sidebar to a scrolling table. */
+#grtrans-configure .grtrans-compact-network[data-grtrans-entity="stations"].grtrans-custom-columns {display:table!important;table-layout:auto;width:100%;min-width:36rem}
+#grtrans-configure .grtrans-compact-network[data-grtrans-entity="stations"].grtrans-custom-columns thead {display:table-header-group!important}
+#grtrans-configure .grtrans-compact-network[data-grtrans-entity="stations"].grtrans-custom-columns tbody {display:table-row-group!important}
+#grtrans-configure .grtrans-compact-network[data-grtrans-entity="stations"].grtrans-custom-columns tr {display:table-row!important}
+#grtrans-configure .grtrans-compact-network[data-grtrans-entity="stations"].grtrans-custom-columns :is(th,td).grtrans-keep {display:table-cell;white-space:normal;overflow-wrap:anywhere;overflow:visible}
+#grtrans-configure .grtrans-network-list[data-grtrans-entity="stations"]:has(.grtrans-custom-columns) .table-responsive {overflow-x:auto}
 /* Keep all station summary columns visible in a compact two-line sidebar layout. */
 #grtrans-configure .grtrans-network-list[data-grtrans-entity="stations"] .table-responsive {width:100%;max-width:100%;overflow:visible}
 #grtrans-configure .grtrans-compact-network[data-grtrans-entity="stations"] {display:block;width:100%;min-width:0;max-width:100%;table-layout:fixed}
@@ -68,6 +69,29 @@
   white-space:nowrap;
 }
 #grtrans-configure .grtrans-compact-network tr[hidden],#grtrans-configure .grtrans-compact-routes tr[hidden] {display:none!important}
+#grtrans-configure .grtrans-disabled-record>td {opacity:.55;filter:grayscale(.55)}
+#grtrans-configure .grtrans-disabled-record .grtrans-record-switch {opacity:1;filter:none}
+#grtrans-configure .grtrans-record-switch {display:inline-flex;align-items:center;gap:.25rem;cursor:pointer;margin:0 .25rem 0 0}
+#grtrans-configure .grtrans-record-switch input {appearance:auto;width:1rem;height:1rem;accent-color:#216e53;cursor:pointer;margin:0}
+#grtrans-configure .grtrans-record-switch input:disabled {cursor:not-allowed}
+#grtrans-configure .grtrans-switch-state {font-size:.72rem;max-width:12rem;white-space:normal}
+#grtrans-configure .grtrans-inline-state[data-state="saved"],#grtrans-configure .grtrans-switch-state[data-state="saved"] {color:#14643e}
+#grtrans-configure .grtrans-inline-state[data-state="error"],#grtrans-configure .grtrans-switch-state[data-state="error"] {color:#a72b31}
+#grtrans-configure .grtrans-crm-editable {cursor:text}
+#grtrans-configure .grtrans-crm-editable:focus-visible {outline:2px solid #1756a9}
+#grtrans-configure .grtrans-crm-inline {min-width:11rem;max-width:22rem}
+#grtrans-configure .grtrans-crm-inline-controls {display:flex;align-items:center;flex-wrap:wrap;gap:.3rem}
+#grtrans-configure .grtrans-crm-inline-controls :is(input,select,textarea) {max-width:18rem;min-width:5rem}
+#grtrans-configure .grtrans-crm-save {padding:.1rem .25rem;line-height:1}
+#grtrans-configure .grtrans-crm-save .material-icons {font-size:1rem}
+#grtrans-configure .grtrans-columns-chooser {display:inline-block;position:relative;margin:.25rem;vertical-align:middle}
+#grtrans-configure .grtrans-columns-chooser>summary {list-style:none;cursor:pointer}
+#grtrans-configure .grtrans-columns-chooser>summary::-webkit-details-marker {display:none}
+#grtrans-configure .grtrans-columns-chooser[open] {z-index:95}
+#grtrans-configure .grtrans-columns-panel {position:absolute;z-index:96;right:0;top:100%;max-height:20rem;overflow:auto;min-width:14rem;max-width:min(24rem,90vw);padding:.6rem;background:var(--grtrans-card-bg,#fff);color:inherit;border:1px solid var(--grtrans-border,#ccd2d8);box-shadow:0 5px 15px #0002}
+#grtrans-configure .grtrans-columns-panel label {display:flex;gap:.5rem;align-items:center;margin:.15rem 0;white-space:normal;cursor:pointer}
+#grtrans-configure .grtrans-columns-panel input {margin:0}
+#grtrans-configure [data-grtrans-fact-index][hidden] {display:none!important}
 #grtrans-configure .grtrans-selected-record>td.grtrans-keep {box-shadow:inset 0 0 0 2px #3977aa}
 #grtrans-configure .grtrans-network-actions {width:1%;min-width:0;white-space:nowrap}
 #grtrans-configure .grtrans-route-actions .grtrans-actions {min-width:0;max-width:100%}

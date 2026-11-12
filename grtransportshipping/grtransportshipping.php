@@ -51,7 +51,7 @@ class Grtransportshipping extends CarrierModule
     {
         $this->name = 'grtransportshipping';
         $this->tab = 'shipping_logistics';
-        $this->version = '0.14.0';
+        $this->version = '0.15.0';
         $this->author = 'Neup123';
         $this->need_instance = 0;
         $this->bootstrap = true;
@@ -391,15 +391,16 @@ class Grtransportshipping extends CarrierModule
         $pinned = GrTransportCartQuote::pinned($cartId, $addressId, $fingerprint);
         if ($pinned !== null) {
             if (($pinned['source'] ?? '')==='network') {
-                $networkNow=GrTransportNetworkRepository::snapshot();
-                $hasBranches=!empty($networkNow['branches']);
+                $networkNow=GrTransportNetworkRepository::activeSnapshot();
+                $hasBranches=!empty($networkNow['branch_inventory_configured']);
                 $selectedBranch=(int)($pinned['branch_id'] ?? 0);
                 $eligible=$hasBranches ? GrTransportBranchAvailability::eligible(
                     $cart,$networkNow['branches'],$networkNow['branch_stock'] ?? []
                 ) : null;
                 if (($hasBranches && (!$selectedBranch || !in_array(
-                    $selectedBranch,$eligible['branch_ids'],true)))
-                    || (!$hasBranches && $selectedBranch)) {
+                    $selectedBranch,$eligible['branch_ids'] ?? [],true)))
+                    || (!$hasBranches && $selectedBranch)
+                    || !GrTransportNetworkRepository::quotePathActive($pinned,$networkNow)) {
                     return $this->requestQuotes[$key]=[
                         'status'=>'unmatched','quote'=>null,
                     ]; // Never sell a previously pinned, now unfulfillable branch dispatch.
@@ -415,15 +416,15 @@ class Grtransportshipping extends CarrierModule
         if (!is_array($routes)) {
             throw new RuntimeException('Transport route lookup failed');
         }
-        $network=$location === null ? [] : GrTransportNetworkRepository::snapshot();
+        $network=$location === null ? [] : GrTransportNetworkRepository::activeSnapshot();
         $origins=null;
         $branchByOrigin=[];
-        if (!empty($network['branches'])) {
+        if (!empty($network['branches']) || !empty($network['branch_inventory_configured'])) {
             $eligible=GrTransportBranchAvailability::eligible(
                 $cart,$network['branches'],$network['branch_stock'] ?? []
             );
-            $origins=$eligible['origin_ids'];
-            $branchByOrigin=$eligible['by_origin'];
+            $origins=$eligible['origin_ids'] ?? [];
+            $branchByOrigin=$eligible['by_origin'] ?? [];
         }
         $result = GrTransportNetworkQuote::resolve($routes,$network,
             (string) $address->postcode, (string) $address->city, $location,
@@ -582,8 +583,8 @@ class Grtransportshipping extends CarrierModule
             && !in_array($result['status'], ['ambiguous', 'suspended'], true)) {
             $location = GrTransportNetworkQuote::validLocation($pin);
             if ($location !== null) {
-                $snapshot=GrTransportNetworkRepository::snapshot();
-                if (!empty($snapshot['branches'])) {
+                $snapshot=GrTransportNetworkRepository::activeSnapshot();
+                if (!empty($snapshot['branch_inventory_configured'])) {
                     // A public quote page has no cart inventory. Never offer a
                     // branch-specific network price without checking all items.
                     $result=['status'=>'requires_cart','quote'=>null];
@@ -629,7 +630,8 @@ class Grtransportshipping extends CarrierModule
             return GrTransportNetworkAdmin::handle($this);
         }
         $assets=$this->escape(_MODULE_DIR_.$this->name.'/views/');
-        $out='<div id="grtrans-configure"><link rel="stylesheet" href="'.$assets.'css/configure-admin.css">'
+        $out='<div id="grtrans-configure" data-grtrans-employee="'
+            .(int)($this->context->employee->id ?? 0).'"><link rel="stylesheet" href="'.$assets.'css/configure-admin.css">'
             .'<link rel="stylesheet" href="'.$assets.'css/compact-records.css">'
             .'<link rel="stylesheet" href="'.$assets.'css/map-workspace.css">'
             .'<link rel="stylesheet" href="'.$assets.'css/map-spatial-editor.css">'
@@ -774,12 +776,16 @@ class Grtransportshipping extends CarrierModule
         foreach (require __DIR__ . '/data/stations.php' as $station) {
             $cityByStation[$station['name']] = $station['cities'][0] ?? '';
         }
-        $out .= '<div class="grtrans-route-grid table-responsive"><table class="table table-hover">'
+        $routeSchema=$this->escape(json_encode(GrTransportRouteFields::formFields(),
+            JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_THROW_ON_ERROR));
+        $out .= '<div class="grtrans-route-grid table-responsive"><table class="table table-hover"'
+            .' data-grtrans-crm-schema="'.$routeSchema.'">'
             . '<thead><tr><th>' . $this->escape($this->l('ID')) . '</th><th>' . $this->escape($this->l('Mode')) . '</th>'
             . '<th>' . $this->escape($this->l('From')) . '</th><th>' . $this->escape($this->l('Pickup station')) . '</th>'
             . '<th>' . $this->escape($this->l('City')) . '</th><th>' . $this->escape($this->l('Postcode prefix')) . '</th>'
             . '<th>' . $this->escape($this->l('EUR')) . '</th><th>' . $this->escape($this->l('Pickup only')) . '</th>'
             . '<th>' . $this->escape($this->l('State')) . '</th><th>' . $this->escape($this->l('Demo')) . '</th>'
+            . '<th>' . $this->escape($this->l('Notice')) . '</th>'
             . '<th>' . $this->escape($this->l('Actions')) . '</th></tr></thead><tbody>';
         foreach ($rows as $r) {
             $id = (int) $r['id_route'];
@@ -787,7 +793,13 @@ class Grtransportshipping extends CarrierModule
             $isDemo = (int) $r['demo'] === 1;
             $rowClass = $status === GrTransportRouteState::SUSPENDED
                 ? 'grtrans-row-suspended' : ($isDemo ? 'grtrans-row-demo' : '');
-            $out .= '<tr class="' . $rowClass . '"><td>' . $id . '</td>';
+            $recordPayload=$this->escape(json_encode(
+                array_intersect_key($r,GrTransportRouteFields::formFields()),
+                JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_INVALID_UTF8_SUBSTITUTE));
+            $out .= '<tr class="' . $rowClass . '" data-grtrans-record-id="'.$id.'"'
+                .' data-grtrans-record="'.$recordPayload.'"'
+                .' data-grtrans-route-proof="'.$this->escape($this->routeEditProof($id)).'">'
+                .'<td>' . $id . '</td>';
             $modeChoices = GrTransportRouteFields::choices('mode');
             $out .= '<td>' . $this->escape($this->l($modeChoices[$r['mode']] ?? $r['mode'])) . '</td>';
             foreach (['origin_name', 'station_name', 'city', 'postal_prefix', 'price'] as $field) {
@@ -802,10 +814,17 @@ class Grtransportshipping extends CarrierModule
                 . '<td><span class="grtrans-pill grtrans-state-' . $this->escape($status) . '">'
                 . $this->escape($this->l(GrTransportRouteState::STATE_LABELS[$status])) . '</span></td>'
                 . '<td><span class="grtrans-pill ' . ($isDemo ? 'grtrans-demo' : 'grtrans-verified') . '">'
-                . $this->escape($isDemo ? $this->l('Unverified estimate') : $this->l('Operator-confirmed')) . '</span></td>';
+                . $this->escape($isDemo ? $this->l('Unverified estimate') : $this->l('Operator-confirmed')) . '</span></td>'
+                . '<td>' . $this->escape($r['notice'] ?? '') . '</td>';
             $editLabel=$this->escape($this->l('Edit'));
             $moreLabel=$this->escape($this->l('More actions'));
             $out .= '<td><div class="grtrans-actions">'
+                . '<label class="grtrans-record-switch" title="Enable or suspend route">'
+                . '<input type="checkbox" role="switch" data-grtrans-toggle-active'
+                . ' aria-label="Enable route #'.$id.'"'
+                .($status==='available' ? ' checked' : '')
+                .($status==='draft' ? ' disabled' : '').'>'
+                .'<output class="grtrans-switch-state" aria-live="polite"></output></label>'
                 . '<a class="btn btn-default btn-sm" title="'.$editLabel.'" aria-label="'.$editLabel.'" href="'
                 . $action . '&amp;grtrans_edit=' . $id . '#grtrans-route-editor">'
                 . '<span class="material-icons" aria-hidden="true">edit</span></a>'
@@ -988,6 +1007,7 @@ class Grtransportshipping extends CarrierModule
         return $out . GrTransportNetworkAdmin::render($this) . GrTransportNetworkSimulator::render($this)
             . '<script src="'.$assets.'js/configure-admin.js"></script>'
             . '<script src="'.$assets.'js/compact-records.js"></script>'
+            . '<script src="'.$assets.'js/crm-records.js"></script>'
             . '<script src="'.$assets.'js/map-workspace-model.js"></script>'
             . '<script src="'.$assets.'js/map-workspace.js"></script>'
             . '<script src="'.$assets.'js/map-spatial-model.js"></script>'

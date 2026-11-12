@@ -32,7 +32,8 @@ final class GrTransportNetworkQuote
         // When branches exist, absence of an eligibility filter is NOT
         // permission to use every hub. Only an actual whole-cart check may
         // supply eligible origins. Without branches, old graph behavior holds.
-        if (!empty($network['branches']) && $originIds===null) $originIds=[];
+        if ((!empty($network['branches']) || !empty($network['branch_inventory_configured']))
+            && $originIds===null) $originIds=[];
         $graph=GrTransportNetworkGraph::routes($stations,$legs,$transfers,$originIds);
         $choices=[];
         foreach (GrTransportNetworkGraph::candidates($stations,$location[0],$location[1]) as $candidate) {
@@ -143,7 +144,8 @@ final class GrTransportNetworkQuote
     /** Simulate one named station rather than silently switching to another overlapping station. */
     public static function forStation(array $network,int $id,?array $originIds=null,?array $parcel=null,array $branchByOrigin=[]): array
     {
-        if (!empty($network['branches']) && $originIds===null) $originIds=[];
+        if ((!empty($network['branches']) || !empty($network['branch_inventory_configured']))
+            && $originIds===null) $originIds=[];
         $graph=GrTransportNetworkGraph::routes($network['stations'] ?? [],
             GrTransportNetworkTariff::apply($network['legs'] ?? [],$parcel ?? []),
             $network['transfers'] ?? [],$originIds);
