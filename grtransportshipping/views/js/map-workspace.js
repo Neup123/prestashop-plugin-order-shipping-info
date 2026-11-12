@@ -159,15 +159,22 @@
   }
   function activateRow(entity,id) {
     if (!entities.includes(entity)||id<=0) return;
+    if (!lists.some(list=>list.dataset.grtransEntity===entity)) {
+      visit(entity,id,'select');return;
+    }
     setActive(entity);
     const section=listDock.querySelector('[data-grtrans-entity="'+entity+'"]');
     const row=[...(section?.querySelectorAll('tr[data-grtrans-record-id]')||[])].find(r=>Number(r.dataset.grtransRecordId)===Number(id));
     const button=row?.querySelector('[data-grtrans-select-record]');
-    if (button && button.getAttribute('aria-pressed')!=='true') button.click();
+    if (button && !button.checked) button.click();
     else { selected={entity,id};highlight(entity,id);showContext(); }
   }
   function setActive(entity) {
     if (!entities.includes(entity)) return;
+    // Missing categories are fetched through normal server navigation.
+    if (!lists.some(list=>list.dataset.grtransEntity===entity)) {
+      visit(entity,0,'select');return;
+    }
     activeEntity=entity;
     for (const list of lists) list.hidden=list.dataset.grtransEntity!==entity;
     for (const link of tabs) {
@@ -229,6 +236,8 @@
       const [lat,lng]=pointFields();
       if(lat)lat.value=originalFields[0];
       if(lng)lng.value=originalFields[1];
+      if(lat)lat.dispatchEvent(new Event('input',{bubbles:true}));
+      if(lng)lng.dispatchEvent(new Event('input',{bubbles:true}));
     }
     originalFields=null;
     if (originalPair) {
@@ -412,7 +421,13 @@
     input.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();submit();}});
   }
   root.addEventListener('grtrans:record-selected',event=>{
-    if(event.detail?.entity==='branch_stock'&&Number(event.detail.id)>0)stockQuantityEditor(Number(event.detail.id));
+    const entity=event.detail?.entity,id=Number(event.detail?.id);
+    if(entities.includes(entity) && id>0) {
+      selected={entity,id};highlight(entity,id);showContext();
+    } else if(selected?.entity===entity) {
+      selected=null;bridge.clearFocus();showContext();
+    }
+    if(entity==='branch_stock'&&id>0)stockQuantityEditor(id);
     else if(inlineStock){inlineStock.remove();inlineStock=null;}
   });
   window.addEventListener('grtrans:map-station-selected',event=>{
@@ -424,6 +439,9 @@
   for(const link of tabs)link.addEventListener('click',event=>{
     const entity=new URL(link.href,location.href).searchParams.get('network_entity');
     if(!entities.includes(entity))return;
+    if(!lists.some(list=>list.dataset.grtransEntity===entity)) {
+      saveView();return; // Load the selected category through its server link.
+    }
     event.preventDefault();if(mode!=='select')switchMode('select');setActive(entity);
     const url=new URL(location.href);url.searchParams.set('network_entity',entity);
     history.replaceState(history.state,'',url.toString());

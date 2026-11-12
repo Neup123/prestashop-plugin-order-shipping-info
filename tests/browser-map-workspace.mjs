@@ -20,7 +20,7 @@ try {
   const map=page.locator('#grtrans-network-map');
   const height=await map.evaluate(element=>element.getBoundingClientRect().height);
   assert.ok(height>=600,'Map must use a substantial viewport-relative height: '+height);
-  assert.equal(await stage.locator('section.grtrans-network-list').count(),5);
+  assert.equal(await stage.locator('section.grtrans-network-list').count(),1,'Only the active server-rendered list exists');
   assert.equal(await stage.locator('section.grtrans-network-list:not([hidden])').count(),1);
   assert.match(await stage.locator('[data-grtrans-entity="stations"] thead').innerText(),/Can dispatch parcels/);
   assert.doesNotMatch(await stage.locator('[data-grtrans-entity="stations"] thead').innerText(),/is origin hub/);
@@ -28,17 +28,62 @@ try {
     const bridge=window.GrtransMapBridge;
     return {id:bridge.map._leaflet_id,lat:bridge.map.getCenter().lat,lng:bridge.map.getCenter().lng,zoom:bridge.map.getZoom()};
   });
+  const fallbackContext=await browser.newContext({javaScriptEnabled:false});
+  await fallbackContext.addCookies(await page.context().cookies());
+  try {
+    const fallback=await fallbackContext.newPage();
+    await fallback.goto(adminUrl,{waitUntil:'domcontentloaded',timeout:45000});
+    assert.equal(await fallback.locator('#grtrans-network section.grtrans-network-list table').count(),1);
+    assert.ok(await fallback.locator('#grtrans-network .grtrans-network-actions .material-icons').count()>0);
+    assert.ok(await fallback.locator('#grtrans-network .grtrans-network-actions input[type=checkbox]').count()>0);
+    assert.equal(await fallback.locator('#grtrans-network-editor [data-grtrans-network-state]').count(),1);
+  } finally {await fallbackContext.close();}
   await stage.locator('.grtrans-network-toolbar a').filter({hasText:'Transport connections'}).click();
+  await page.waitForURL(/network_entity=legs/,{timeout:20000});
+  await stage.waitFor();
   const during=await page.evaluate(()=>{
     const bridge=window.GrtransMapBridge;
     return {id:bridge.map._leaflet_id,lat:bridge.map.getCenter().lat,lng:bridge.map.getCenter().lng,zoom:bridge.map.getZoom()};
   });
-  assert.deepEqual(during,before,'Switching Manage category must not recreate or recenter the map');
+  assert.ok(Math.abs(during.lat-before.lat)<1e-5 && Math.abs(during.lng-before.lng)<1e-5);
+  assert.equal(during.zoom,before.zoom,'Server navigation must restore the saved map view');
   assert.equal(await stage.locator('section.grtrans-network-list:not([hidden])').getAttribute('data-grtrans-entity'),'legs');
   await stage.locator('.grtrans-network-toolbar a').filter({hasText:'Stations'}).click();
+  await page.waitForURL(/network_entity=stations/,{timeout:20000});
+  await stage.waitFor();
   const firstRow=stage.locator('[data-grtrans-entity="stations"] tr[data-grtrans-record-id]').first();
-  await firstRow.locator('button[data-grtrans-select-record]').click();
-  assert.equal(await firstRow.locator('button[data-grtrans-select-record]').getAttribute('aria-pressed'),'true');
+  const checkbox=firstRow.locator('input[type=checkbox][data-grtrans-select-record]');
+  await checkbox.check();
+  assert.equal(await checkbox.isChecked(),true);
+  await firstRow.focus();await page.keyboard.press('Space');
+  assert.equal(await checkbox.isChecked(),false,'Space toggles the focused row');
+  await page.keyboard.press('Space');assert.equal(await checkbox.isChecked(),true);
+  let deletePrompt='';
+  page.once('dialog',async dialog=>{deletePrompt=dialog.message();await dialog.dismiss();});
+  await firstRow.focus();await page.keyboard.press('Delete');
+  assert.match(deletePrompt,/Delete/,'Delete key must use the existing confirmation');
+  const secondRow=stage.locator('[data-grtrans-entity="stations"] tr[data-grtrans-record-id]').nth(1);
+  if(await secondRow.count()) {
+    await page.keyboard.press('ArrowDown');
+    assert.equal(await secondRow.evaluate(row=>document.activeElement===row),true);
+    const firstDetails=firstRow.locator('details.grtrans-record-details');
+    const secondDetails=secondRow.locator('details.grtrans-record-details');
+    await firstDetails.locator('summary').click();
+    await page.waitForTimeout(100); // Let the native toggle event settle.
+    await secondDetails.evaluate(panel=>{panel.open=true;});
+    await page.waitForFunction(()=>document.querySelectorAll('#grtrans-network details.grtrans-record-details[open]').length===1);
+    assert.equal(await firstDetails.getAttribute('open'),null,'Only one Details panel remains open');
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(()=>document.querySelectorAll('#grtrans-network details.grtrans-record-details[open]').length===0);
+    await firstDetails.locator('summary').click();
+    await stage.locator('.grtrans-map-status').click();
+    assert.equal(await firstDetails.getAttribute('open'),null,'Click outside closes Details');
+  }
+  assert.ok(await stage.locator('.grtrans-record-filters .material-icons').count()>0,'Sort icon visible');
+  const networkStatus=stage.locator('[data-grtrans-network-state]');
+  assert.ok(await networkStatus.isVisible());
+  await stage.locator('#grtrans-network-editor input[name="name"]').fill('Not yet saved');
+  assert.equal(await networkStatus.getAttribute('data-state'),'unsaved');
   assert.equal(await page.evaluate(()=>window.GrtransMapWorkspace.stage.id),'grtrans-map-workspace');
   await stage.getByRole('button',{name:'Place station'}).click();
   await stage.getByRole('button',{name:'Use map centre'}).click();
@@ -90,5 +135,5 @@ try {
   assert.equal(expanded,true,'Expanded map must use fullscreen or its fallback');
   await page.setViewportSize({width:700,height:900});
   assert.equal(await page.locator('#grtrans-map-workspace .grtrans-map-sidebar').isVisible(),true);
-  console.log('LIVE MAP WORKSPACE: tall map, five lists, header fix, selection, Place draft and cancel, pairwise Connect and expand');
+  console.log('LIVE MAP WORKSPACE: one active dataset, server fallback, checkbox/keyboard, exclusive popovers, draft and map actions');
 } finally {await browser.close();}

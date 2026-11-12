@@ -97,7 +97,7 @@ try {
   await form.locator('input[name="price"]').fill('12.50');
   await form.getByRole('button', { name: 'Create record' }).click();
   await page.getByText('Network record created.', { exact: true }).first().waitFor({ timeout: 20000 });
-  const legRow = page.locator('#grtrans-network table').nth(1).locator('tbody tr').filter({ hasText: 'CI leg' });
+  const legRow = page.locator('#grtrans-network .grtrans-network-list[data-grtrans-entity="legs"] table').locator('tbody tr').filter({ hasText: 'CI leg' });
   assert.equal(await legRow.count(), 1);
   console.log('LIVE NETWORK FEEDBACK: stations and leg created, station edited with correct notices');
 
@@ -138,7 +138,7 @@ try {
     'Panels H/I: unframed FAR area and stronger normal-area tier are rendered');
 
   // Editing the SAME area leg must preserve NULL in Db::update as well.
-  const areaRow = page.locator('#grtrans-network table').nth(1)
+  const areaRow = page.locator('#grtrans-network .grtrans-network-list[data-grtrans-entity="legs"] table')
     .locator('tbody tr').filter({ hasText: 'CI dynamic sea via admin' });
   assert.equal(await areaRow.count(), 1);
   await areaRow.getByRole('link', { name: 'Edit' }).click();

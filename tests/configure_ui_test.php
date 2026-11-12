@@ -31,4 +31,13 @@ try { GrTransportNetworkSettings::validate(array_replace($values,['station_inner
 catch (InvalidArgumentException $e) { check(str_contains($e->getMessage(),'radius')); }
 try { GrTransportNetworkSettings::validate(array_replace($values,['show_stale_map'=>0.5])); throw new RuntimeException('Expected rejection'); }
 catch (InvalidArgumentException $e) { check(str_contains($e->getMessage(),'Toggle')); }
+$networkAdmin=file_get_contents(__DIR__.'/../grtransportshipping/classes/NetworkAdmin.php');
+check(is_string($networkAdmin),'NetworkAdmin source must be readable');
+check(str_contains($networkAdmin,'$collection=$entity;'),'Active dataset only in server HTML');
+check(!str_contains($networkAdmin,'foreach (GrTransportNetworkFields::ENTITIES as $collection)'));
+check(str_contains($networkAdmin,'<section id="grtrans-network-list" class="grtrans-network-list"'));
+check(str_contains($networkAdmin,'data-grtrans-select-record'));
+check(str_contains($networkAdmin,'data-grtrans-row-action="delete"'));
+check(str_contains($networkAdmin,'data-grtrans-network-state'));
+check(str_contains($networkAdmin,'aria-current="page"'));
 echo "Configure UI settings validation and markup passed\n";
