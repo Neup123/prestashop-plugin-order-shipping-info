@@ -21,6 +21,19 @@
 #grtrans-configure .grtrans-save-state[data-state="error"] {color:#ad2e21}
 #grtrans-configure .grtrans-save-state[data-state="unsaved"] {font-weight:600}
 #grtrans-configure.grtrans-js .grtrans-fallback-submit {display:none}
+#grtrans-configure .grtrans-page-advanced-control {display:flex;justify-content:flex-end;margin:0 0 .85rem}
+#grtrans-configure .grtrans-page-advanced-control label {display:inline-flex;align-items:center;gap:.45rem;padding:.35rem .7rem;border:1px solid var(--grtrans-border);border-radius:5px;cursor:pointer}
+#grtrans-configure .grtrans-page-advanced-control input {margin:0;accent-color:#294b66}
+#grtrans-configure .grtrans-page-advanced-control .material-icons {font-size:1.15rem}
+#grtrans-configure .grtrans-page-advanced {display:none!important}
+#grtrans-configure.grtrans-show-advanced .grtrans-page-advanced,
+#grtrans-configure:has(#grtrans-page-advanced-toggle:checked) .grtrans-page-advanced {display:block!important}
+#grtrans-configure.grtrans-show-advanced .grtrans-route-fieldsets fieldset.grtrans-page-advanced,
+#grtrans-configure:has(#grtrans-page-advanced-toggle:checked) .grtrans-route-fieldsets fieldset.grtrans-page-advanced {display:grid!important}
+#grtrans-configure.grtrans-show-advanced .grtrans-setting-row.grtrans-page-advanced,
+#grtrans-configure:has(#grtrans-page-advanced-toggle:checked) .grtrans-setting-row.grtrans-page-advanced {display:grid!important}
+#grtrans-configure .grtrans-far-effective {color:var(--grtrans-quiet);font-size:.85em}
+#grtrans-configure .grtrans-clear-far .material-icons {font-size:1.1rem;line-height:1}
 #grtrans-configure .grtrans-settings-panel {margin:1.25rem 0 0}
 #grtrans-configure .grtrans-settings-grid {display:flex;gap:1rem;flex-wrap:wrap;align-items:flex-start}
 #grtrans-configure .grtrans-setting-row {display:grid;grid-template-columns:var(--grtrans-form-label-column) minmax(0,max-content);align-items:center;gap:.4rem .7rem;margin:.5rem 0}
@@ -32,9 +45,12 @@
 #grtrans-configure .grtrans-advanced {margin:.7rem 0 0;max-width:100%}
 #grtrans-configure .grtrans-advanced summary {cursor:pointer;color:var(--grtrans-quiet)}
 #grtrans-configure [data-sim-fields][hidden] {display:none!important}
-#grtrans-configure .grtrans-segmented {display:inline-flex;border:1px solid var(--grtrans-border);border-radius:5px;overflow:hidden;margin:.4rem 0 .7rem}
-#grtrans-configure .grtrans-segmented button {border:0;background:transparent;padding:.45rem .8rem;min-height:34px}
-#grtrans-configure .grtrans-segmented button[aria-pressed="true"] {background:#dae7f4;color:#143d60;font-weight:700}
+#grtrans-configure .grtrans-segmented {display:inline-flex;border:1px solid var(--grtrans-border);border-radius:5px;overflow:hidden;margin:.4rem 0 .7rem;background:var(--grtrans-menu-bg,#fff)}
+#grtrans-configure .grtrans-segmented button {display:inline-flex;align-items:center;gap:.35rem;border:0;border-radius:0;background:transparent;color:inherit;padding:.4rem .8rem;min-height:36px}
+#grtrans-configure .grtrans-segmented button+button {border-inline-start:1px solid var(--grtrans-border)}
+#grtrans-configure .grtrans-segmented button .material-icons {font-size:1.1rem;line-height:1}
+#grtrans-configure .grtrans-segmented button[aria-pressed="true"] {background:#294b66;color:#fff;font-weight:700}
+#grtrans-configure .grtrans-segmented button:focus-visible {outline:2px solid #1756a9;outline-offset:-3px}
 #grtrans-configure .grtrans-simulator-result {max-width:48rem;margin-top:1rem;border-top:1px solid var(--grtrans-border);padding-top:.9rem}
 #grtrans-configure .grtrans-quote-total {font-weight:700;font-size:1.3rem;margin:.4rem 0}
 #grtrans-configure .grtrans-quote-note {font-size:.72em;font-weight:400;display:block}

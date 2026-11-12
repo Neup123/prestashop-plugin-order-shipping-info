@@ -730,7 +730,12 @@ class Grtransportshipping extends CarrierModule
             .'<a href="#grtrans-routes">'.$this->escape($this->l('Priced routes')).'</a>'
             .'<a href="#grtrans-network">'.$this->escape($this->l('Service map and network')).'</a>'
             .'<a href="#grtrans-network-settings">'.$this->escape($this->l('Transport settings')).'</a>'
-            .'<a href="#grtrans-simulator">'.$this->escape($this->l('Test a transport price')).'</a></nav>';
+            .'<a href="#grtrans-simulator">'.$this->escape($this->l('Test a transport price')).'</a></nav>'
+            .'<div class="grtrans-page-advanced-control"><label for="grtrans-page-advanced-toggle">'
+            .'<input type="checkbox" id="grtrans-page-advanced-toggle" role="switch"'
+            .' aria-controls="grtrans-route-editor grtrans-network grtrans-network-settings">'
+            .'<span class="material-icons" aria-hidden="true">tune</span>'
+            .$this->escape($this->l('Advanced')).'</label></div>';
         $out .= '<div class="panel" id="grtrans-routes"><h3>' . $this->escape($this->l('Greek public transport routes')) . '</h3>'
             . '<div class="alert alert-warning grtrans-demo-seed-warning" role="status">'
             . '<strong>' . $this->escape($this->l('Seeded demo routes start Available and can immediately quote if this carrier is enabled.')) . '</strong> '
@@ -872,8 +877,9 @@ class Grtransportshipping extends CarrierModule
         foreach (GrTransportRouteFields::formFields() as $field => $spec) {
             if (isset($groups[$field])) {
                 if ($open) $out.='</fieldset>';
-                $out.='<fieldset class="grtrans-control-group"><legend>'
-                    .$this->escape($this->l($groups[$field])).'</legend>';
+                $out.='<fieldset class="grtrans-control-group'
+                    .($field==='notice' ? ' grtrans-page-advanced' : '')
+                    .'"><legend>'.$this->escape($this->l($groups[$field])).'</legend>';
                 $open=true;
             }
             $value = $submitted !== null && array_key_exists($field, $submitted)
@@ -882,7 +888,8 @@ class Grtransportshipping extends CarrierModule
             $fieldId = 'grtrans-field-' . $field;
             $errorId = $fieldId . '-error';
             $helpId = $fieldId . '-help';
-            $out .= '<div class="form-group' . ($hasError ? ' has-error' : '') . '">'
+            $out .= '<div class="form-group' . ($field==='demo' ? ' grtrans-page-advanced' : '')
+                . ($hasError ? ' has-error' : '') . '">'
                 . '<label class="control-label" for="' . $fieldId . '">'
                 . $this->escape($this->l($labels[$field])) . '</label>'
                 . '<div class="grtrans-route-field-control">';

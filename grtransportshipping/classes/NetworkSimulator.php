@@ -64,8 +64,10 @@ final class GrTransportNetworkSimulator
             .'<input type="hidden" name="grtrans_simulate" value="1">'
             .'<fieldset class="grtrans-control-group grtrans-simulator-destination"><legend>'.$tr('Destination').'</legend>'
             .'<div class="grtrans-segmented" role="group" aria-label="'.$tr('Destination method').'">'
-            .'<button type="button" data-sim-method="address" aria-pressed="'.($selected===0?'true':'false').'">'.$tr('Address').'</button>'
-            .'<button type="button" data-sim-method="station" aria-pressed="'.($selected>0?'true':'false').'">'.$tr('Station').'</button></div>'
+            .'<button type="button" data-sim-method="address" aria-pressed="'.($selected===0?'true':'false').'">'
+            .'<span class="material-icons" aria-hidden="true">location_on</span>'.$tr('Address').'</button>'
+            .'<button type="button" data-sim-method="station" aria-pressed="'.($selected>0?'true':'false').'">'
+            .'<span class="material-icons" aria-hidden="true">place</span>'.$tr('Station').'</button></div>'
             .'<div data-sim-fields="station"'.($selected===0?' hidden':'').'><label for="grtrans-sim-station">'.$tr('Collection station').'</label>'
             .'<select name="station_id" class="form-control grtrans-size-l" id="grtrans-sim-station">'
             .'<option value="0">'.$tr('Choose a station').'</option>';

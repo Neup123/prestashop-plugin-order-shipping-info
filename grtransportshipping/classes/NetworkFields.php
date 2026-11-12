@@ -10,6 +10,12 @@ final class GrTransportNetworkFields
     public const ENTITIES = ['stations', 'legs', 'transfers', 'branches', 'branch_stock'];
     public const TABLES = ['stations'=>'grtrans_station', 'legs'=>'grtrans_leg', 'transfers'=>'grtrans_transfer', 'branches'=>'grtrans_branch', 'branch_stock'=>'grtrans_branch_stock'];
     public const IDS = ['stations'=>'id_station', 'legs'=>'id_leg', 'transfers'=>'id_transfer', 'branches'=>'id_branch', 'branch_stock'=>'id_branch_stock'];
+    // Provisional list from code-recognized names; no canonical type enum exists yet.
+    public const TRANSFER_CONNECTION_TYPES = [
+        'walk','taxi','courier','door-to-door','delivery','van','car',
+        'bus','coach','train','rail','tram','metro',
+        'ferry','ship','boat','sea','flight','air','airplane','plane','other',
+    ];
 
     public static function fields(string $entity): array
     {
@@ -58,7 +64,7 @@ final class GrTransportNetworkFields
             case 'transfers':
                 return [
                     'from_station_id'=>['id'], 'to_station_id'=>['id'],
-                    'connection_type'=>['text',64], 'price'=>['range',0,100000],
+                    'connection_type'=>['choice',self::TRANSFER_CONNECTION_TYPES], 'price'=>['range',0,100000],
                     'override_winner'=>['choice',['none','from','to']],
                 ];
         }

@@ -164,8 +164,9 @@ return '<div class="alert alert-danger" data-grtrans-autosave-result="error">'
         $base=self::esc((_MODULE_DIR_ . $module->name . '/')) . 'views/';
         $out='<section class="panel" id="grtrans-network">'
             . '<h3>Transport network · coverage map</h3>'
+            . '<details class="grtrans-map-help"><summary>About this map</summary>'
             . '<p>Normal coverage is shown strongly; FAR extended coverage is lighter. '
-            . 'To link stations, select one, choose Link, then select its destination.</p>'
+            . 'To link stations, select one, choose Link, then select its destination.</p></details>'
             . '<link rel="stylesheet" href="' . $base . 'vendor/leaflet/leaflet.css">'
             . '<link rel="stylesheet" href="' . $base . 'css/network-admin.css">'
             . '<div id="grtrans-network-map" aria-label="Transport network coverage map" role="region" data-config="'
@@ -184,16 +185,21 @@ return '<div class="alert alert-danger" data-grtrans-autosave-result="error">'
             . '<input type="hidden" name="to_station_id" id="grtrans-link-to">'
             . '<div id="grtrans-link-popup" role="dialog" aria-label="Define transfer">'
             . '<label for="grtrans-link-type">Connection type</label>'
-            . '<input id="grtrans-link-type" name="connection_type" maxlength="64" value="taxi" required>'
-            . '<label for="grtrans-link-price">Transfer price EUR (0 = free)</label>'
+            . '<select class="form-control" id="grtrans-link-type" name="connection_type" required>';
+        foreach (GrTransportNetworkFields::TRANSFER_CONNECTION_TYPES as $connectionType) {
+            $out.='<option value="'.self::esc($connectionType).'"'
+                .($connectionType==='taxi' ? ' selected' : '').'>'
+                .self::esc(ucwords(str_replace('-',' ',$connectionType))).'</option>';
+        }
+        $out.= '</select><label for="grtrans-link-price">Transfer price EUR (0 = free)</label>'
             . '<input id="grtrans-link-price" name="price" type="number" step="0.01" min="0" max="100000" value="0" required>'
-            . '<details class="grtrans-network-advanced"><summary>Advanced · override handover</summary>'
+            . '<div class="grtrans-page-advanced grtrans-link-advanced">'
             . '<label for="grtrans-link-override">Winner inside the linked patches’ overlap</label>'
             . '<select class="form-control" id="grtrans-link-override" name="override_winner">'
             . '<option value="none">No override (cheapest that reaches)</option>'
             . '<option value="from">From method overrides to method</option>'
             . '<option value="to">To method overrides from method</option></select>'
-            . '</details>'
+            . '</div>'
             . '<button class="btn btn-primary" type="submit">Save transfer link</button>'
             . '<button class="btn btn-default" type="button" id="grtrans-link-cancel">Cancel</button>'
             . '</div></form>';
@@ -299,22 +305,57 @@ return '<div class="alert alert-danger" data-grtrans-autosave-result="error">'
             . '<input type="hidden" name="grtrans_network_action" value="save">'
             . '<input type="hidden" name="network_entity" value="' . $entity . '">'
             . '<input type="hidden" name="network_id" value="' . ($selected ? $edit : 0) . '">';
-        $advancedOpen=false;
-        foreach (GrTransportNetworkFields::fields($entity) as $key=>$definition) {
-            if (in_array($key,['patch_precedence','override_winner'],true) && !$advancedOpen) {
-                $out.='<details class="grtrans-network-advanced"><summary>Advanced · coverage and link overrides</summary>'
-                    . '<p>Only applies where both eligible patches reach the address; without overrides the cheaper option wins.</p>';
-                $advancedOpen=true;
-            } elseif (!in_array($key,['patch_precedence','override_winner'],true) && $advancedOpen) {
-                $out.='</details>';
-                $advancedOpen=false;
-            }
-            $type=$definition[0];
+        // Same groups and membership as GROUPS in compact-records.js.
+        $editorGroups=[
+            'stations'=>[
+                ['Station',['name','type','address_text','is_origin_hub']],
+                ['Location and service reach',['lat','lng','inner_radius_km','outer_radius_km','coverage_kind','coverage_geojson']],
+                ['Advanced',['patch_precedence']],
+            ],
+            'legs'=>[
+                ['Connection',['from_station_id','to_station_id','mode','operator_label','bidirectional']],
+                ['Price',['tariff_type','price','rate_per_unit','estimate','estimate_low_factor','estimate_high_factor']],
+                ['Timing',['lead_hours','preparation_hours','transit_min_hours','transit_max_hours']],
+                ['Direct service area',['area_name','area_lat','area_lng','area_radius_km','area_outer_radius_km','area_coverage_kind','area_coverage_geojson','route_geojson']],
+                ['Advanced',['patch_precedence','override_winner']],
+            ],
+            'transfers'=>[
+                ['Stations and price',['from_station_id','to_station_id','connection_type','price']],
+                ['Advanced',['override_winner']],
+            ],
+            'branches'=>[['Dispatch location',['name','origin_station_id']]],
+            'branch_stock'=>[['Availability',['id_branch','id_product','id_product_attribute','quantity']]],
+        ];
+        $fields=GrTransportNetworkFields::fields($entity);
+        $catalog=null;
+        if ($entity==='branch_stock') {
+            require_once __DIR__ . '/NetworkCatalogOptions.php';
+            $catalog=GrTransportNetworkCatalogOptions::read((int)($values['id_product'] ?? 0));
+        }
+        $out.='<div class="grtrans-editor-layout" data-grtrans-server-groups>';
+        foreach ($editorGroups[$entity] as [$topic,$names]) {
+            $out.='<fieldset class="grtrans-editor-group'
+                .($topic==='Advanced' ? ' grtrans-page-advanced' : '')
+                .'"><legend>'.self::esc($topic).'</legend><div class="grtrans-editor-fields">';
+            foreach ($names as $key) {
+                $definition=$fields[$key];
+                $type=$definition[0];
             $farField=in_array($key,['outer_radius_km','area_outer_radius_km'],true);
             $label=$farField ? 'FAR outer boundary override (km)' : ucfirst(str_replace('_',' ',$key));
             $out.='<div class="form-group"><label for="grtrans-network-field-' . $key . '">'
                 . self::esc($label) . '</label>';
             $value=$values[$key] ?? '';
+            if ($key==='id_product' && $catalog!==null) {
+                $out.='<input type="search" class="form-control grtrans-size-l" data-grtrans-product-picker'
+                    .' aria-label="Search catalog products" placeholder="Search product name or number"'
+                    .' list="grtrans-product-catalog" hidden disabled>'
+                    .'<datalist id="grtrans-product-catalog">';
+                foreach ($catalog['products'] as $product) {
+                    $entry=$product['name'].' (#'.$product['id'].')';
+                    $out.='<option value="'.self::esc($entry).'"></option>';
+                }
+                $out.='</datalist>';
+            }
             if ($type==='choice' || $type==='bool'
                 || ($type==='id' && $key!=='id_product') || $type==='nullable_id') {
                 $choices=$type==='choice' ? array_combine($definition[1],$definition[1])
@@ -342,6 +383,10 @@ return '<div class="alert alert-danger" data-grtrans-autosave-result="error">'
                 if ($type==='id') $choices=[''=>'Choose a station or dispatch location']+$choices;
                 $out.='<select class="form-control" id="grtrans-network-field-' . $key . '" name="' . $key . '"'
                     . ($type==='id' ? ' required' : '') . '>';
+                if ($key==='connection_type' && !in_array((string)$value,$definition[1],true)) {
+                    $out.='<option value="'.self::esc($value).'" selected disabled>'
+                        .'Legacy transfer type — choose a supported type</option>';
+                }
                 foreach ($choices as $choice=>$label) {
                     $out.='<option value="' . self::esc($choice) . '"'
                         . ((string)$choice===(string)$value ? ' selected' : '') . '>'
@@ -357,7 +402,7 @@ return '<div class="alert alert-danger" data-grtrans-autosave-result="error">'
                 $numberAttributes='';
                 if ($type!=='text') {
                     $minimum=str_contains($type,'latitude') ? '-90'
-                        : (str_contains($type,'longitude') ? '-180' : '0');
+                        : (str_contains($type,'longitude') ? '-180' : ($key==='id_product' ? '1' : '0'));
                     $maximum=str_contains($type,'latitude') ? 90
                         : (str_contains($type,'longitude') ? 180
                             : ($type==='nonnegative_int' ? 2147483647 : ($definition[2] ?? null)));
@@ -374,25 +419,29 @@ return '<div class="alert alert-danger" data-grtrans-autosave-result="error">'
                 $inner=$key==='outer_radius_km' ? (float)$values['inner_radius_km'] : (float)$values['area_radius_km'];
                 $inherited=$value===null || $value==='';
                 $effective=GrTransportNetworkSettings::effectiveOuterKm($value,$inner);
-                $out.='<p class="help-block" data-grtrans-far-default="'
+                $help='Clear this override and save to inherit the global FAR default ('
+                    .GrTransportNetworkSettings::get('station_outer_km')
+                    .' km). An override must be at least the normal radius.';
+                $out.='<span class="grtrans-far-effective" data-grtrans-far-default="'
                     .self::esc(GrTransportNetworkSettings::get('station_outer_km')).'">'
                     .'<span data-grtrans-far-effective>'
                     .self::esc($inherited ? 'Inheriting global FAR default' : 'Explicit FAR override')
-                    .' · effective '.self::esc(number_format($effective,2,'.','')).' km.</span> '
-                    .'Clear the field and save to inherit the current global default ('
-                    .self::esc(GrTransportNetworkSettings::get('station_outer_km')).' km). '
-                    .'An explicit override must be at least the normal inner radius.</p>'
+                    .' · effective '.self::esc(number_format($effective,2,'.','')).' km.</span></span>'
+                    .'<button type="button" class="grtrans-help-button"'
+                    .' title="'.self::esc($help).'" aria-label="'.self::esc($help).'">?</button>'
                     .'<button type="button" class="btn btn-default btn-sm grtrans-clear-far"'
-                    .' data-target="grtrans-network-field-'.$key.'">Clear override · inherit global</button>';
+                    .' data-target="grtrans-network-field-'.$key.'" title="Clear override · inherit global"'
+                    .' aria-label="Clear override · inherit global">'
+                    .'<span class="material-icons" aria-hidden="true">restart_alt</span></button>';
             }
             $out.='</div>';
+            }
+            $out.='</div></fieldset>';
         }
-        if ($advancedOpen) $out.='</details>';
+        $out.='</div>';
         $out.='<button class="btn btn-primary" name="grtrans_network_submit" value="1">'
             . ($selected ? 'Save changes' : 'Create record') . '</button></form>';
         if ($entity==='branch_stock') {
-            require_once __DIR__ . '/NetworkCatalogOptions.php';
-            $catalog=GrTransportNetworkCatalogOptions::read((int)($values['id_product'] ?? 0));
             $out.='<script type="application/json" id="grtrans-catalog-options">'
                 .json_encode($catalog,JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_INVALID_UTF8_SUBSTITUTE)
                 .'</script>';
