@@ -95,9 +95,12 @@ try {
   const checkbox=firstRow.locator('input[type=checkbox][data-grtrans-select-record]');
   await checkbox.check();
   assert.equal(await checkbox.isChecked(),true);
+  // Selecting a row opens the context panel and hides the list; return before using row keys.
+  await stage.getByRole('button',{name:'Back to all records'}).click();
   await firstRow.focus();await page.keyboard.press('Space');
   assert.equal(await checkbox.isChecked(),false,'Space toggles the focused row');
   await page.keyboard.press('Space');assert.equal(await checkbox.isChecked(),true);
+  await stage.getByRole('button',{name:'Back to all records'}).click();
   let deletePrompt='';
   page.once('dialog',async dialog=>{deletePrompt=dialog.message();await dialog.dismiss();});
   await firstRow.focus();await page.keyboard.press('Delete');
