@@ -457,20 +457,18 @@
     const form=editor?.querySelector('form');if(!form) return;
     const entity=form.querySelector('input[name="network_entity"]')?.value;
     const groups=GROUPS[entity];if(!groups) return;
-    const fields=new Map([...form.querySelectorAll('.form-group')].map(group=>{
+    const layout=form.querySelector('.grtrans-editor-layout[data-grtrans-server-groups]');
+    if(!layout)return;
+    const fields=new Map([...layout.querySelectorAll('.grtrans-editor-fields .form-group')].map(group=>{
       const field=group.querySelector('[name]');return [field?.name,group];
     }).filter(([key])=>key));
-    const layout=el('div','grtrans-editor-layout');
     for(const [title,names] of groups) {
-      const block=title==='Advanced'?el('details','grtrans-editor-advanced'):el('fieldset','grtrans-editor-group');
-      block.append(el(title==='Advanced'?'summary':'legend','',title));
-      const contents=el('div','grtrans-editor-fields');block.append(contents);
       for(const key of names) {
         const group=fields.get(key);if(!group) continue;
-        contents.append(group);group.dataset.grtransField=key;
+        group.dataset.grtransField=key;
         const label=group.querySelector('label');if(label && FIELDS[key])label.textContent=key==='name'
           ? (entity==='stations'?'Station name':'Dispatch location name') : FIELDS[key];
-        const control=group.querySelector('input,select,textarea');
+        const control=group.querySelector('[name="'+key+'"]');
         if(control) {
           if(SIZE[key]) control.classList.add('grtrans-size-'+SIZE[key]);
           if(UNIT[key] && control.tagName==='INPUT') {
@@ -499,12 +497,7 @@
           }
         }
       }
-      if(contents.childElementCount) layout.append(block);
     }
-    const original=form.querySelector('.grtrans-network-advanced');
-    if(original)original.remove();
-    const commit=form.querySelector('button[name="grtrans_network_submit"]');
-    if(commit)commit.before(layout);else form.append(layout);
     enhanceFarHelp(form);
     if(entity==='legs') {
       const destination=form.querySelector('[name="to_station_id"]');
@@ -539,16 +532,15 @@
     const numeric=form.querySelector('[name="id_product"]');
     const variant=form.querySelector('[name="id_product_attribute"]');
     if(!numeric||!variant)return;
-    const picker=el('input','form-control grtrans-size-l');picker.type='search';
-    picker.placeholder='Search product name or number';picker.setAttribute('aria-label','Search catalog products');
-    const list=el('datalist');list.id='grtrans-product-catalog';picker.setAttribute('list',list.id);
+    const picker=form.querySelector('[data-grtrans-product-picker]');
+    const list=form.querySelector('#grtrans-product-catalog');
+    if(!picker||!list)return;
+    picker.hidden=false;picker.disabled=false;
     const products=new Map();
     for(const entry of catalog.products||[]) {
       const value=entry.name+' (#'+entry.id+')';products.set(value,String(entry.id));
-      list.append(new Option(value));
       if(String(entry.id)===numeric.value)picker.value=value;
     }
-    numeric.before(picker,list);
     const advanced=el('details','grtrans-id-fallback');advanced.append(el('summary','','Enter a product number manually'));
     numeric.before(advanced);advanced.append(numeric);
     const variantChoice=el('select','form-control grtrans-size-m');variant.before(variantChoice);
@@ -568,6 +560,11 @@
       if(numeric.value!==id){numeric.value=id;variant.value='0';}syncVariants();
     });
     picker.addEventListener('input',()=>picker.setCustomValidity(''));
+    numeric.addEventListener('input',()=>{
+      picker.setCustomValidity('');
+      picker.value=[...products].find(([,id])=>id===numeric.value)?.[0]||'';
+      syncVariants();
+    });
     variantChoice.addEventListener('change',()=>{variant.value=variantChoice.value;});
     syncVariants();
   }

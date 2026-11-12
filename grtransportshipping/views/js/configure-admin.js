@@ -4,6 +4,15 @@
   const root = document.getElementById('grtrans-configure');
   if (!root) return;
   root.classList.add('grtrans-js');
+  const pageAdvanced=root.querySelector('#grtrans-page-advanced-toggle');
+  if(pageAdvanced) {
+    try {pageAdvanced.checked=sessionStorage.getItem('grtrans-page-advanced')==='1';}catch(_){}
+    const applyAdvanced=()=>{
+      root.classList.toggle('grtrans-show-advanced',pageAdvanced.checked);
+      try {sessionStorage.setItem('grtrans-page-advanced',pageAdvanced.checked?'1':'0');}catch(_){}
+    };
+    pageAdvanced.addEventListener('change',applyAdvanced);applyAdvanced();
+  }
 
   const copy = async button => {
     const code = document.getElementById(button.dataset.grtransCopy);

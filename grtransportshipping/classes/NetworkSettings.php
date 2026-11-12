@@ -155,15 +155,21 @@ final class GrTransportNetworkSettings
             .'<input type="hidden" name="token" value="'.$csrf.'">'
             .'<input type="hidden" name="grtrans_network_action" value="save_operational_settings">'
             .'<div class="grtrans-settings-grid">';
+        $advancedGroups=['Estimated prices','Measurements','Price and time limits'];
+        $advancedRows=['max_coverage_km','nearby_gap_km','stale_after_months'];
         foreach ($groups as $group=>$names) {
-            $out.='<fieldset class="grtrans-control-group"><legend>'.$tr($group).'</legend>';
+            $out.='<fieldset class="grtrans-control-group'
+                .(in_array($group,$advancedGroups,true) ? ' grtrans-page-advanced' : '')
+                .'"><legend>'.$tr($group).'</legend>';
             foreach ($names as $name) {
                 $spec=self::DEFINITIONS[$name];
                 [$label,$unit]=$labels[$name];
                 $value=self::get($name);
                 $id='grtrans-setting-'.$esc($name);
                 $description=$tr($help[$name]);
-                $out.='<div class="grtrans-setting-row"><div class="grtrans-setting-label">'
+                $out.='<div class="grtrans-setting-row'
+                    .(in_array($name,$advancedRows,true) ? ' grtrans-page-advanced' : '')
+                    .'"><div class="grtrans-setting-label">'
                     .'<label for="'.$id.'">'.$tr($label).'</label>'
                     .'<button type="button" class="grtrans-help-button" title="'.$description.'"'
                     .' aria-label="'.$description.'">?</button></div><div class="grtrans-value-control">';
