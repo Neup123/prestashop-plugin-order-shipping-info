@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const {readFileSync} = require('node:fs');
 const {filterRecords,sortRecords,normalize,KEEP,FIELDS,GROUPS,SIZE} =
   require('../grtransportshipping/views/js/compact-records.js');
 const rows=[
@@ -21,4 +22,19 @@ assert.ok(KEEP.stations.length<14 && KEEP.transfers.length<8);
 assert.equal(FIELDS.area_lat,'Area latitude');
 assert.equal(SIZE.area_lat,'s');
 assert.ok(GROUPS.branch_stock.some(([name,fields])=>fields.includes('id_product_attribute')));
+const source=readFileSync(require.resolve('../grtransportshipping/views/js/compact-records.js'),'utf8');
+const styles=readFileSync(require.resolve('../grtransportshipping/views/css/compact-records.css'),'utf8');
+const workspace=readFileSync(require.resolve('../grtransportshipping/views/js/map-workspace.js'),'utf8');
+assert.match(source,/checkbox\.type='checkbox'/,'row selection must be a checkbox');
+assert.doesNotMatch(source,/setAttribute\('aria-pressed',String\(active\)\)/);
+for(const key of ['ArrowDown','ArrowUp','Enter','Delete','Spacebar'])
+  assert.ok(source.includes(key),'keyboard action missing: '+key);
+assert.match(source,/addEventListener\('toggle',event=>/);
+assert.match(source,/addEventListener\('pointerdown',event=>/);
+assert.match(source,/addEventListener\('keydown',event=>/);
+assert.match(source,/grtrans-network-list\[data-grtrans-entity\]/);
+assert.match(source,/filter_alt/);assert.match(source,/material-icons','sort'/);
+assert.match(styles,/width:max-content;min-width:0!important/);
+assert.doesNotMatch(styles,/min-width:min\(24rem,90vw\)/);
+assert.match(workspace,/if \(button && !button\.checked\) button\.click\(\)/);
 console.log('Compact record filtering, ordering, terminology and view models passed');

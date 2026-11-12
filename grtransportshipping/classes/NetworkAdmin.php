@@ -197,15 +197,27 @@ return '<div class="alert alert-danger" data-grtrans-autosave-result="error">'
             . '<button class="btn btn-primary" type="submit">Save transfer link</button>'
             . '<button class="btn btn-default" type="button" id="grtrans-link-cancel">Cancel</button>'
             . '</div></form>';
-        $out.='<div class="grtrans-network-toolbar"><strong>Manage:</strong> ';
+        // Render only the active dataset in the initial HTML (including when JS fails).
+        $out.='<nav class="grtrans-network-toolbar" aria-label="Network record categories">';
+        $categoryIcons=['stations'=>'place','legs'=>'route','transfers'=>'swap_horiz',
+            'branches'=>'warehouse','branch_stock'=>'inventory_2'];
         foreach (GrTransportNetworkFields::ENTITIES as $choice) {
-            $out.='<a class="btn btn-default" href="' . $url . '&amp;network_entity='
-                . $choice . '#grtrans-network-editor">' . ucwords(str_replace('_',' ',$choice)) . '</a> ';
+            $name=ucwords(str_replace('_',' ',$choice));
+            $out.='<a class="btn btn-default'
+                . ($choice===$entity ? ' grtrans-active-tab' : '')
+                . '" href="' . $url . '&amp;network_entity='
+                . self::esc($choice) . '#grtrans-network-list"'
+                . ' title="Manage '.self::esc($name).'"'
+                . ($choice===$entity ? ' aria-current="page"' : '')
+                . '><span class="material-icons" aria-hidden="true">'
+                . self::esc($categoryIcons[$choice]) . '</span>'
+                . '<span class="grtrans-network-tab-text">'.self::esc($name).'</span></a>';
         }
-        $out.='</div>';
-        foreach (GrTransportNetworkFields::ENTITIES as $collection) {
-            $out.='<h4>' . ucwords(str_replace('_',' ',$collection)) . '</h4>'
-                . '<div class="table-responsive"><table class="table table-striped"><thead><tr><th>ID</th>';
+        $out.='</nav>';
+        $collection=$entity;
+        $out.='<section id="grtrans-network-list" class="grtrans-network-list" data-grtrans-entity="'.self::esc($collection).'">'
+            .'<h4>' . self::esc(ucwords(str_replace('_',' ',$collection))) . '</h4>'
+            . '<div class="table-responsive"><table class="table table-striped"><thead><tr><th>ID</th>';
             $names=array_keys(GrTransportNetworkFields::fields($collection));
             foreach ($names as $name) $out.='<th>' . self::esc(str_replace('_',' ',$name)) . '</th>';
             if ($collection==='legs' || $collection==='transfers') $out.='<th>Last verified (UTC)</th>';
@@ -231,25 +243,35 @@ return '<div class="alert alert-danger" data-grtrans-autosave-result="error">'
                 if ($collection==='legs' || $collection==='transfers') {
                     $out.='<td>' . self::esc($record['verified_at'] ?: 'Not yet verified') . '</td>';
                 }
-                $out.='<td><a class="btn btn-default btn-sm" href="' . $url . '&amp;network_entity='
-                    . $collection . '&amp;network_edit=' . $id . '#grtrans-network-editor">Edit</a>'
+                $target=self::esc(ucwords(str_replace('_',' ',$collection)).' #'.$id);
+                $out.='<td class="grtrans-network-actions">'
+                    . '<input type="checkbox" class="grtrans-select-record" data-grtrans-select-record="'.$id.'"'
+                    . ' title="Select '.$target.' on the map" aria-label="Select '.$target.' on the map">'
+                    . '<a class="btn btn-default btn-sm grtrans-row-icon" href="' . $url . '&amp;network_entity='
+                    . self::esc($collection) . '&amp;network_edit=' . $id . '#grtrans-network-editor"'
+                    . ' title="Edit '.$target.'" aria-label="Edit '.$target.'">'
+                    . '<span class="material-icons" aria-hidden="true">edit</span></a>'
                     . '<form method="post" action="' . $url . '#grtrans-network" class="grtrans-network-inline">'
                     . '<input type="hidden" name="token" value="' . $csrf . '">'
                     . '<input type="hidden" name="grtrans_network_action" value="delete">'
-                    . '<input type="hidden" name="network_entity" value="' . $collection . '">'
+                    . '<input type="hidden" name="network_entity" value="' . self::esc($collection) . '">'
                     . '<input type="hidden" name="network_id" value="' . $id . '">'
-                    . '<button class="btn btn-danger btn-sm" onclick="return confirm(\'Delete network record?\')">Delete</button>'
-                    . '</form>'
+                    . '<button type="submit" class="btn btn-default btn-sm grtrans-row-icon"'
+                    . ' data-grtrans-row-action="delete" title="Delete '.$target.'" aria-label="Delete '.$target.'"'
+                    . ' onclick="return confirm(\'Delete network record?\')">'
+                    . '<span class="material-icons" aria-hidden="true">delete_outline</span></button></form>'
                     . (($collection==='legs' || $collection==='transfers')
                         ? '<form method="post" action="' . $url . '#grtrans-network" class="grtrans-network-inline">'
                             . '<input type="hidden" name="token" value="' . $csrf . '">'
-                            . '<input type="hidden" name="network_entity" value="' . $collection . '">'
+                            . '<input type="hidden" name="network_entity" value="' . self::esc($collection) . '">'
                             . '<input type="hidden" name="network_id" value="' . $id . '">'
-                            . '<button class="btn btn-default btn-sm" type="submit" name="grtrans_network_action" value="verify">Confirm current</button></form>'
+                            . '<button class="btn btn-default btn-sm grtrans-row-icon" type="submit"'
+                            . ' name="grtrans_network_action" value="verify" data-grtrans-row-action="verify"'
+                            . ' title="Mark '.$target.' as checked" aria-label="Mark '.$target.' as checked">'
+                            . '<span class="material-icons" aria-hidden="true">fact_check</span></button></form>'
                         : '') . '</td></tr>';
             }
-            $out.='</tbody></table></div>';
-        }
+            $out.='</tbody></table></div></section>';
         $out.='<div id="grtrans-network-editor" class="panel">';
         if ($missingTarget) {
             $back=$url.'&amp;network_entity='.self::esc($entity).'#grtrans-network-editor';
@@ -259,6 +281,13 @@ return '<div class="alert alert-danger" data-grtrans-autosave-result="error">'
         } else {
         $out.='<h4>' . ($selected ? 'Edit ' : 'Add ')
             . self::esc(ucfirst(rtrim($entity,'s'))) . '</h4>';
+        $retainedDraft=self::$failedEntity===$entity && self::$failedDraft!==null;
+        $initialState=$retainedDraft ? 'unsaved' : 'ready';
+        $initialLabel=$retainedDraft ? 'Unsaved changes' : ($selected ? 'No changes' : 'Ready to create');
+        $out.='<output class="grtrans-save-state grtrans-network-form-state"'
+            .' data-grtrans-network-state data-state="'.self::esc($initialState).'"'
+            .' data-unsaved-label="Unsaved changes" data-ready-label="'.self::esc($initialLabel).'"'
+            .' aria-live="polite">'.self::esc($initialLabel).'</output>';
         if (self::$failedEntity===$entity && self::$failedMessage!=='') {
             $out.='<div class="alert alert-danger grtrans-record-error" role="alert">'
                 .self::esc($module->l('Your submitted values are retained below. Correct the fields and save again.'))

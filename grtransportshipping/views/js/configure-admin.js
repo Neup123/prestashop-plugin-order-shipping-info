@@ -129,6 +129,30 @@
     });
   }
 
+  // Consequential network edits keep the signed, explicit Save, with visible
+  // draft state from first paint through edits, reset and failed POST recovery.
+  const networkForm=root.querySelector('#grtrans-network-editor form');
+  const networkState=root.querySelector('[data-grtrans-network-state]');
+  if(networkForm && networkState) {
+    const baseline=new URLSearchParams(new FormData(networkForm)).toString();
+    const retained=networkState.dataset.state==='unsaved';
+    const ready=networkState.dataset.readyLabel || 'No changes';
+    const unsaved=networkState.dataset.unsavedLabel || 'Unsaved changes';
+    const refresh=()=>{
+      const dirty=retained || new URLSearchParams(new FormData(networkForm)).toString()!==baseline;
+      networkState.textContent=dirty?unsaved:ready;
+      networkState.dataset.state=dirty?'unsaved':'ready';
+    };
+    networkForm.addEventListener('input',refresh);
+    networkForm.addEventListener('change',refresh);
+    networkForm.addEventListener('submit',()=>{
+      if(!networkForm.checkValidity())return;
+      networkState.textContent='Saving…';
+      networkState.dataset.state='saving';
+    });
+    refresh();
+  }
+
   const simulator = root.querySelector('[data-grtrans-simulator]');
   if (simulator) {
     const station = simulator.querySelector('[name="station_id"]');

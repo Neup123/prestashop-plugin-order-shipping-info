@@ -2,6 +2,37 @@
 #grtrans-network-map-tools {margin:10px 0 15px;display:flex;gap:12px;align-items:center}
 .grtrans-network-toolbar {margin:15px 0}
 #grtrans-network-editor {scroll-margin-top:80px}
+/* Fallback editor sizes to its contents; JS-docked map workspace retains its own rules. */
+#grtrans-network:not(:has(.grtrans-map-workspace)) #grtrans-network-editor {
+  box-sizing:border-box;width:max-content;max-width:100%
+}
+#grtrans-network:not(:has(.grtrans-map-workspace)) #grtrans-network-editor form {
+  width:max-content;max-width:100%
+}
+#grtrans-network:not(:has(.grtrans-map-workspace)) #grtrans-network-editor .form-group {
+  max-width:100%
+}
+#grtrans-network-editor .grtrans-network-form-state {
+  display:block;width:max-content;max-width:100%;margin:.3rem 0 .7rem;color:#566371
+}
+#grtrans-network-editor .grtrans-network-form-state[data-state=unsaved] {
+  color:#a15a13;font-weight:650
+}
+#grtrans-network .grtrans-network-actions {white-space:nowrap}
+#grtrans-network .grtrans-network-actions .grtrans-network-inline {
+  display:inline-flex;margin:0 .12rem;padding:0
+}
+#grtrans-network .grtrans-network-actions .grtrans-row-icon {
+  box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;
+  width:1.9rem;min-width:1.9rem;height:1.9rem;vertical-align:middle;
+  padding:0;margin:0;border:1px solid #ccd2d8;border-radius:4px;
+  background:transparent;color:inherit;text-decoration:none
+}
+#grtrans-network .grtrans-network-actions .grtrans-row-icon .material-icons {
+  font-size:1.05rem;line-height:1
+}
+#grtrans-network .grtrans-network-actions [data-grtrans-row-action=delete] {color:#a52c35}
+#grtrans-network .grtrans-network-actions .grtrans-row-icon:focus-visible {outline:2px solid #1756a9;outline-offset:2px}
 #grtrans-network .table-responsive {max-height:350px;overflow:auto}
 #grtrans-network .grtrans-network-inline {display:inline-block;margin:0 6px}
 #grtrans-link-popup {position:relative;background:#fff;border:2px solid #485c71;

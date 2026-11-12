@@ -91,18 +91,25 @@
     const controls={};
     for(const [key,caption,choices] of options) {
       const wrapper=el('label','grtrans-record-filter');
-      wrapper.append(el('span','grtrans-filter-caption',caption));
+      wrapper.title='Filter by '+caption.toLowerCase();
+      const glyph=el('span','material-icons','filter_alt');
+      glyph.setAttribute('aria-hidden','true');
       const select=el('select','form-control grtrans-size-m');
+      select.title=wrapper.title;select.setAttribute('aria-label',wrapper.title);
       select.append(new Option('All', ''));
       choices.forEach(choice=>select.append(new Option(choice,choice)));
-      wrapper.append(select); bar.append(wrapper); controls[key]=select;
+      wrapper.append(glyph,select);bar.append(wrapper);controls[key]=select;
       select.addEventListener('change',onUpdate);
     }
+    const sortLabel=el('label','grtrans-record-filter grtrans-record-sort');
+    sortLabel.title='Sort records';
+    const sortIcon=el('span','material-icons','sort');
+    sortIcon.setAttribute('aria-hidden','true');
     const sort=el('select','form-control grtrans-size-m');
-    sort.setAttribute('aria-label','Sort records');
+    sort.title='Sort records';sort.setAttribute('aria-label','Sort records');
     for(const [value,label] of [['original','Original order'],['name','Name'],['price','Price, lowest first'],['recent','Newest record first']])
       sort.append(new Option(label,value));
-    bar.append(sort);
+    sortLabel.append(sortIcon,sort);bar.append(sortLabel);
     const count=el('output','grtrans-record-count');count.setAttribute('aria-live','polite');bar.append(count);
     search.addEventListener('input',onUpdate);sort.addEventListener('change',onUpdate);
     const selectedFilters=()=>Object.fromEntries(Object.entries(controls).map(([k,v])=>[k,v.value]));
@@ -127,23 +134,27 @@
     details.append(dl);actions.append(details);
     return details;
   }
-  function activateSelection(rows,record,button) {
+  function activateSelection(rows,record,checkbox) {
+    const selected=checkbox.checked;
     rows.forEach(item=>{
-      const active=item===record.row;
+      const active=selected && item===record.row;
       item.classList.toggle('grtrans-selected-record',active);
-      item.querySelector('[data-grtrans-select-record]')?.setAttribute('aria-pressed',String(active));
+      const input=item.querySelector('input[data-grtrans-select-record]');
+      if(input)input.checked=active;
     });
-    button.setAttribute('aria-pressed','true');
     root.dispatchEvent(new CustomEvent('grtrans:record-selected',{bubbles:true,
-      detail:{entity:record.entity,id:record.id}}));
+      detail:{entity:record.entity,id:selected?record.id:null}}));
   }
-  function selectButton(record,rows) {
-    const button=el('button','grtrans-select-record');
-    button.type='button';button.dataset.grtransSelectRecord=String(record.id);
-    iconize(button,'place','Select '+record.entity.replace('_',' ')+' #'+record.id+' on the map');
-    button.setAttribute('aria-pressed','false');
-    button.addEventListener('click',()=>activateSelection(rows,record,button));
-    return button;
+  function selectButton(record,rows,existing=null) {
+    const checkbox=existing || el('input','grtrans-select-record');
+    checkbox.type='checkbox';
+    checkbox.classList.add('grtrans-select-record');
+    checkbox.dataset.grtransSelectRecord=String(record.id);
+    const title='Select '+record.entity.replace('_',' ')+' #'+record.id+' on the map';
+    checkbox.setAttribute('aria-label',title);checkbox.title=title;
+    checkbox.checked=false;
+    checkbox.addEventListener('change',()=>activateSelection(rows,record,checkbox));
+    return checkbox;
   }
   function iconize(control,glyph,label) {
     control.classList.add('grtrans-row-icon');
@@ -193,7 +204,8 @@
   function compactRowActions(container,record,rows,headings,detailColumns) {
     const strip=el('div','grtrans-row-action-strip');
     container.prepend(strip);
-    strip.append(selectButton(record,rows));
+    const previous=container.querySelector('input[type="checkbox"][data-grtrans-select-record]');
+    strip.append(selectButton(record,rows,previous));
     for(const child of [...container.children]) {
       if(child!==strip && (child.matches('a,button,form,details') || child.querySelector('a[href],button,form,details')))
         strip.append(child);
@@ -203,6 +215,34 @@
       if(!control.closest('.grtrans-row-more')) compactRecordAction(control,record);
     }
     addDetails(record.row,headings,detailColumns,strip,record.label);
+  }
+  function installRowKeys(records) {
+    for(const record of records) {
+      const row=record.row;row.tabIndex=0;
+      row.setAttribute('aria-label',(record.label || record.entity+' #'+record.id)+' record');
+      row.addEventListener('keydown',event=>{
+        // Native controls preserve their own keyboard interaction.
+        if(event.target!==row || event.altKey || event.ctrlKey || event.metaKey)return;
+        const visible=records.filter(item=>!item.row.hidden);
+        const index=visible.indexOf(record);
+        if(event.key==='ArrowUp' || event.key==='ArrowDown') {
+          const next=visible[index+(event.key==='ArrowDown'?1:-1)];
+          if(next) {event.preventDefault();next.row.focus();}
+        } else if(event.key===' ' || event.key==='Spacebar') {
+          const checkbox=row.querySelector('input[data-grtrans-select-record]');
+          if(checkbox) {
+            event.preventDefault();checkbox.checked=!checkbox.checked;
+            checkbox.dispatchEvent(new Event('change',{bubbles:true}));
+          }
+        } else if(event.key==='Enter') {
+          const edit=row.querySelector('a[href*="network_edit="],a[href*="route_edit="],a[aria-label^="Edit "]');
+          if(edit) {event.preventDefault();edit.click();}
+        } else if(event.key==='Delete') {
+          const remove=row.querySelector('button[data-grtrans-row-action="delete"],button.btn-danger');
+          if(remove) {event.preventDefault();remove.click();}
+        }
+      });
+    }
   }
   function enhanceRoutes() {
     const table=root.querySelector('#grtrans-routes .grtrans-route-grid table');
@@ -223,6 +263,7 @@
       }
       return record;
     });
+    installRowKeys(records);
     table.classList.add('grtrans-compact-routes');
     const filters=toolbar(records,[
       ['mode','Transport method',[...new Set(records.map(r=>r.mode).filter(Boolean))].sort(compare)],
@@ -244,30 +285,28 @@
   function enhanceNetwork() {
     const network=root.querySelector('#grtrans-network');
     const nav=network?.querySelector('.grtrans-network-toolbar');
-    if(!nav) return;
-    nav.setAttribute('role','navigation');nav.setAttribute('aria-label','Network record categories');
-    const activeValue=network.querySelector('#grtrans-network-editor input[name="network_entity"]')?.value;
+    if(!nav)return;
+    nav.setAttribute('aria-label','Network record categories');
+    const activeValue=network.querySelector('section.grtrans-network-list[data-grtrans-entity]')?.dataset.grtransEntity
+      || network.querySelector('#grtrans-network-editor input[name="network_entity"]')?.value;
     const active=ENTITIES.includes(activeValue)?activeValue:'stations';
-    const items=[];
-    let next=nav.nextElementSibling;
-    for(const entity of ENTITIES) {
-      if(!next || next.tagName!=='H4') break;
-      const title=next;
-      const wrapper=title.nextElementSibling;
-      if(!wrapper?.querySelector('table')) break;
-      next=wrapper.nextElementSibling;
-      const section=el('section','grtrans-network-list');section.dataset.grtransEntity=entity;
-      title.before(section);section.append(title,wrapper);items.push({entity,section,table:wrapper.querySelector('table')});
-      section.hidden=entity!==active;
-      title.textContent=TITLES[entity];
+    // PHP renders only the active dataset, not five sibling tables.
+    const sections=[...network.querySelectorAll('section.grtrans-network-list[data-grtrans-entity]')];
+    for(const section of sections) {
+      const entity=section.dataset.grtransEntity;
+      const title=section.querySelector('h4');
+      if(title && TITLES[entity])title.textContent=TITLES[entity];
+      const table=section.querySelector('table');
+      if(table && ENTITIES.includes(entity))enhanceNetworkList({entity,section,table});
     }
     for(const link of nav.querySelectorAll('a')) {
       const entity=new URL(link.href,location.href).searchParams.get('network_entity');
-      link.setAttribute('aria-current',String(entity===active));
-      if(entity===active) link.classList.add('grtrans-active-tab');
-      if(TITLES[entity]) link.textContent=TITLES[entity];
+      link.classList.toggle('grtrans-active-tab',entity===active);
+      if(entity===active)link.setAttribute('aria-current','page');
+      else link.removeAttribute('aria-current');
+      const title=link.querySelector('.grtrans-network-tab-text');
+      if(title && TITLES[entity])title.textContent=TITLES[entity];
     }
-    for(const item of items) enhanceNetworkList(item);
   }
   function enhanceNetworkList({entity,section,table}) {
     const headings=[...table.querySelectorAll('thead th')].map(text);
@@ -322,8 +361,13 @@
       }
       return record;
     });
+    installRowKeys(records);
     const selector=el('div','grtrans-record-list-head');
-    const add=el('a','btn btn-default','Add '+(TITLES[entity]||entity).toLowerCase().replace(/s$/,''));
+    const add=el('a','btn btn-default grtrans-add-record');
+    const caption='Add '+(TITLES[entity]||entity).toLowerCase().replace(/s$/,'');
+    add.title=caption;add.setAttribute('aria-label',caption);
+    const addIcon=el('span','material-icons','add');addIcon.setAttribute('aria-hidden','true');
+    add.append(addIcon,el('span','',caption));
     const url=new URL(location.href);url.searchParams.set('network_entity',entity);url.searchParams.delete('network_edit');
     add.href=url.pathname+url.search+'#grtrans-network-editor';selector.append(add);
     const optionSets=[];
@@ -403,6 +447,7 @@
       });
       group.querySelector('.grtrans-clear-far')?.addEventListener('click',()=>{
         outer.value='';refresh();
+        outer.dispatchEvent(new Event('input',{bubbles:true}));
       });
       refresh();
     }
@@ -526,5 +571,25 @@
     variantChoice.addEventListener('change',()=>{variant.value=variantChoice.value;});
     syncVariants();
   }
+  // Coordinate native Details and more-actions popovers in one shared slot.
+  const popupSelector='details.grtrans-record-details,details.grtrans-row-more';
+  const dismissPopovers=except=>{
+    for(const panel of root.querySelectorAll(popupSelector))
+      if(panel!==except && panel.open)panel.open=false;
+  };
+  root.addEventListener('toggle',event=>{
+    const panel=event.target;
+    if(panel.matches?.(popupSelector) && panel.open)dismissPopovers(panel);
+  },true);
+  document.addEventListener('pointerdown',event=>{
+    if(!event.target.closest?.(popupSelector))dismissPopovers();
+  });
+  document.addEventListener('keydown',event=>{
+    if(event.key!=='Escape')return;
+    const open=root.querySelector('details.grtrans-record-details[open],details.grtrans-row-more[open]');
+    if(!open)return;
+    event.preventDefault();event.stopPropagation();
+    open.open=false;open.querySelector('summary')?.focus();
+  },true);
   enhanceRoutes();enhanceNetwork();enhanceRouteStationPickers();enhanceEditor();
 })();

@@ -33,6 +33,7 @@
   let originalPosition = null, originalFields = null, originalPair = null;
   let draftMarker = null, dragMarker = null, selectionOverlay = null;
   let stockFilter = 0, working = false;
+  let navigationPending = false;
   const stage = node('div','grtrans-map-workspace');stage.id = 'grtrans-map-workspace';
   const tools = node('div','grtrans-map-workspace-tools');
   tools.setAttribute('role','toolbar');tools.setAttribute('aria-label','Service map editing tools');
@@ -120,6 +121,10 @@
     try {sessionStorage.setItem(storedKey,JSON.stringify(view));} catch(_) { /* optional */ }
   };
   function visit(entity,id=0,nextMode=mode) {
+    // A marker gesture can reach selection and editing handlers synchronously.
+    // The first navigation owns this page; later requests must not supersede it.
+    if (navigationPending) return;
+    navigationPending = true;
     saveView();
     try {sessionStorage.setItem(modeKey,nextMode);} catch(_) { /* optional */ }
     const url=new URL(location.href);
@@ -159,15 +164,22 @@
   }
   function activateRow(entity,id) {
     if (!entities.includes(entity)||id<=0) return;
+    if (!lists.some(list=>list.dataset.grtransEntity===entity)) {
+      visit(entity,id,'select');return;
+    }
     setActive(entity);
     const section=listDock.querySelector('[data-grtrans-entity="'+entity+'"]');
     const row=[...(section?.querySelectorAll('tr[data-grtrans-record-id]')||[])].find(r=>Number(r.dataset.grtransRecordId)===Number(id));
     const button=row?.querySelector('[data-grtrans-select-record]');
-    if (button && button.getAttribute('aria-pressed')!=='true') button.click();
+    if (button && !button.checked) button.click();
     else { selected={entity,id};highlight(entity,id);showContext(); }
   }
   function setActive(entity) {
     if (!entities.includes(entity)) return;
+    // Missing categories are fetched through normal server navigation.
+    if (!lists.some(list=>list.dataset.grtransEntity===entity)) {
+      visit(entity,0,'select');return;
+    }
     activeEntity=entity;
     for (const list of lists) list.hidden=list.dataset.grtransEntity!==entity;
     for (const link of tabs) {
@@ -229,6 +241,8 @@
       const [lat,lng]=pointFields();
       if(lat)lat.value=originalFields[0];
       if(lng)lng.value=originalFields[1];
+      if(lat)lat.dispatchEvent(new Event('input',{bubbles:true}));
+      if(lng)lng.dispatchEvent(new Event('input',{bubbles:true}));
     }
     originalFields=null;
     if (originalPair) {
@@ -302,7 +316,12 @@
     const id=Number(station.id_station);
     if(mode==='preview')return false;
     if(mode==='place'){notice('Click empty map space to place the new station.');return true;}
-    if(mode==='move'){selected={entity:'stations',id};activateRow('stations',id);enableMove(id);return true;}
+    if(mode==='move'){
+      // From another dataset, activateRow and enableMove would each navigate.
+      // Go directly to the station editor once, preserving the Move intent.
+      if(!matchingEditor('stations',id)){visit('stations',id,'move');return true;}
+      selected={entity:'stations',id};activateRow('stations',id);enableMove(id);return true;
+    }
     if(mode==='connect-leg'||mode==='connect-transfer'){
       const entity=mode==='connect-leg'?'legs':'transfers';
       if(!matchingEditor(entity,0)){visit(entity,0,mode);return true;}
@@ -412,7 +431,13 @@
     input.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();submit();}});
   }
   root.addEventListener('grtrans:record-selected',event=>{
-    if(event.detail?.entity==='branch_stock'&&Number(event.detail.id)>0)stockQuantityEditor(Number(event.detail.id));
+    const entity=event.detail?.entity,id=Number(event.detail?.id);
+    if(entities.includes(entity) && id>0) {
+      selected={entity,id};highlight(entity,id);showContext();
+    } else if(selected?.entity===entity) {
+      selected=null;bridge.clearFocus();showContext();
+    }
+    if(entity==='branch_stock'&&id>0)stockQuantityEditor(id);
     else if(inlineStock){inlineStock.remove();inlineStock=null;}
   });
   window.addEventListener('grtrans:map-station-selected',event=>{
@@ -424,6 +449,9 @@
   for(const link of tabs)link.addEventListener('click',event=>{
     const entity=new URL(link.href,location.href).searchParams.get('network_entity');
     if(!entities.includes(entity))return;
+    if(!lists.some(list=>list.dataset.grtransEntity===entity)) {
+      saveView();return; // Load the selected category through its server link.
+    }
     event.preventDefault();if(mode!=='select')switchMode('select');setActive(entity);
     const url=new URL(location.href);url.searchParams.set('network_entity',entity);
     history.replaceState(history.state,'',url.toString());
@@ -535,7 +563,17 @@
       notice('The station change was not saved. Correct the retained draft or discard its position.',true);
     }
   }
-  requestAnimationFrame(()=>bridge.map.invalidateSize());
+  // The map is reparented into its dock during startup. The stage exists
+  // before that layout and Leaflet's size reconciliation have completed.
+  // Announce readiness only after the dock has its final map dimensions.
+  requestAnimationFrame(()=>{
+    bridge.map.invalidateSize();
+    // Category navigation has no record focus; preserve the exact view stored
+    // before navigation after Leaflet has accounted for the new container size.
+    // Editing a record intentionally focuses that record, so keep its camera.
+    if(formId===0)restoreView();
+    stage.dataset.grtransViewReady='true';
+  });
   window.GrtransMapWorkspace={stage,bridge,form,editor,tools,
     selectRecord:activateRow,selected:()=>selected,getMode:()=>mode,visit,changeMode:switchMode};
 })();
