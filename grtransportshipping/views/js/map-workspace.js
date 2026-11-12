@@ -665,7 +665,7 @@
     else if(['draw','edit-coverage','radius','edit-route'].includes(requested)){
       const target=selected?.entity||formEntity;
       if(target==='stations'||target==='legs')editNetwork(target,selected?.entity===target?selected.id:0);
-    }else if(requested==='place-area')editNetwork('legs',0);
+    }else if(requested==='place-area')editNetwork('legs',0,'place-area');
   },true);
   // Capture before Leaflet patch/pin/line handlers. Placement is coordinates
   // only, even on polygons or markers; controls retain their normal actions.
