@@ -14,7 +14,21 @@ try {
   await page.waitForLoadState('domcontentloaded');
   await page.goto(adminUrl,{waitUntil:'domcontentloaded',timeout:45000});
   const stage=page.locator('#grtrans-map-workspace');
+  // A stage element can exist before restoreView and Leaflet size reconciliation.
+  const waitForWorkspace=async(entity,view=null)=>{
+    await page.waitForFunction(({entity,view})=>{
+      const workspace=window.GrtransMapWorkspace;
+      if(workspace?.stage?.dataset.grtransViewReady!=='true')return false;
+      const list=workspace.stage.querySelector('section.grtrans-network-list:not([hidden])');
+      if(list?.dataset.grtransEntity!==entity)return false;
+      if(!view)return true;
+      const map=window.GrtransMapBridge.map,centre=map.getCenter();
+      return Math.abs(centre.lat-view.lat)<1e-5 && Math.abs(centre.lng-view.lng)<1e-5
+        && map.getZoom()===view.zoom;
+    },{entity,view},{timeout:20000});
+  };
   await stage.waitFor({timeout:20000});
+  await waitForWorkspace('stations');
   assert.equal(await stage.locator('.grtrans-map-sidebar').count(),1);
   assert.equal(await stage.locator('.grtrans-map-column').count(),1);
   const map=page.locator('#grtrans-network-map');
@@ -39,8 +53,8 @@ try {
     assert.equal(await fallback.locator('#grtrans-network-editor [data-grtrans-network-state]').count(),1);
   } finally {await fallbackContext.close();}
   await stage.locator('.grtrans-network-toolbar a').filter({hasText:'Transport connections'}).click();
-  await page.waitForURL(/network_entity=legs/,{timeout:20000});
-  await stage.waitFor();
+  await page.waitForURL(/network_entity=legs/,{waitUntil:'domcontentloaded',timeout:20000});
+  await waitForWorkspace('legs',before);
   const during=await page.evaluate(()=>{
     const bridge=window.GrtransMapBridge;
     return {id:bridge.map._leaflet_id,lat:bridge.map.getCenter().lat,lng:bridge.map.getCenter().lng,zoom:bridge.map.getZoom()};
@@ -49,8 +63,8 @@ try {
   assert.equal(during.zoom,before.zoom,'Server navigation must restore the saved map view');
   assert.equal(await stage.locator('section.grtrans-network-list:not([hidden])').getAttribute('data-grtrans-entity'),'legs');
   await stage.locator('.grtrans-network-toolbar a').filter({hasText:'Stations'}).click();
-  await page.waitForURL(/network_entity=stations/,{timeout:20000});
-  await stage.waitFor();
+  await page.waitForURL(/network_entity=stations/,{waitUntil:'domcontentloaded',timeout:20000});
+  await waitForWorkspace('stations',before);
   const firstRow=stage.locator('[data-grtrans-entity="stations"] tr[data-grtrans-record-id]').first();
   const checkbox=firstRow.locator('input[type=checkbox][data-grtrans-select-record]');
   await checkbox.check();
@@ -96,9 +110,9 @@ try {
   assert.equal(await form.locator('input[name="lng"]').inputValue(),'');
   assert.equal(await stage.locator('[data-grtrans-mode="select"]').getAttribute('aria-pressed'),'true');
   await stage.getByRole('button',{name:'Connect stations'}).click();
-  await page.waitForURL(/network_entity=legs/,{timeout:20000});
+  await page.waitForURL(/network_entity=legs/,{waitUntil:'domcontentloaded',timeout:20000});
+  await waitForWorkspace('legs');
   const pairForm=page.locator('#grtrans-network-editor form');
-  await page.locator('#grtrans-map-workspace').waitFor();
   const stations=await page.evaluate(()=>window.GrtransMapBridge.data.stations.map(s=>Number(s.id_station)));
   assert.ok(stations.length>=2,'At least two seeded stations required for pairwise editor');
   // Leaflet's exact click handlers are exercised without starting a POST.
@@ -112,11 +126,16 @@ try {
   assert.ok(await page.locator('.grtrans-map-unsaved').isVisible());
   await page.keyboard.press('Escape');
   await page.locator('#grtrans-map-workspace').getByRole('button',{name:'Move station'}).click();
+  // Subscribe before firing the marker: the old Move handler issued two
+  // competing location.assign calls and aborted the first navigation.
+  const movingNavigation=page.waitForURL(/network_entity=stations.*network_edit=/,
+    {waitUntil:'domcontentloaded',timeout:20000});
   await page.evaluate(id=>{
     const m=window.GrtransMapBridge.marker(id);
     m.fire('click',{latlng:m.getLatLng()});
   },stations[0]);
-  await page.waitForURL(/network_entity=stations.*network_edit=/,{timeout:20000});
+  await movingNavigation;
+  await waitForWorkspace('stations');
   const moving=page.locator('#grtrans-network-editor form');
   const oldLat=await moving.locator('input[name="lat"]').inputValue();
   await page.locator('#grtrans-map-workspace').getByRole('button',{name:'Move tentative point north'}).click();

@@ -33,6 +33,7 @@
   let originalPosition = null, originalFields = null, originalPair = null;
   let draftMarker = null, dragMarker = null, selectionOverlay = null;
   let stockFilter = 0, working = false;
+  let navigationPending = false;
   const stage = node('div','grtrans-map-workspace');stage.id = 'grtrans-map-workspace';
   const tools = node('div','grtrans-map-workspace-tools');
   tools.setAttribute('role','toolbar');tools.setAttribute('aria-label','Service map editing tools');
@@ -120,6 +121,10 @@
     try {sessionStorage.setItem(storedKey,JSON.stringify(view));} catch(_) { /* optional */ }
   };
   function visit(entity,id=0,nextMode=mode) {
+    // A marker gesture can reach selection and editing handlers synchronously.
+    // The first navigation owns this page; later requests must not supersede it.
+    if (navigationPending) return;
+    navigationPending = true;
     saveView();
     try {sessionStorage.setItem(modeKey,nextMode);} catch(_) { /* optional */ }
     const url=new URL(location.href);
@@ -311,7 +316,12 @@
     const id=Number(station.id_station);
     if(mode==='preview')return false;
     if(mode==='place'){notice('Click empty map space to place the new station.');return true;}
-    if(mode==='move'){selected={entity:'stations',id};activateRow('stations',id);enableMove(id);return true;}
+    if(mode==='move'){
+      // From another dataset, activateRow and enableMove would each navigate.
+      // Go directly to the station editor once, preserving the Move intent.
+      if(!matchingEditor('stations',id)){visit('stations',id,'move');return true;}
+      selected={entity:'stations',id};activateRow('stations',id);enableMove(id);return true;
+    }
     if(mode==='connect-leg'||mode==='connect-transfer'){
       const entity=mode==='connect-leg'?'legs':'transfers';
       if(!matchingEditor(entity,0)){visit(entity,0,mode);return true;}
@@ -553,7 +563,17 @@
       notice('The station change was not saved. Correct the retained draft or discard its position.',true);
     }
   }
-  requestAnimationFrame(()=>bridge.map.invalidateSize());
+  // The map is reparented into its dock during startup. The stage exists
+  // before that layout and Leaflet's size reconciliation have completed.
+  // Announce readiness only after the dock has its final map dimensions.
+  requestAnimationFrame(()=>{
+    bridge.map.invalidateSize();
+    // Category navigation has no record focus; preserve the exact view stored
+    // before navigation after Leaflet has accounted for the new container size.
+    // Editing a record intentionally focuses that record, so keep its camera.
+    if(formId===0)restoreView();
+    stage.dataset.grtransViewReady='true';
+  });
   window.GrtransMapWorkspace={stage,bridge,form,editor,tools,
     selectRecord:activateRow,selected:()=>selected,getMode:()=>mode,visit,changeMode:switchMode};
 })();
