@@ -26,7 +26,10 @@ try {
   const id=Number(await stationRow.getAttribute('data-grtrans-record-id'));
   assert.ok(id>0,'Network fixture should have a station');
   const editLink=stationRow.locator('a[href*="network_edit="]').first();
-  await editLink.click();await page.waitForURL(/network_entity=stations.*network_edit=/,{timeout:20000});
+  await editLink.click();
+  await stage.locator('#grtrans-network-editor').waitFor({state:'visible',timeout:20000});
+  assert.equal(await getForm().locator('[name="network_id"]').inputValue(),String(id),
+    'Station Edit must open the correct record in the dock without navigation');
   await stage.waitFor();
   const stationForm=getForm();
   const beforeShape=await stationForm.locator('[name="coverage_geojson"]').inputValue();

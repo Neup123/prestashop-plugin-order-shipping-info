@@ -47,6 +47,8 @@ assert.match(source,/filter_alt/);assert.match(source,/material-icons','sort'/);
 assert.match(styles,/width:max-content;min-width:0!important/);
 assert.doesNotMatch(styles,/min-width:min\(24rem,90vw\)/);
 assert.match(workspace,/if \(button && !button\.checked\) button\.click\(\)/);
+assert.match(workspace,/grtrans-map-pending-add/,'Explicit Add intent survives entity navigation');
+assert.match(workspace,/add\.addEventListener\('click',\(\)=>editNetwork\(activeEntity,0,'select'\)\)/);
 assert.match(crm,/grtrans-columns:/);
 assert.match(crm,/localStorage\.setItem/);
 assert.match(crm,/grtrans-columns-chooser/);

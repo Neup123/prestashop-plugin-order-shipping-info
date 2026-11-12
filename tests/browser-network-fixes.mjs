@@ -38,6 +38,8 @@ async function checkMarkerAssets(mapSelector, label) {
 
 async function addStation(name, lat, lng, hub) {
   await page.goto(adminUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
+  await page.getByRole('button',{name:'Place station',exact:true}).click();
+  await page.locator('#grtrans-network-editor').waitFor({state:'visible',timeout:20000});
   const form = page.locator('#grtrans-network-editor form');
   await form.locator('input[name="name"]').fill(name);
   await form.locator('input[name="address_text"]').fill('Ephemeral CI station');
@@ -90,6 +92,8 @@ try {
   const legsUrl = new URL(adminUrl);
   legsUrl.searchParams.set('network_entity', 'legs');
   await page.goto(legsUrl.toString(), { waitUntil: 'domcontentloaded', timeout: 45000 });
+  await page.getByRole('button',{name:'Add legs',exact:true}).click();
+  await page.locator('#grtrans-network-editor').waitFor({state:'visible',timeout:20000});
   form = page.locator('#grtrans-network-editor form');
   await form.locator('select[name="from_station_id"]').selectOption(source);
   await form.locator('select[name="to_station_id"]').selectOption(target);
@@ -106,6 +110,8 @@ try {
   // verify that its DB-backed map snapshot has SQL NULL (not numeric zero).
   // A DB seed would bypass the Db::insert/update nullable writer bug.
   await page.goto(legsUrl.toString(), { waitUntil: 'domcontentloaded', timeout: 45000 });
+  await page.getByRole('button',{name:'Add legs',exact:true}).click();
+  await page.locator('#grtrans-network-editor').waitFor({state:'visible',timeout:20000});
   form = page.locator('#grtrans-network-editor form');
   await form.locator('select[name="from_station_id"]').selectOption(source);
   await form.locator('select[name="to_station_id"]').selectOption('');

@@ -94,12 +94,14 @@ try {
     assert.equal(await firstDetails.getAttribute('open'),null,'Click outside closes Details');
   }
   assert.ok(await stage.locator('.grtrans-record-filters .material-icons').count()>0,'Sort icon visible');
+  await stage.getByRole('button',{name:'Place station'}).click();
+  assert.equal(await stage.locator('#grtrans-network-editor').isVisible(),true,
+    'Place station opens the network form on demand');
   const networkStatus=stage.locator('[data-grtrans-network-state]');
   assert.ok(await networkStatus.isVisible());
   await stage.locator('#grtrans-network-editor input[name="name"]').fill('Not yet saved');
   assert.equal(await networkStatus.getAttribute('data-state'),'unsaved');
   assert.equal(await page.evaluate(()=>window.GrtransMapWorkspace.stage.id),'grtrans-map-workspace');
-  await stage.getByRole('button',{name:'Place station'}).click();
   await stage.getByRole('button',{name:'Use map centre'}).click();
   const form=stage.locator('#grtrans-network-editor form');
   assert.notEqual(await form.locator('input[name="lat"]').inputValue(),'');

@@ -24,6 +24,8 @@
   if (!mapRoot || !editor || !originalNav || !lists.length) return;
   const storedKey = 'grtrans-map-workspace-view';
   const modeKey = 'grtrans-map-workspace-intent';
+  // Explicit Add survives navigation to the server-rendered dataset.
+  const pendingAddKey = 'grtrans-map-pending-add';
   const form = editor.querySelector('form');
   const formEntity = form?.querySelector('[name="network_entity"]')?.value || '';
   let formId = Number(form?.querySelector('[name="network_id"]')?.value || 0);
@@ -129,8 +131,11 @@
     const row=listDock.querySelector('[data-grtrans-entity="'+entity+'"] tr[data-grtrans-record-id="'+id+'"]');
     return fromJSON(row?.dataset.grtransRecord)||null;
   };
-  function editNetwork(entity,id=0) {
-    if(!matchingEditor(entity,formId)){visit(entity,id,'select');return false;}
+  function editNetwork(entity,id=0,nextMode=mode) {
+    if(!matchingEditor(entity,formId)){
+      if(id===0){try{sessionStorage.setItem(pendingAddKey,entity);}catch(_){}}
+      visit(entity,id,nextMode);return false;
+    }
     // A failed new-record POST must not be overwritten by creation defaults.
     if(id===0 && formId===0 && retainedNetworkDraft) {
       editor.hidden=false;if(routeEditor)routeEditor.hidden=true;editorDock.hidden=false;
@@ -191,7 +196,10 @@
     if (navigationPending) return;
     navigationPending = true;
     saveView();
-    try {sessionStorage.setItem(modeKey,nextMode);} catch(_) { /* optional */ }
+    try {
+      sessionStorage.setItem(modeKey,nextMode);
+      if(id===0 && nextMode==='place-area')sessionStorage.setItem(pendingAddKey,entity);
+    } catch(_) { /* optional */ }
     const url=new URL(location.href);
     url.searchParams.set('network_entity',entity);
     if (id > 0) url.searchParams.set('network_edit',String(id));
@@ -265,6 +273,15 @@
       const yes=linked===entity;link.setAttribute('aria-current',String(yes));link.classList.toggle('grtrans-active-tab',yes);
     }
     editorDock.hidden=editor.hidden && (!routeEditor || routeEditor.hidden);
+    let reopenAdd=false;
+    try {
+      reopenAdd=sessionStorage.getItem(pendingAddKey)===entity;
+      if(reopenAdd)sessionStorage.removeItem(pendingAddKey);
+    } catch(_) { /* storage is optional */ }
+    // Plain tab navigation stays read-only; only explicit Add opens the dock.
+    if(reopenAdd && entity===formEntity && formId===0 && !retainedNetworkDraft){
+      editNetwork(entity,0,'select');return;
+    }
     showContext();
   }
   function showContext() {
@@ -293,7 +310,7 @@
       context.append(target);
     } else {
       const add=text('button','Add '+activeEntity.replace('_',' '),'btn btn-default btn-sm');add.type='button';
-      add.addEventListener('click',()=>visit(activeEntity,0,'select'));context.append(add);
+      add.addEventListener('click',()=>editNetwork(activeEntity,0,'select'));context.append(add);
     }
     window.GrtransMapContext?.render(selected,context);
   }
@@ -607,9 +624,9 @@
   toolsGroup.addEventListener('click',event=>{
     const button=event.target.closest?.('[data-grtrans-mode]');if(!button)return;
     const requested=button.dataset.grtransMode;
-    if(requested==='place')editNetwork('stations',0);
+    if(requested==='place')editNetwork('stations',0,'place');
     else if(requested==='connect-leg'||requested==='connect-transfer')
-      editNetwork(requested==='connect-leg'?'legs':'transfers',0);
+      editNetwork(requested==='connect-leg'?'legs':'transfers',0,requested);
     else if(requested==='move'&&selected?.entity==='stations')editNetwork('stations',selected.id);
     else if(['draw','edit-coverage','radius','edit-route'].includes(requested)){
       const target=selected?.entity||formEntity;
