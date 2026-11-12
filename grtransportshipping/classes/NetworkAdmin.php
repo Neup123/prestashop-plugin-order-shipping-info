@@ -310,7 +310,7 @@ return '<div class="alert alert-danger" data-grtrans-autosave-result="error">'
             'stations'=>[
                 ['Station',['name','type','address_text','is_origin_hub']],
                 ['Location and service reach',['lat','lng','inner_radius_km','outer_radius_km','coverage_kind','coverage_geojson']],
-                ['Advanced',['patch_precedence']]],
+                ['Advanced',['patch_precedence']],
             ],
             'legs'=>[
                 ['Connection',['from_station_id','to_station_id','mode','operator_label','bidirectional']],
