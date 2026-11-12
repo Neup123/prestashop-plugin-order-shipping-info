@@ -51,7 +51,7 @@ class Grtransportshipping extends CarrierModule
     {
         $this->name = 'grtransportshipping';
         $this->tab = 'shipping_logistics';
-        $this->version = '0.15.0';
+        $this->version = '0.16.0';
         $this->author = 'Neup123';
         $this->need_instance = 0;
         $this->bootstrap = true;
@@ -634,6 +634,7 @@ class Grtransportshipping extends CarrierModule
             .(int)($this->context->employee->id ?? 0).'"><link rel="stylesheet" href="'.$assets.'css/configure-admin.css">'
             .'<link rel="stylesheet" href="'.$assets.'css/compact-records.css">'
             .'<link rel="stylesheet" href="'.$assets.'css/map-workspace.css">'
+            .'<link rel="stylesheet" href="'.$assets.'css/map-context-panel.css">'
             .'<link rel="stylesheet" href="'.$assets.'css/map-spatial-editor.css">'
             .GrTransportNetworkAdmin::handle($this);
         $submitted = null;
@@ -1011,7 +1012,8 @@ class Grtransportshipping extends CarrierModule
             . '<script src="'.$assets.'js/map-workspace-model.js"></script>'
             . '<script src="'.$assets.'js/map-workspace.js"></script>'
             . '<script src="'.$assets.'js/map-spatial-model.js"></script>'
-            . '<script src="'.$assets.'js/map-spatial-editor.js"></script></div>';
+            . '<script src="'.$assets.'js/map-spatial-editor.js"></script>'
+            . '<script src="'.$assets.'js/map-context-panel.js"></script></div>';
     }
 
     /** One named-field collection shared by saving and failed-save re-rendering. */

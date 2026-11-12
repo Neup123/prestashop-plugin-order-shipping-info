@@ -158,6 +158,14 @@ return '<div class="alert alert-danger" data-grtrans-autosave-result="error">'
         // Branch and stock context is shop-scoped in snapshot(); expose only
         // these existing records to the map-side selection UI.
         $mapData=array_intersect_key($activeData,array_flip(['stations','legs','transfers','branches','branch_stock']));
+        // Use the same server-side schema and defaults for map-side editors and
+        // for complete signed saves. No client-invented field/choice catalogue.
+        $mapData['fieldSpecs']=[];
+        $mapData['fieldDefaults']=[];
+        foreach (GrTransportNetworkFields::ENTITIES as $kind) {
+            $mapData['fieldSpecs'][$kind]=GrTransportNetworkFields::fields($kind);
+            $mapData['fieldDefaults'][$kind]=GrTransportNetworkFields::defaults($kind);
+        }
         $mapData['resolution']=GrTransportNetworkResolution::mapPlan($mapData,$route['cost']);
         $mapConfig=json_encode($mapData+['cost'=>$cost,'nearbyGapKm'=>GrTransportNetworkSettings::get('nearby_gap_km'),
             'farDefaultKm'=>GrTransportNetworkSettings::get('station_outer_km'),
@@ -326,7 +334,7 @@ return '<div class="alert alert-danger" data-grtrans-autosave-result="error">'
                 ['Advanced',['patch_precedence']],
             ],
             'legs'=>[
-                ['Connection',['from_station_id','to_station_id','mode','operator_label','bidirectional','active']],
+                ['Connection',['from_station_id','to_station_id','mode','operator_label','bidirectional','active','stop_order']],
                 ['Price',['tariff_type','price','rate_per_unit','estimate','estimate_low_factor','estimate_high_factor']],
                 ['Timing',['lead_hours','preparation_hours','transit_min_hours','transit_max_hours']],
                 ['Direct service area',['area_name','area_lat','area_lng','area_radius_km','area_outer_radius_km','area_coverage_kind','area_coverage_geojson','route_geojson']],

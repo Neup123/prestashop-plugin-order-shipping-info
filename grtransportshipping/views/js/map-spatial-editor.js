@@ -9,7 +9,7 @@
   const {stage,form,editor,tools,bridge:mapBridge} = workspace;
   const map = bridge.map;
   const entity = form?.querySelector('[name="network_entity"]')?.value || '';
-  const recordId = Number(form?.querySelector('[name="network_id"]')?.value || 0);
+  let recordId = Number(form?.querySelector('[name="network_id"]')?.value || 0);
   const field = name => form?.querySelector('[name="'+name+'"]') || null;
   const pointFor = () => entity === 'stations' ? ['lat','lng'] : ['area_lat','area_lng'];
   const coverageField = () => entity === 'stations' ? 'coverage_geojson' : 'area_coverage_geojson';
@@ -34,6 +34,49 @@
     b.setAttribute('aria-label',title);b.addEventListener('click',action);return b;
   };
   const dispatch = (input, kind='input') => input?.dispatchEvent(new Event(kind,{bubbles:true}));
+  // #131: postcode is a one-time Greek location lookup, NOT a persisted leg field.
+  // Store only the existing area coordinates and optional name after an explicit lookup.
+  if(entity==='legs' && field('area_lat') && field('area_lng')) {
+    const coordinateGroup=field('area_lat').closest('.form-group');
+    if(coordinateGroup) {
+      const lookup=node('div',null,'grtrans-postcode-lookup');
+      const label=node('label','Locate area centre by Greek postcode');
+      const postcode=node('input');postcode.type='search';postcode.maxLength=32;
+      postcode.className='form-control grtrans-size-s';postcode.id='grtrans-area-postcode';
+      postcode.placeholder='Postcode';postcode.autocomplete='postal-code';
+      postcode.dataset.grtransAreaPostcode='';label.htmlFor=postcode.id;
+      const locate=button('Locate postcode',async()=>{
+        const value=postcode.value.trim();
+        if(!value){result.textContent='Postcode not found — enter coordinates manually';result.dataset.state='error';return;}
+        locate.disabled=true;result.textContent='Looking up postcode…';result.dataset.state='saving';
+        try {
+          const url='https://nominatim.openstreetmap.org/search?format=json&limit=1&postalcode='
+            +encodeURIComponent(value)+'&countrycodes=gr';
+          const response=await fetch(url,{headers:{Accept:'application/json'}});
+          if(!response.ok)throw new Error('Geocoding request failed');
+          const candidates=await response.json();
+          const place=Array.isArray(candidates)?candidates[0]:null;
+          const lat=Number(place?.lat),lng=Number(place?.lon);
+          if(!place || !Number.isFinite(lat) || !Number.isFinite(lng)
+            || lat < -90 || lat > 90 || lng < -180 || lng > 180)throw new Error('Postcode not found');
+          const latitude=field('area_lat'),longitude=field('area_lng');
+          latitude.value=lat.toFixed(7);longitude.value=lng.toFixed(7);
+          dispatch(latitude);dispatch(longitude);
+          const name=field('area_name');if(name && !name.value.trim()){name.value=value;dispatch(name);}
+          map.panTo([lat,lng],{animate:false});
+          result.textContent='Postcode located. Review the area centre and save the record.';
+          result.dataset.state='saved';
+        }catch(_) {
+          // No partial form updates on failed lookup; coordinates can still be entered manually.
+          result.textContent='Postcode not found — enter coordinates manually';result.dataset.state='error';
+        }finally{locate.disabled=false;}
+      });
+      locate.dataset.grtransLocatePostcode='';locate.title='Locate Greek postcode on the map';
+      const result=node('output','', 'grtrans-postcode-result');
+      result.setAttribute('aria-live','polite');result.dataset.grtransPostcodeState='';
+      lookup.append(label,postcode,locate,result);coordinateGroup.prepend(lookup);
+    }
+  }
   const panel = node('section',null,'grtrans-spatial-panel');
   panel.setAttribute('aria-label','Spatial draft editor');panel.hidden=true;
   const heading=node('strong','Map drawing and measurements');
@@ -431,7 +474,7 @@
     const selection=workspace.selected();
     if(recordId===0 && selection?.id>0 && selection.entity===entity &&
        (next==='radius'||next==='draw'||next==='edit-coverage'||next==='edit-route')) {
-      workspace.visit(entity,selection.id,next);return;
+      workspace.editNetwork(entity,selection.id);recordId=selection.id;
     }
     remember();
     if(next==='place-area') {
@@ -504,7 +547,8 @@
   const addArea=button('Add service area from selected station',()=>{
     const id=Number(workspace.selected()?.entity==='stations'?workspace.selected()?.id:0);
     if(id>0){try{sessionStorage.setItem('grtrans-spatial-origin',String(id));}catch(_){}}
-    workspace.visit('legs',0,'place-area');
+    if(entity==='legs'){workspace.editNetwork('legs',0);workspace.changeMode('place-area');}
+    else workspace.visit('legs',0,'place-area');
   });
   addArea.classList.add('grtrans-spatial-add-area');
   const context=stage.querySelector('.grtrans-map-context');context?.after(addArea);
@@ -553,6 +597,12 @@
     event.stopPropagation();
     workspace.changeMode('select');
   },true);
+  stage.addEventListener('grtrans:map-editor-record',event=>{
+    if(event.detail?.entity!==entity)return;
+    dropLayers();baseline=null;history=[];building=null;activeShape=null;shape=null;
+    recordId=Number(event.detail.id)||0;
+    if(isSpatial(mode))enter(mode);
+  });
   window.GrtransMapSpatialEditor={beforeSwitch:exit,afterSwitch:enter,discard:restore};
   enter(workspace.getMode());
 })();

@@ -324,7 +324,46 @@
   for(const table of root.querySelectorAll('#grtrans-network .grtrans-network-list table')){
     setup(table,table.closest('[data-grtrans-entity]')?.dataset.grtransEntity);
   }
+  // Map-context records may be selected while another dataset tab is rendered.
+  // Persist them through the SAME signed network save action and full schema.
+  // Preserve the pre-render raw values (not map-only effective FAR radii).
+  const saveNetworkRecord=async(entity,id,changes,result)=>{
+    const bridge=window.GrtransMapBridge;
+    const specs=bridge?.data?.fieldSpecs?.[entity];
+    const key=idField[entity];
+    const raw=bridge?.rawRecords?.[entity]?.find(row=>Number(row[key])===Number(id));
+    if(!specs||!key||!raw||!endpoint||!token){
+      if(result)setResult(result,'error','Not saved: signed record or schema unavailable.');
+      return false;
+    }
+    const next={...raw,...changes};
+    const payload=new FormData();
+    payload.set('token',token);payload.set('grtrans_network_action','save');
+    payload.set('network_entity',entity);payload.set('network_id',String(id));
+    for(const field of Object.keys(specs))payload.set(field,serialize(next[field]));
+    if(result)setResult(result,'saving','Saving…');
+    try{
+      const response=await fetch(endpoint.action,{method:'POST',body:payload,credentials:'same-origin',
+        headers:{'X-Requested-With':'XMLHttpRequest'}});
+      if(!response.ok)throw new Error('HTTP '+response.status);
+      const html=new DOMParser().parseFromString(await response.text(),'text/html');
+      const success=[...html.querySelectorAll('.alert-success[role="status"]')]
+        .some(el=>el.textContent.includes('Network record updated.'));
+      if(!success)throw new Error(html.querySelector('.alert-danger details code')?.textContent.trim()
+        ||html.querySelector('.alert-danger')?.textContent.trim()||'Server rejected the record.');
+      Object.assign(raw,changes);
+      const active=bridge.data[entity]?.find(row=>Number(row[key])===Number(id));
+      if(active)Object.assign(active,changes);
+      const tableModel=tables.get(entity)?.find(model=>model.id===Number(id));
+      if(tableModel){for(const [field,value] of Object.entries(changes))updateRow(tableModel,field,value);}
+      if(result)setResult(result,'saved','Saved');
+      root.dispatchEvent(new CustomEvent('grtrans:crm-saved',
+        {bubbles:true,detail:{entity,id,fields:Object.keys(changes)}}));
+      return true;
+    }catch(error){if(result)setResult(result,'error','Not saved: '+error.message);return false;}
+  };
   window.GrtransCRM={
+    saveNetworkRecord,
     openEditor:(entity,id,field)=>{
       const model=tables.get(entity)?.find(model=>model.id===Number(id));
       if(model)open(model,field);

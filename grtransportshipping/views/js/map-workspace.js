@@ -17,6 +17,8 @@
   const status = byId('grtrans-map-status');
   const mapRoot = byId('grtrans-network-map');
   const editor = byId('grtrans-network-editor');
+  const routeEditor = byId('grtrans-route-editor');
+  const routeForm=routeEditor?.querySelector('form');
   const originalNav = network.querySelector('.grtrans-network-toolbar');
   const lists = [...network.querySelectorAll('section.grtrans-network-list')];
   if (!mapRoot || !editor || !originalNav || !lists.length) return;
@@ -24,7 +26,7 @@
   const modeKey = 'grtrans-map-workspace-intent';
   const form = editor.querySelector('form');
   const formEntity = form?.querySelector('[name="network_entity"]')?.value || '';
-  const formId = Number(form?.querySelector('[name="network_id"]')?.value || 0);
+  let formId = Number(form?.querySelector('[name="network_id"]')?.value || 0);
   const recordData = bridge.data;
   const tabs = [...originalNav.querySelectorAll('a')];
   const entities = model.ENTITY;
@@ -70,6 +72,10 @@
   navDock.append(originalNav);
   for (const list of lists) listDock.append(list);
   editorDock.append(editor);
+  if(routeEditor){editorDock.append(routeEditor);routeEditor.hidden=true;}
+  // Retain the submitted edit and the values of any rejected signed network POST.
+  const retainedNetworkDraft=Boolean(editor.querySelector('.grtrans-record-error'));
+  editor.hidden=!(formId>0 || retainedNetworkDraft);
   const objectNames={stations:'station',legs:'transport connection',transfers:'station transfer',
     branches:'dispatch location',branch_stock:'product availability'};
   const editHeading=editor.querySelector('h4');
@@ -116,6 +122,65 @@
   function getMapPoint() {const p=bridge.map.getCenter();return {lat:p.lat,lng:p.lng};}
   const pointFields=()=>[form?.querySelector('[name="lat"]'),form?.querySelector('[name="lng"]')];
   const matchingEditor=(entity,id)=>form && formEntity===entity && formId===id;
+  const fromJSON=(value)=>{try{return JSON.parse(value);}catch(_){return null;}};
+  const networkRecord=(entity,id)=>{
+    const target=(recordData[entity]||[]).find(r=>model.recordId(entity,r)===Number(id));
+    if(target)return bridge.rawRecords?.[entity]?.find(r=>model.recordId(entity,r)===Number(id))||target;
+    const row=listDock.querySelector('[data-grtrans-entity="'+entity+'"] tr[data-grtrans-record-id="'+id+'"]');
+    return fromJSON(row?.dataset.grtransRecord)||null;
+  };
+  function editNetwork(entity,id=0) {
+    if(!matchingEditor(entity,formId)){visit(entity,id,'select');return false;}
+    // A failed new-record POST must not be overwritten by creation defaults.
+    if(id===0 && formId===0 && retainedNetworkDraft) {
+      editor.hidden=false;if(routeEditor)routeEditor.hidden=true;editorDock.hidden=false;
+      showContext();return true;
+    }
+    const values=id>0?networkRecord(entity,id):recordData.fieldDefaults?.[entity];
+    if(!values){notice('Record not in the current dataset. Reload before editing.',true);return false;}
+    formId=Number(id);form.querySelector('[name="network_id"]').value=String(id);
+    const specs=recordData.fieldSpecs?.[entity]||{};
+    for(const field of Object.keys(specs)){
+      const input=form.elements.namedItem(field);if(!input)continue;
+      const value=values[field]==null?'':String(values[field]);
+      if(input.type==='checkbox')input.checked=value==='1';else input.value=value;
+    }
+    editor.querySelector('h4').textContent=(id?'Edit ':'Add ')+(objectNames[entity]||entity)+(id?' #'+id:'');
+    editor.hidden=false;if(routeEditor)routeEditor.hidden=true;editorDock.hidden=false;
+    stage.dispatchEvent(new CustomEvent('grtrans:map-editor-record',
+      {detail:{entity,id:Number(id)},bubbles:true}));
+    if(id>0)selected={entity,id:Number(id)};
+    showContext();return true;
+  }
+  function editRoute(id=0){
+    if(!routeForm||!routeEditor)return false;
+    const table=root.querySelector('#grtrans-routes .grtrans-route-grid table');
+    const schema=fromJSON(table?.dataset.grtransCrmSchema)||{};
+    const row=id>0?root.querySelector('#grtrans-routes tr[data-grtrans-record-id="'+id+'"]'):null;
+    const record=id>0?fromJSON(row?.dataset.grtransRecord):
+      Object.fromEntries(Object.entries(schema).map(([key,spec])=>[key,spec.default]));
+    if(!record){notice('Route not found. Refresh the list.',true);return false;}
+    for(const [field,value] of Object.entries(record)){
+      if(!Object.hasOwn(schema,field))continue;
+      const input=routeForm.elements.namedItem(field);if(!input)continue;
+      if(input.type==='checkbox')input.checked=Number(value)===1;
+      else input.value=value==null?'':String(value);
+    }
+    let proof=routeForm.querySelector('[name="grtrans_edit_proof"]');
+    if(id>0){
+      if(!proof){proof=node('input');proof.type='hidden';proof.name='grtrans_edit_proof';routeForm.append(proof);}
+      proof.value=row?.dataset.grtransRouteProof||'';
+    }else proof?.remove();
+    const url=new URL(routeForm.action,location.href);
+    url.searchParams.delete('grtrans_edit');if(id>0)url.searchParams.set('grtrans_edit',String(id));
+    url.hash='grtrans-route-editor';routeForm.action=url.toString();
+    routeEditor.querySelector('h3').textContent=id?'Editing route #'+id:'Add route';
+    routeEditor.classList.toggle('is-editing',id>0);
+    routeEditor.hidden=false;editor.hidden=true;editorDock.hidden=false;
+    history.replaceState(history.state,'',location.pathname+location.search+'#grtrans-route-editor');
+    routeEditor.scrollIntoView({block:'nearest'});
+    selected=null;showContext();return true;
+  }
   const saveView=()=>{
     const centre=getMapPoint();const view={lat:centre.lat,lng:centre.lng,zoom:bridge.map.getZoom()};
     try {sessionStorage.setItem(storedKey,JSON.stringify(view));} catch(_) { /* optional */ }
@@ -142,7 +207,9 @@
       }
     } catch(_) { /* ignored */ }
   }
+  let highlightGeneration=0;
   function highlight(entity,id,pan = true) {
+    const generation=++highlightGeneration;
     if (selectionOverlay) {bridge.map.removeLayer(selectionOverlay);selectionOverlay=null;}
     const origin=model.originFor(recordData,entity,id);
     if (origin>0) {
@@ -154,18 +221,29 @@
       const record=(recordData[entity]||[]).find(r=>model.recordId(entity,r)===Number(id));
       const from=record && bridge.station(record.from_station_id);
       const to=record && bridge.station(record.to_station_id);
-      if (from&&to) {
-        selectionOverlay=L.polyline([[Number(from.lat),Number(from.lng)],[Number(to.lat),Number(to.lng)]],{
-          color:'#0a4fa1',weight:5,opacity:.8,dashArray:'5 5',interactive:false,
-          className:'grtrans-map-selection-overlay'
-        }).addTo(bridge.map);
+      if(from&&to&&record?.mode!=='flight'&&record?.mode!=='ferry') {
+        const saved=record?.route_geojson ? window.GrtransCoverage?.routePaths?.(record.route_geojson) : null;
+        const path=saved?.length ? Promise.resolve(saved) : bridge.roadRoute(
+          {lat:Number(from.lat),lng:Number(from.lng)},{lat:Number(to.lat),lng:Number(to.lng)}
+        ).then(result=>[result.points]);
+        path.then(paths=>{
+          if(generation!==highlightGeneration)return;
+          selectionOverlay=L.polyline(paths,{
+            color:'#0a4fa1',weight:5,opacity:.8,dashArray:'5 5',interactive:false,
+            className:'grtrans-map-selection-overlay'
+          }).addTo(bridge.map);
+        }).catch(error=>{
+          if(generation===highlightGeneration)notice('Road selection unavailable: '+error.message,true);
+        });
       }
     }
   }
   function activateRow(entity,id) {
     if (!entities.includes(entity)||id<=0) return;
     if (!lists.some(list=>list.dataset.grtransEntity===entity)) {
-      visit(entity,id,'select');return;
+      // The bridge already has all active records. Selecting a different type
+      // is contextual; only opening its server form needs tab navigation.
+      selected={entity,id};highlight(entity,id);showContext();return;
     }
     setActive(entity);
     const section=listDock.querySelector('[data-grtrans-entity="'+entity+'"]');
@@ -186,7 +264,7 @@
       const linked=new URL(link.href,location.href).searchParams.get('network_entity');
       const yes=linked===entity;link.setAttribute('aria-current',String(yes));link.classList.toggle('grtrans-active-tab',yes);
     }
-    editorDock.hidden=formEntity!==entity;
+    editorDock.hidden=editor.hidden && (!routeEditor || routeEditor.hidden);
     showContext();
   }
   function showContext() {
@@ -217,6 +295,7 @@
       const add=text('button','Add '+activeEntity.replace('_',' '),'btn btn-default btn-sm');add.type='button';
       add.addEventListener('click',()=>visit(activeEntity,0,'select'));context.append(add);
     }
+    window.GrtransMapContext?.render(selected,context);
   }
   function filterStock() {
     const section=listDock.querySelector('[data-grtrans-entity="branch_stock"]');
@@ -522,6 +601,47 @@
     if(formId===0)restoreView();
     stage.dataset.grtransViewReady='true';
   });
+  // A new station must be a new signed record before its coordinates are drafted.
+  // Preparing the existing form in the same tab avoids the old place→navigate
+  // race that discarded the pending coordinates when no editor matched.
+  toolsGroup.addEventListener('click',event=>{
+    const button=event.target.closest?.('[data-grtrans-mode]');if(!button)return;
+    const requested=button.dataset.grtransMode;
+    if(requested==='place')editNetwork('stations',0);
+    else if(requested==='connect-leg'||requested==='connect-transfer')
+      editNetwork(requested==='connect-leg'?'legs':'transfers',0);
+    else if(requested==='move'&&selected?.entity==='stations')editNetwork('stations',selected.id);
+    else if(['draw','edit-coverage','radius','edit-route'].includes(requested)){
+      const target=selected?.entity||formEntity;
+      if(target==='stations'||target==='legs')editNetwork(target,selected?.entity===target?selected.id:0);
+    }else if(requested==='place-area')editNetwork('legs',0);
+  },true);
+  // Capture before Leaflet patch/pin/line handlers. Placement is coordinates
+  // only, even on polygons or markers; controls retain their normal actions.
+  mapRoot.addEventListener('click',event=>{
+    if(mode!=='place'||event.target.closest?.('.leaflet-control'))return;
+    const point=bridge.map.mouseEventToLatLng(event);
+    event.stopImmediatePropagation();event.preventDefault();draft(point);
+  },true);
+  root.addEventListener('click',event=>{
+    const link=event.target.closest?.('a[href]');if(!link)return;
+    if(link.closest('#grtrans-routes')&&new URL(link.href,location.href).searchParams.has('grtrans_edit')){
+      event.preventDefault();editRoute(Number(new URL(link.href,location.href).searchParams.get('grtrans_edit')));
+    }else if(link.closest('.grtrans-network-list')&&new URL(link.href,location.href).searchParams.has('network_edit')){
+      event.preventDefault();const url=new URL(link.href,location.href);
+      editNetwork(url.searchParams.get('network_entity'),Number(url.searchParams.get('network_edit')));
+    }
+  },true);
+  const addRoute=text('button','Add priced route','btn btn-default grtrans-map-mode');
+  addRoute.type='button';addRoute.title='Add route in the map panel';
+  addRoute.addEventListener('click',()=>editRoute(0));tools.append(addRoute);
+  if(routeEditor&&root.querySelector('#grtrans-form-errors')){
+    routeEditor.hidden=false;editor.hidden=true;editorDock.hidden=false;
+  }
   window.GrtransMapWorkspace={stage,bridge,form,editor,tools,
-    selectRecord:activateRow,selected:()=>selected,getMode:()=>mode,visit,changeMode:switchMode};
+    selectRecord:activateRow,selected:()=>selected,getMode:()=>mode,visit,changeMode:switchMode,
+    editNetwork,editRoute,clearSelection:()=>{
+      selected=null;bridge.clearFocus();if(selectionOverlay){bridge.map.removeLayer(selectionOverlay);selectionOverlay=null;}
+      showContext();
+    }};
 })();

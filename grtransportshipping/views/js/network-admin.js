@@ -16,6 +16,8 @@
     return;
   }
   const data = JSON.parse(root.dataset.config);
+  const rawRecords=Object.fromEntries(['stations','legs','transfers','branches','branch_stock']
+    .map(entity=>[entity,(data[entity]||[]).map(row=>({...row}))]));
   // Resolve nullable per-place overrides only from the provided configuration.
   // A valid normal radius itself defines reach; never substitute an arbitrary FAR.
   const effectiveOuter = (override, inner) => {
@@ -46,8 +48,8 @@
   // and below connections and the existing routed-preview overlay.
   const coveragePane = map.createPane('grtrans-coverage-patches');
   coveragePane.style.zIndex = '390';
-  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19, attribution: '&copy; OpenStreetMap contributors'
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+    maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
   }).addTo(map);
   const selectedButton = document.getElementById('grtrans-map-link');
   const linkForm = document.getElementById('grtrans-map-link-form');
@@ -417,10 +419,14 @@
     const key=[from.lat,from.lng,to.lat,to.lng].join(':');
     const points=stored.length?Promise.resolve(stored):
       (roadCache.get(key) || (()=>{
-        const task=roadGeometry(from,to).then(pts=>[pts]).catch(()=>[[point(from),point(to)]]);
+        const task=roadGeometry(from,to).then(pts=>[pts]);
         roadCache.set(key,task);return task;
       })());
-    points.then(paths => drawLandPath(paths,ca,cb,fromStation,toStation,stale));
+    points.then(paths => drawLandPath(paths,ca,cb,fromStation,toStation,stale))
+      .catch(error=>{
+        const output=document.querySelector('.grtrans-map-feedback');
+        if(output){output.textContent='Road route unavailable: '+error.message+'. Stored geometry retained.';output.dataset.state='error';}
+      });
   };
   const renderConnection = (mode, from, to, label, stale, fromOwner, toOwner, bidirectional, leg = null, resolution = null) => {
     const ends = [fromOwner, toOwner].sort();
@@ -576,7 +582,7 @@
     }
     return steps;
   };
-  const roadGeometry = async (a, b) => {
+  const roadRoute = async (a, b) => {
     const coords = p => Number(p.lng).toFixed(7) + ',' + Number(p.lat).toFixed(7);
     // The OSRM demo service is used only after an explicit admin preview.
     const url = 'https://router.project-osrm.org/route/v1/driving/'
@@ -592,11 +598,13 @@
       if (payload.code !== 'Ok' || !Array.isArray(coordinates) || coordinates.length < 2) {
         throw new Error('OSRM has no road route for this segment');
       }
-      return coordinates.map(p => [p[1], p[0]]);
+      return {points:coordinates.map(p => [p[1], p[0]]),
+        distanceKm:Number(payload.routes[0].distance)/1000};
     } finally {
       if (timer !== null) clearTimeout(timer);
     }
   };
+  const roadGeometry = async (a, b) => (await roadRoute(a,b)).points;
   const previewGeometry = (a, b, mode) => {
     if (mode === 'ferry') return Promise.resolve([ [a.lat, a.lng], [b.lat, b.lng] ]);
     if (mode === 'flight') return Promise.reject(new Error(
@@ -867,7 +875,14 @@
   // An intentionally small adapter: interaction-only calls, no new graph,
   // pricing, coverage or persistence implementation.
   window.GrtransMapBridge = {
-    map, data,
+    map, data, rawRecords, roadRoute,
+    shadeStationPrices:shades=>{
+      for(const [id,marker] of stationMarkers){
+        const icon=marker.getElement?.();if(!icon)continue;
+        const ratio=Math.max(0,Math.min(1,Number(shades.get(id))||0));
+        icon.style.filter=shades.has(id)?'brightness('+(1-.43*ratio).toFixed(3)+')':'';
+      }
+    },
     station:id=>stations.get(Number(id)),
     marker:id=>stationMarkers.get(Number(id)),
     focusStation:id=>{pinnedOwners=['station:'+Number(id)];focusExactly(pinnedOwners);},

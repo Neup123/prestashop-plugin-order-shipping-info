@@ -49,6 +49,7 @@ final class GrTransportNetworkRepository
             `patch_precedence` VARCHAR(12) NOT NULL DEFAULT 'none',
             `override_winner` VARCHAR(8) NOT NULL DEFAULT 'none',
             `active` TINYINT(1) NOT NULL DEFAULT 1,
+            `stop_order` INT UNSIGNED NOT NULL DEFAULT 0,
             INDEX `leg_from` (`from_station_id`), INDEX `leg_to` (`to_station_id`)
         ) ENGINE={$engine} DEFAULT CHARSET=utf8mb4")
         && $db->execute("CREATE TABLE IF NOT EXISTS `{$prefix}grtrans_transfer` (

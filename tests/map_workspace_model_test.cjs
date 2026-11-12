@@ -36,4 +36,22 @@ assert.deepEqual(model.recordsAt(data,'branch_stock',2).map(x=>x.id_branch_stock
 assert.deepEqual(model.recordsAt(data,'legs',2).map(x=>x.id_leg),[31,32]);
 assert.equal(model.recordId('branch_stock',data.branch_stock[0]),61);
 assert.equal(model.originFor(data,'branch_stock',999),0);
+const chain={legs:[
+  {id_leg:51,mode:'bus',operator_label:'Line 45',from_station_id:1,to_station_id:2,price:10,active:1},
+  {id_leg:52,mode:'bus',operator_label:'Line 45',from_station_id:2,to_station_id:3,price:20,active:1},
+  {id_leg:53,mode:'ferry',operator_label:'Line 45',from_station_id:3,to_station_id:4,price:40,active:1},
+  {id_leg:54,mode:'bus',operator_label:'Unrelated',from_station_id:3,to_station_id:5,price:10,active:1},
+]};
+const line=model.lineFor(chain,52);
+assert.deepEqual(line.stops,[1,2,3]);
+assert.equal(line.reorderable,true);
+assert.deepEqual(model.reorderLine(line,[1,3,2]).map(leg=>
+  [leg.id_leg,leg.from_station_id,leg.to_station_id,leg.stop_order]),
+  [[51,1,3,1],[52,3,2,2]]);
+assert.equal(model.reorderLine(line,[1,2,2]),null);
+assert.equal(model.stationPriceShade(line).get(2),1/3);
+assert.equal(model.stationPriceShade(line).get(3),1);
+assert.equal(model.lineFor(chain,53).legs.length,1);
+assert.equal(model.lineFor({legs:[...chain.legs,
+  {id_leg:55,mode:'bus',operator_label:'Line 45',from_station_id:2,to_station_id:4,price:15}]},51).reorderable,false);
 console.log('Stage-1 map workspace modes, signed positions, pairs and contextual selection passed');
