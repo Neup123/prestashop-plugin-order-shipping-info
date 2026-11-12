@@ -614,7 +614,6 @@
   try {initialMode=sessionStorage.getItem(modeKey)||'select';sessionStorage.removeItem(modeKey);}catch(_){}
   if(!model.modesEnabled(initialMode))initialMode='select';
   setActive(activeEntity);
-  if(formId>0)activateRow(activeEntity,formId);
   // Keep the updated record visible in its table after a successful signed POST.
   // Direct ?network_edit visits still focus the chosen record in the context panel.
   const savedNetworkRecord=[...root.querySelectorAll('.alert-success[role="status"]')]
