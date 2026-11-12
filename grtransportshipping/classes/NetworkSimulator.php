@@ -12,12 +12,12 @@ final class GrTransportNetworkSimulator
         $cart=$params['cart'] ?? null;
         $origins=null;
         $byOrigin=[];
-        if (!empty($network['branches'])) {
+        if (!empty($network['branches']) || !empty($network['branch_inventory_configured'])) {
             $eligible=GrTransportBranchAvailability::eligible(
                 $cart,$network['branches'],$network['branch_stock'] ?? []
             );
-            $origins=$eligible['origin_ids'];
-            $byOrigin=$eligible['by_origin'];
+            $origins=$eligible['origin_ids'] ?? [];
+            $byOrigin=$eligible['by_origin'] ?? [];
         }
         $parcel=is_object($cart) ? GrTransportNetworkTariff::cartMeasurements($cart) : [];
         foreach (is_object($cart) ? [] : ['weight'=>'weight_kg','volume'=>'volume_m3'] as $field=>$target) {
@@ -130,7 +130,7 @@ final class GrTransportNetworkSimulator
         }
         try {
             $flat=Db::getInstance()->executeS('SELECT * FROM `'._DB_PREFIX_.'grtrans_route`') ?: [];
-            $network=GrTransportNetworkRepository::snapshot();
+            $network=GrTransportNetworkRepository::activeSnapshot();
             $notice=(string)Configuration::get('GRTRANS_EXTENDED_NOTICE');
             if ($data['cart_id']!=='') {
                 if (!ctype_digit($data['cart_id']) || (int)$data['cart_id']<=0) {

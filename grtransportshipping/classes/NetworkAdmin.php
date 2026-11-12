@@ -149,14 +149,15 @@ return '<div class="alert alert-danger" data-grtrans-autosave-result="error">'
             $values=array_replace($values,array_intersect_key(self::$failedDraft,
                 GrTransportNetworkFields::fields($entity)));
         }
-        $route=GrTransportNetworkGraph::routes($data['stations'],$data['legs'],$data['transfers']);
+        $activeData=GrTransportNetworkRepository::activeSnapshot($data);
+        $route=GrTransportNetworkGraph::routes($activeData['stations'],$activeData['legs'],$activeData['transfers']);
         $cost=[];
         foreach ($route['cost'] as $id=>$amount) {
             if (is_finite($amount)) $cost[(string)$id]=round($amount,2);
         }
         // Branch and stock context is shop-scoped in snapshot(); expose only
         // these existing records to the map-side selection UI.
-        $mapData=array_intersect_key($data,array_flip(['stations','legs','transfers','branches','branch_stock']));
+        $mapData=array_intersect_key($activeData,array_flip(['stations','legs','transfers','branches','branch_stock']));
         $mapData['resolution']=GrTransportNetworkResolution::mapPlan($mapData,$route['cost']);
         $mapConfig=json_encode($mapData+['cost'=>$cost,'nearbyGapKm'=>GrTransportNetworkSettings::get('nearby_gap_km'),
             'farDefaultKm'=>GrTransportNetworkSettings::get('station_outer_km'),
@@ -221,17 +222,24 @@ return '<div class="alert alert-danger" data-grtrans-autosave-result="error">'
         }
         $out.='</nav>';
         $collection=$entity;
+        $fields=GrTransportNetworkFields::fields($collection);
+        $schema=self::esc(json_encode($fields,JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_THROW_ON_ERROR));
         $out.='<section id="grtrans-network-list" class="grtrans-network-list" data-grtrans-entity="'.self::esc($collection).'">'
             .'<h4>' . self::esc(ucwords(str_replace('_',' ',$collection))) . '</h4>'
-            . '<div class="table-responsive"><table class="table table-striped"><thead><tr><th>ID</th>';
-            $names=array_keys(GrTransportNetworkFields::fields($collection));
-            foreach ($names as $name) $out.='<th>' . self::esc(str_replace('_',' ',$name)) . '</th>';
+            . '<div class="table-responsive"><table class="table table-striped" data-grtrans-crm-schema="'.$schema.'"><thead><tr><th>ID</th>';
+            $names=array_keys($fields);
+            foreach ($names as $name) $out.='<th data-grtrans-field="'.self::esc($name).'">'
+                . self::esc(str_replace('_',' ',$name)) . '</th>';
             if ($collection==='legs' || $collection==='transfers') $out.='<th>Last verified (UTC)</th>';
             if ($collection==='stations' || $collection==='legs') $out.='<th>FAR default / override</th>';
             $out.='<th>Actions</th></tr></thead><tbody>';
             foreach ($data[$collection] as $record) {
                 $id=(int)$record[GrTransportNetworkFields::IDS[$collection]];
-                $out.='<tr><td>' . $id . '</td>';
+                $recordPayload=self::esc(json_encode(array_intersect_key($record,$fields),
+                    JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_INVALID_UTF8_SUBSTITUTE));
+                $out.='<tr class="'.(empty($record['active']) ? 'grtrans-disabled-record' : '').'"'
+                    .' data-grtrans-record-id="'.$id.'" data-grtrans-record="'.$recordPayload.'">'
+                    .'<td>' . $id . '</td>';
                 foreach ($names as $name) $out.='<td>' . self::esc($record[$name] ?? '—') . '</td>';
                 if ($collection==='stations' || $collection==='legs') {
                     if ($collection==='legs' && $record['to_station_id']!==null) {
@@ -251,6 +259,11 @@ return '<div class="alert alert-danger" data-grtrans-autosave-result="error">'
                 }
                 $target=self::esc(ucwords(str_replace('_',' ',$collection)).' #'.$id);
                 $out.='<td class="grtrans-network-actions">'
+                    . '<label class="grtrans-record-switch" title="Enable or disable network record">'
+                    . '<input type="checkbox" role="switch" data-grtrans-toggle-active'
+                    . ' aria-label="Enable '.$target.'"'
+                    . (!empty($record['active']) ? ' checked' : '').'>'
+                    . '<output class="grtrans-switch-state" aria-live="polite"></output></label>'
                     . '<input type="checkbox" class="grtrans-select-record" data-grtrans-select-record="'.$id.'"'
                     . ' title="Select '.$target.' on the map" aria-label="Select '.$target.' on the map">'
                     . '<a class="btn btn-default btn-sm grtrans-row-icon" href="' . $url . '&amp;network_entity='
@@ -308,23 +321,23 @@ return '<div class="alert alert-danger" data-grtrans-autosave-result="error">'
         // Same groups and membership as GROUPS in compact-records.js.
         $editorGroups=[
             'stations'=>[
-                ['Station',['name','type','address_text','is_origin_hub']],
+                ['Station',['name','type','address_text','is_origin_hub','active']],
                 ['Location and service reach',['lat','lng','inner_radius_km','outer_radius_km','coverage_kind','coverage_geojson']],
                 ['Advanced',['patch_precedence']],
             ],
             'legs'=>[
-                ['Connection',['from_station_id','to_station_id','mode','operator_label','bidirectional']],
+                ['Connection',['from_station_id','to_station_id','mode','operator_label','bidirectional','active']],
                 ['Price',['tariff_type','price','rate_per_unit','estimate','estimate_low_factor','estimate_high_factor']],
                 ['Timing',['lead_hours','preparation_hours','transit_min_hours','transit_max_hours']],
                 ['Direct service area',['area_name','area_lat','area_lng','area_radius_km','area_outer_radius_km','area_coverage_kind','area_coverage_geojson','route_geojson']],
                 ['Advanced',['patch_precedence','override_winner']],
             ],
             'transfers'=>[
-                ['Stations and price',['from_station_id','to_station_id','connection_type','price']],
+                ['Stations and price',['from_station_id','to_station_id','connection_type','price','active']],
                 ['Advanced',['override_winner']],
             ],
-            'branches'=>[['Dispatch location',['name','origin_station_id']]],
-            'branch_stock'=>[['Availability',['id_branch','id_product','id_product_attribute','quantity']]],
+            'branches'=>[['Dispatch location',['name','origin_station_id','active']]],
+            'branch_stock'=>[['Availability',['id_branch','id_product','id_product_attribute','quantity','active']]],
         ];
         $fields=GrTransportNetworkFields::fields($entity);
         $catalog=null;

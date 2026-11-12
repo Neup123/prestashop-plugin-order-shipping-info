@@ -378,58 +378,7 @@
     if(!entities.includes(entity)||!(Number(id)>0))return;
     selected={entity,id:Number(id)};highlight(entity,Number(id));showContext();
   });
-  // Quantity is the one stock property safe to edit independently. The POST still
-  // contains all four original fields and uses the existing signed record writer.
-  let inlineStock = null;
-  function stockQuantityEditor(id) {
-    if (inlineStock) {inlineStock.remove();inlineStock=null;}
-    const section=listDock.querySelector('[data-grtrans-entity="branch_stock"]');
-    const row=[...(section?.querySelectorAll('tr[data-grtrans-record-id]')||[])].find(r=>Number(r.dataset.grtransRecordId)===id);
-    if(!row||!row.cells[4])return;
-    const cell=row.cells[4];
-    const stock=(recordData.branch_stock||[]).find(r=>Number(r.id_branch_stock)===id);
-    if(!stock)return;
-    const controls=node('div','grtrans-inline-quantity');inlineStock=controls;
-    const input=node('input','form-control grtrans-size-s');input.type='number';input.min='0';input.max='2147483647';input.step='1';
-    input.value=String(stock.quantity);input.setAttribute('aria-label','Available units for stock record #'+id);
-    const save=text('button','Save quantity','btn btn-default btn-sm');save.type='button';
-    const result=text('output','','grtrans-inline-state');result.setAttribute('aria-live','polite');
-    controls.append(input,save,result);cell.append(controls);
-    const submit=async()=>{
-      if(working)return;
-      const value=input.value;
-      if(!/^(0|[1-9][0-9]*)$/.test(value)||Number(value)>2147483647){
-        result.textContent='Enter a whole number of available units.';result.dataset.state='error';return;
-      }
-      const csrf=legacyLinkForm?.querySelector('input[name="token"]')?.value;
-      if(!csrf){result.textContent='Administrator session unavailable. Reload Configure.';result.dataset.state='error';return;}
-      const payload=new FormData();
-      payload.set('token',csrf);payload.set('grtrans_network_action','save');
-      payload.set('network_entity','branch_stock');payload.set('network_id',String(id));
-      for(const key of ['id_branch','id_product','id_product_attribute'])payload.set(key,String(stock[key]));
-      payload.set('quantity',value);
-      working=true;save.disabled=true;result.dataset.state='saving';result.textContent='Saving…';
-      try {
-        const response=await fetch(legacyLinkForm.action,{method:'POST',body:payload,credentials:'same-origin',
-          headers:{'X-Requested-With':'XMLHttpRequest'}});
-        if(!response.ok)throw new Error('HTTP '+response.status);
-        const doc=new DOMParser().parseFromString(await response.text(),'text/html');
-        const success=[...doc.querySelectorAll('.alert-success[role="status"]')]
-          .some(node=>node.textContent.includes('Network record updated.'));
-        if(!success){
-          const detail=doc.querySelector('.alert-danger details code')?.textContent || 'The change was not saved.';
-          throw new Error(detail);
-        }
-        stock.quantity=Number(value);
-        const displayed=cell.firstChild;
-        if(displayed?.nodeType===Node.TEXT_NODE)displayed.textContent=value;
-        result.textContent='Saved';result.dataset.state='saved';
-      }catch(error){result.textContent='Not saved: '+error.message;result.dataset.state='error';}
-      finally {working=false;save.disabled=false;}
-    };
-    save.addEventListener('click',submit);
-    input.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();submit();}});
-  }
+  // Stock uses the same signed inline autosave helper as all CRM table cells.
   root.addEventListener('grtrans:record-selected',event=>{
     const entity=event.detail?.entity,id=Number(event.detail?.id);
     if(entities.includes(entity) && id>0) {
@@ -437,8 +386,7 @@
     } else if(selected?.entity===entity) {
       selected=null;bridge.clearFocus();showContext();
     }
-    if(entity==='branch_stock'&&id>0)stockQuantityEditor(id);
-    else if(inlineStock){inlineStock.remove();inlineStock=null;}
+    if(entity==='branch_stock'&&id>0)window.GrtransCRM?.openEditor('branch_stock',id,'quantity');
   });
   window.addEventListener('grtrans:map-station-selected',event=>{
     if(mode==='select'&&activeEntity==='stations')activateRow('stations',Number(event.detail?.id));

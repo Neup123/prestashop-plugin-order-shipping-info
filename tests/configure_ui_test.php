@@ -9,6 +9,7 @@ class Configuration
 }
 require_once __DIR__.'/../grtransportshipping/classes/NetworkSettings.php';
 require_once __DIR__.'/../grtransportshipping/classes/NetworkFields.php';
+require_once __DIR__.'/../grtransportshipping/classes/NetworkRepository.php';
 $module=new class { public function l(string $label): string { return $label; } };
 $defs=GrTransportNetworkSettings::DEFINITIONS;
 check(count($defs)===15);
@@ -53,6 +54,37 @@ $transferFields=GrTransportNetworkFields::fields('transfers');
 check($transferFields['connection_type'][0]==='choice');
 check(in_array('walk',$transferFields['connection_type'][1],true));
 check(in_array('taxi',$transferFields['connection_type'][1],true));
+foreach (GrTransportNetworkFields::ENTITIES as $entity) {
+    check(GrTransportNetworkFields::fields($entity)['active']===['bool'],
+        'Every network entity exposes an Active flag');
+    check(GrTransportNetworkFields::defaults($entity)['active']===1,
+        'New network records must default to enabled');
+}
+$sample=[
+    'stations'=>[
+        ['id_station'=>1,'active'=>1],['id_station'=>2,'active'=>0],
+    ],
+    'legs'=>[
+        ['id_leg'=>7,'from_station_id'=>1,'to_station_id'=>2,'active'=>1],
+        ['id_leg'=>8,'from_station_id'=>1,'to_station_id'=>null,'active'=>1],
+    ],
+    'transfers'=>[['id_transfer'=>4,'from_station_id'=>1,'to_station_id'=>2,'active'=>1]],
+    'branches'=>[['id_branch'=>3,'origin_station_id'=>2,'active'=>1]],
+    'branch_stock'=>[['id_branch_stock'=>6,'id_branch'=>3,'active'=>1]],
+];
+$active=GrTransportNetworkRepository::activeSnapshot($sample);
+check(count($active['stations'])===1 && count($active['legs'])===1);
+check(!$active['transfers'] && !$active['branches'] && !$active['branch_stock']);
+check($active['branch_inventory_configured']===true,
+    'Disabled branches must not allow unrestricted network quotes');
+check(!GrTransportNetworkRepository::quotePathActive(
+    ['source'=>'network','origin_hub_id'=>2,'network_path'=>['edges'=>[]]],$active));
+check(str_contains(file_get_contents(__DIR__.'/../grtransportshipping/classes/NetworkRepository.php'),
+    'TINYINT(1) NOT NULL DEFAULT 1'));
+check(str_contains(file_get_contents(__DIR__.'/../grtransportshipping/classes/NetworkAdmin.php'),
+    'grtrans-disabled-record'));
+check(str_contains(file_get_contents(__DIR__.'/../grtransportshipping/classes/NetworkAdmin.php'),
+    'data-grtrans-toggle-active'));
 $transfer=GrTransportNetworkFields::defaults('transfers');
 $transfer['from_station_id']=1;$transfer['to_station_id']=2;
 check(GrTransportNetworkFields::normalize('transfers',$transfer)['connection_type']==='walk');

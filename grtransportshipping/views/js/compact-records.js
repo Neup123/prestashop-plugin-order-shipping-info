@@ -4,11 +4,15 @@
   const ENTITIES = ['stations', 'legs', 'transfers', 'branches', 'branch_stock'];
   const TITLES = {stations:'Stations', legs:'Transport connections', transfers:'Station transfers',
     branches:'Dispatch locations', branch_stock:'Products available to dispatch'};
-  const KEEP = {stations:[1,2,3,4,9,13,14], legs:[1,2,3,4,5,6,27,29],
-    transfers:[1,2,3,4,5,7,8], branches:[1,2,3,4], branch_stock:[1,2,3,4,5,6]};
+  const KEEP = {routes:[1,2,3,4,5,7,9,10,12],
+    stations:[1,2,3,4,9,14,15], legs:[1,2,3,4,5,6,28,30],
+    transfers:[1,2,3,4,5,8,9], branches:[1,2,3,5], branch_stock:[1,2,3,4,5,7]};
   const FIELDS = {
     id_station:'Record number', id_leg:'Record number', id_transfer:'Record number',
     id_branch:'Dispatch location number', id_branch_stock:'Stock entry number',
+    id_route:'Record number', origin_name:'Sending terminal', station_name:'Collection station',
+    postal_prefix:'Postcode prefix', pickup_only:'Pickup only', route_status:'Availability',
+    demo:'Unverified estimate', notice:'Customer message', active:'Enabled',
     name:'Name', type:'Station type', address_text:'Street address', lat:'Latitude', lng:'Longitude',
     inner_radius_km:'Normal service reach', outer_radius_km:'Extended service reach',
     is_origin_hub:'Can dispatch parcels', coverage_kind:'Service area shape',
@@ -30,18 +34,18 @@
     Actions:'Actions', ID:'Record number'
   };
   const GROUPS = {
-    stations:[['Station',['name','type','address_text','is_origin_hub']],
+    stations:[['Station',['name','type','address_text','is_origin_hub','active']],
       ['Location and service reach',['lat','lng','inner_radius_km','outer_radius_km','coverage_kind','coverage_geojson']],
       ['Advanced',['patch_precedence']]],
-    legs:[['Connection',['from_station_id','to_station_id','mode','operator_label','bidirectional']],
+    legs:[['Connection',['from_station_id','to_station_id','mode','operator_label','bidirectional','active']],
       ['Price',['tariff_type','price','rate_per_unit','estimate','estimate_low_factor','estimate_high_factor']],
       ['Timing',['lead_hours','preparation_hours','transit_min_hours','transit_max_hours']],
       ['Direct service area',['area_name','area_lat','area_lng','area_radius_km','area_outer_radius_km','area_coverage_kind','area_coverage_geojson','route_geojson']],
       ['Advanced',['patch_precedence','override_winner']]],
-    transfers:[['Stations and price',['from_station_id','to_station_id','connection_type','price']],
+    transfers:[['Stations and price',['from_station_id','to_station_id','connection_type','price','active']],
       ['Advanced',['override_winner']]],
-    branches:[['Dispatch location',['name','origin_station_id']]],
-    branch_stock:[['Availability',['id_branch','id_product','id_product_attribute','quantity']]]
+    branches:[['Dispatch location',['name','origin_station_id','active']]],
+    branch_stock:[['Availability',['id_branch','id_product','id_product_attribute','quantity','active']]]
   };
   const SIZE = {name:'l',address_text:'l',operator_label:'l',area_name:'l',
     coverage_geojson:'lt',area_coverage_geojson:'lt',route_geojson:'lt',
@@ -127,6 +131,9 @@
       const key=headings[index-1] || '';
       const dt=el('dt','',FIELDS[key] || key);
       const dd=el('dd','',value);
+      dt.dataset.grtransFactIndex=String(index);
+      dd.dataset.grtransFactIndex=String(index);
+      dt.hidden=dd.hidden=row.cells[index-1]?.classList.contains('grtrans-keep')||false;
       if(value.length>160) dd.classList.add('grtrans-long-value');
       dl.append(dt,dd);
     });
@@ -249,6 +256,8 @@
     if(!table) return;
     const rows=[...table.querySelectorAll('tbody tr')];
     const heads=[...table.querySelectorAll('thead th')].map(text);
+    [...table.querySelectorAll('thead th')].forEach((head,i)=>head.classList.toggle('grtrans-keep',KEEP.routes.includes(i+1)));
+    rows.forEach(row=>[...row.cells].forEach((cell,i)=>cell.classList.toggle('grtrans-keep',KEEP.routes.includes(i+1))));
     const records=rows.map(row=>{
       const cells=row.cells;
       const id=Number(text(cells[0]));
@@ -259,7 +268,7 @@
       const actions=cells[cells.length-1].querySelector('.grtrans-actions');
       if(actions) {
         cells[cells.length-1].classList.add('grtrans-route-actions');
-        compactRowActions(actions,record,rows,heads,[1,6,8]);
+        compactRowActions(actions,record,rows,heads,heads.map((_,i)=>i+1).filter(i=>i!==1&&i!==heads.length));
       }
       return record;
     });
@@ -334,8 +343,8 @@
         record.label=text(row.cells[1]);
         row.cells[1].title=record.label;
       }
-      if(entity==='legs') {record.label=text(row.cells[4])||('Connection #'+id);record.mode=text(row.cells[3]);record.price=Number(text(row.cells[5]));record.verification=text(row.cells[26]);}
-      if(entity==='transfers') {record.label=text(row.cells[3])+' transfer #'+id;record.price=Number(text(row.cells[4]));record.verification=text(row.cells[6]);}
+      if(entity==='legs') {record.label=text(row.cells[4])||('Connection #'+id);record.mode=text(row.cells[3]);record.price=Number(text(row.cells[5]));record.verification=text(row.cells[headings.indexOf('Last verified (UTC)')]);}
+      if(entity==='transfers') {record.label=text(row.cells[3])+' transfer #'+id;record.price=Number(text(row.cells[4]));record.verification=text(row.cells[headings.indexOf('Last verified (UTC)')]);}
       if(entity==='branches') record.label=text(row.cells[1]);
       if(entity==='branch_stock') record.label='Product #'+text(row.cells[2]);
       row.dataset.grtransRecordId=String(id);
@@ -355,8 +364,7 @@
         }
         const verify=actions.querySelector('button[value="verify"]');
         if(verify) verify.dataset.grtransRowAction='verify';
-        const detailColumns=headings.map((_,i)=>i+1).filter(n=>n!==headings.length
-          && (entity==='stations'?n!==2:!keep.includes(n)));
+        const detailColumns=headings.map((_,i)=>i+1).filter(n=>n!==1 && n!==headings.length);
         compactRowActions(actions,record,rows,headings,detailColumns);
       }
       return record;
@@ -588,5 +596,6 @@
     event.preventDefault();event.stopPropagation();
     open.open=false;open.querySelector('summary')?.focus();
   },true);
+  window.GrtransCRMLabels=FIELDS;
   enhanceRoutes();enhanceNetwork();enhanceRouteStationPickers();enhanceEditor();
 })();

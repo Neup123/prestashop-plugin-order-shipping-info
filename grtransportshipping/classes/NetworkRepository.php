@@ -20,6 +20,7 @@ final class GrTransportNetworkRepository
             `coverage_kind` VARCHAR(24) NOT NULL DEFAULT 'radius',
             `coverage_geojson` TEXT NULL,
             `patch_precedence` VARCHAR(12) NOT NULL DEFAULT 'none',
+            `active` TINYINT(1) NOT NULL DEFAULT 1,
             INDEX `station_hub` (`is_origin_hub`)
         ) ENGINE={$engine} DEFAULT CHARSET=utf8mb4")
         && $db->execute("CREATE TABLE IF NOT EXISTS `{$prefix}grtrans_leg` (
@@ -47,6 +48,7 @@ final class GrTransportNetworkRepository
             `route_geojson` TEXT NULL,
             `patch_precedence` VARCHAR(12) NOT NULL DEFAULT 'none',
             `override_winner` VARCHAR(8) NOT NULL DEFAULT 'none',
+            `active` TINYINT(1) NOT NULL DEFAULT 1,
             INDEX `leg_from` (`from_station_id`), INDEX `leg_to` (`to_station_id`)
         ) ENGINE={$engine} DEFAULT CHARSET=utf8mb4")
         && $db->execute("CREATE TABLE IF NOT EXISTS `{$prefix}grtrans_transfer` (
@@ -56,6 +58,7 @@ final class GrTransportNetworkRepository
             `price` DECIMAL(12,2) NOT NULL DEFAULT 0,
             `override_winner` VARCHAR(8) NOT NULL DEFAULT 'none',
             `verified_at` DATETIME NULL,
+            `active` TINYINT(1) NOT NULL DEFAULT 1,
             INDEX `transfer_from` (`from_station_id`), INDEX `transfer_to` (`to_station_id`)
         ) ENGINE={$engine} DEFAULT CHARSET=utf8mb4")
         && $db->execute("CREATE TABLE IF NOT EXISTS `{$prefix}grtrans_branch` (
@@ -63,6 +66,7 @@ final class GrTransportNetworkRepository
             `id_shop` INT UNSIGNED NOT NULL,
             `name` VARCHAR(190) NOT NULL,
             `origin_station_id` INT UNSIGNED NOT NULL,
+            `active` TINYINT(1) NOT NULL DEFAULT 1,
             INDEX `branch_shop` (`id_shop`),
             INDEX `branch_origin` (`origin_station_id`)
         ) ENGINE={$engine} DEFAULT CHARSET=utf8mb4")
@@ -73,9 +77,27 @@ final class GrTransportNetworkRepository
             `id_product` INT UNSIGNED NOT NULL,
             `id_product_attribute` INT UNSIGNED NOT NULL DEFAULT 0,
             `quantity` INT UNSIGNED NOT NULL DEFAULT 0,
+            `active` TINYINT(1) NOT NULL DEFAULT 1,
             UNIQUE KEY `branch_product_combination` (`id_branch`, `id_product`, `id_product_attribute`),
             INDEX `stock_shop` (`id_shop`, `id_product`, `id_product_attribute`)
         ) ENGINE={$engine} DEFAULT CHARSET=utf8mb4");
+    }
+
+    /** Idempotent migration for the five pre-existing network tables. */
+    public static function migrateActiveColumns(): bool
+    {
+        $db=Db::getInstance();
+        foreach (GrTransportNetworkFields::TABLES as $table) {
+            $name=_DB_PREFIX_.$table;
+            $columns=$db->executeS('SHOW COLUMNS FROM `'.bqSQL($name).'`');
+            if (!is_array($columns)) return false;
+            if (!in_array('active',array_column($columns,'Field'),true)
+                && !$db->execute('ALTER TABLE `'.bqSQL($name)
+                    .'` ADD COLUMN `active` TINYINT(1) NOT NULL DEFAULT 1')) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /** Separate physical branches are scoped to the current PrestaShop shop. */
@@ -299,6 +321,58 @@ final class GrTransportNetworkRepository
             'branches'=>self::all('branches'),
             'branch_stock'=>self::all('branch_stock'),
         ];
+    }
+
+    /** One eligibility boundary for quotes, simulator and map painting.
+     * The unfiltered snapshot remains available to admin tables and the API.
+     */
+    public static function activeSnapshot(?array $source=null): array
+    {
+        $data=$source ?? self::snapshot();
+        $enabled=static fn(array $record): bool => !array_key_exists('active',$record)
+            || (int)$record['active']===1;
+        $filter=static fn(array $records): array => array_values(array_filter($records,$enabled));
+        $stations=$filter($data['stations'] ?? []);
+        $stationIds=array_fill_keys(array_map(static fn($r)=>(int)$r['id_station'],$stations),true);
+        $links=static function (array $records) use ($filter,$stationIds): array {
+            return array_values(array_filter($filter($records),static function ($row) use ($stationIds): bool {
+                return isset($stationIds[(int)$row['from_station_id']])
+                    && (empty($row['to_station_id']) || isset($stationIds[(int)$row['to_station_id']]));
+            }));
+        };
+        $branches=array_values(array_filter($filter($data['branches'] ?? []),
+            static fn($r): bool => isset($stationIds[(int)$r['origin_station_id']])));
+        $branchIds=array_fill_keys(array_map(static fn($r)=>(int)$r['id_branch'],$branches),true);
+        $stock=array_values(array_filter($filter($data['branch_stock'] ?? []),
+            static fn($r): bool => isset($branchIds[(int)$r['id_branch']])));
+        return array_replace($data,[
+            'stations'=>$stations,'legs'=>$links($data['legs'] ?? []),
+            'transfers'=>$links($data['transfers'] ?? []),
+            'branches'=>$branches,'branch_stock'=>$stock,
+            'branch_inventory_configured'=>!empty($data['branches']),
+        ]);
+    }
+
+    /** A pinned network quote must not bypass a disabled edge or station. */
+    public static function quotePathActive(array $quote,array $eligible): bool
+    {
+        $ids=[];
+        foreach (['stations'=>'id_station','legs'=>'id_leg','transfers'=>'id_transfer',
+            'branches'=>'id_branch'] as $entity=>$field) {
+            $ids[$entity]=array_fill_keys(array_map(
+                static fn($r)=>(int)$r[$field],$eligible[$entity] ?? []),true);
+        }
+        foreach (['origin_hub_id','destination_station_id'] as $key) {
+            $station=(int)($quote[$key] ?? 0);
+            if ($station>0 && !isset($ids['stations'][$station])) return false;
+        }
+        foreach ($quote['network_path']['edges'] ?? [] as $edge) {
+            $entity=($edge['kind'] ?? '')==='leg' ? 'legs'
+                : (($edge['kind'] ?? '')==='transfer' ? 'transfers' : null);
+            if ($entity===null || !isset($ids[$entity][(int)($edge['id'] ?? 0)])) return false;
+        }
+        $branch=(int)($quote['branch_id'] ?? 0);
+        return $branch===0 || isset($ids['branches'][$branch]);
     }
 
     private static function table(string $entity): string
