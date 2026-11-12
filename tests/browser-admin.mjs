@@ -172,8 +172,21 @@ try {
   console.log('LIVE EDIT TARGET: injected ID and mismatched signed target both rejected without altering another route');
 
   // Add form is ID-free and must retain values and named errors on failure.
+  // F12: notice and demo are hidden in the page-level Advanced layer.
+  // Check both visibility states before the add-form navigation.
+  const advancedToggle = page.locator('#grtrans-page-advanced-toggle');
+  const noticeField = page.locator('#grtrans-route-editor textarea[name="notice"]');
+  await advancedToggle.uncheck();
+  assert.equal(await noticeField.isVisible(), false, 'Notice must be hidden while Advanced is off');
+  await advancedToggle.check();
+  assert.equal(await noticeField.isVisible(), true, 'Advanced must reveal the notice field');
   await page.goto(adminUrl, {waitUntil:'domcontentloaded',timeout:45000});
+  const addAdvancedToggle = page.locator('#grtrans-page-advanced-toggle');
+  if (!(await addAdvancedToggle.isChecked())) await addAdvancedToggle.check();
+  assert.equal(await addAdvancedToggle.isChecked(), true, 'Advanced must remain enabled for the add form');
   let addForm = page.locator('form').filter({has:page.locator('button[name="grtrans_save"]')}).first();
+  assert.equal(await addForm.locator('textarea[name="notice"]').isVisible(), true,
+    'Notice must remain visible after add-form navigation');
   assert.equal(await addForm.locator('input[name="id_route"]').count(), 0,
     'Add form must not expose Route ID, not even as a zero-valued input');
   assert.equal(await addForm.locator('input[name="grtrans_edit_proof"]').count(), 0);
@@ -210,6 +223,9 @@ try {
   // Make the test route suspended and operator-confirmed. The rendered
   // background and badges must visibly change, not just the stored flags.
   await inserted.getByRole('link',{name:'Edit'}).click();
+  const editAdvancedToggle = page.locator('#grtrans-page-advanced-toggle');
+  if (!(await editAdvancedToggle.isChecked())) await editAdvancedToggle.check();
+  assert.equal(await editAdvancedToggle.isChecked(), true, 'Advanced must remain enabled for the edit form');
   form = page.locator('form').filter({has:page.locator('button[name="grtrans_save"]')}).first();
   await form.locator('select[name="route_status"]').selectOption('suspended');
   await form.locator('input[name="demo"][type="checkbox"]').uncheck();
