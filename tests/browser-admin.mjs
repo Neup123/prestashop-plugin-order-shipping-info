@@ -184,6 +184,8 @@ try {
   const addAdvancedToggle = page.locator('#grtrans-page-advanced-toggle');
   if (!(await addAdvancedToggle.isChecked())) await addAdvancedToggle.check();
   assert.equal(await addAdvancedToggle.isChecked(), true, 'Advanced must remain enabled for the add form');
+  // F12: the route form is now in the map dock and opens only on demand.
+  await page.getByRole('button', {name:'Add priced route'}).click();
   let addForm = page.locator('form').filter({has:page.locator('button[name="grtrans_save"]')}).first();
   assert.equal(await addForm.locator('textarea[name="notice"]').isVisible(), true,
     'Notice must remain visible after add-form navigation');

@@ -62,12 +62,16 @@ function fixture(data, options = {}) {
     polygon(points, options) { return layer('polygons', {points, options}); }
   };
   const runtimeWindow = {L};
+  // A failed road lookup reports through the same feedback element as the browser.
+  const mapFeedback = make();
+  mapFeedback.dataset = {};
   const runtime = {
     window: runtimeWindow, L, Map,
     fetch: options.fetch || (async () => ({ok:true,json:async () => ({
       code:'Ok',routes:[{geometry:{coordinates:[[23.7,38.0],[23.72,38.02],[23.75,38.05]]}}]
     })})), document: {
       getElementById(id) { return elements[id] || null; },
+      querySelector(selector) { return selector === '.grtrans-map-feedback' ? mapFeedback : null; },
       createElement: make
     }
   };
