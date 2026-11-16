@@ -105,6 +105,29 @@ const polygon = JSON.stringify({type:'Polygon',coordinates:[[
 const isochrone = JSON.stringify({type:'Polygon',coordinates:[[
   [23.5,37.7],[23.6,37.72],[23.66,37.79],[23.55,37.85],[23.5,37.7]
 ]]});
+// N6: a persisted station-to-station leg must have a visible stroke even
+// when the OSRM request is unavailable or not yet resolved. A new VM fixture
+// simulates reload from the same stored network records.
+const testConnection={
+  id_leg:301,from_station_id:1,to_station_id:2,mode:'bus',
+  operator_label:'TEST-LEG-1',price:3.33,route_geojson:''
+};
+const testNetwork={
+  stations:[station(1,'TEST-MANUAL-1111',38.0,23.7),station(2,'TEST-MAP-2',38.05,23.75)],
+  legs:[testConnection],cost:{1:0,2:3.33}
+};
+const noRoad={fetch:async()=>{throw new Error('Relay cannot reach OSRM');}};
+for(const snapshot of [fixture(testNetwork,noRoad),fixture(testNetwork,noRoad)]){
+  const visible=snapshot.calls.lines.find(line=>
+    line.options.className?.includes('grtrans-road-fallback') &&
+    line.options.opacity>=0.9 && line.options.weight>=3 && !line.layer.removed);
+  assert.ok(visible,'Connection must paint a solid line immediately and after reload');
+  assert.equal(visible.points.length,2,'Unrouted fallback connects both stored pins');
+  assert.equal(visible.points[0][0],38);
+  assert.equal(visible.points[1][0],38.05);
+}
+console.log('N6: visible station-to-station connection remains after reload without OSRM');
+
 const original = fixture({
   stations:[station(1,'First',37.9,23.6),station(2,'Second',38.2,23.9)],
   legs:[{id_leg:9,from_station_id:1,to_station_id:null,
