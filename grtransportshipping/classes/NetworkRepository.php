@@ -213,15 +213,20 @@ final class GrTransportNetworkRepository
     {
         if (!self::find($entity,$id)) throw new InvalidArgumentException('Network record not found');
         if ($entity==='stations') {
-            // The map only displays active edges. A previously disabled edge
-            // must not leave an invisible dependency that permanently blocks
-            // station removal, but live connections must still be removed first.
+            // Dependency counts must bypass PrestaShop's SELECT cache: a leg
+            // may just have been deleted, while its earlier COUNT is cached.
+            // Both active and inactive links are genuine database references
+            // and must be explicitly removed before station deletion.
             $db=Db::getInstance();
             foreach (['grtrans_leg','grtrans_transfer'] as $table) {
-                $active=(int)$db->getValue('SELECT COUNT(*) FROM `' . _DB_PREFIX_ . $table
-                    . '` WHERE (from_station_id = ' . $id . ' OR to_station_id = ' . $id
-                    . ') AND active = 1');
-                if ($active) throw new InvalidArgumentException('Delete connecting legs/transfers before deleting this station');
+                $count=$db->getValue('SELECT COUNT(*) FROM `' . _DB_PREFIX_ . $table
+                    . '` WHERE from_station_id = ' . $id . ' OR to_station_id = ' . $id, false);
+                if ($count === false || $count === null) {
+                    throw new RuntimeException('Could not verify station connection dependencies');
+                }
+                if ((int)$count > 0) {
+                    throw new InvalidArgumentException('Delete connecting legs/transfers before deleting this station');
+                }
             }
         }
         if ($entity==='stations') {
@@ -237,25 +242,7 @@ final class GrTransportNetworkRepository
         }
         $where=GrTransportNetworkFields::IDS[$entity].' = '.$id
             . (self::isShopScoped($entity) ? ' AND id_shop = '.self::shopId() : '');
-        $db=Db::getInstance();
-        if ($entity==='stations') {
-            // Remove inactive link rows atomically with the station so an
-            // invisible historical reference cannot be orphaned.
-            if (!$db->execute('START TRANSACTION')) throw new RuntimeException('Cannot start station deletion');
-            try {
-                $linked='(from_station_id = '.$id.' OR to_station_id = '.$id.') AND active = 0';
-                foreach (['grtrans_leg','grtrans_transfer'] as $table) {
-                    if (!$db->delete($table,$linked)) throw new RuntimeException('Cannot remove inactive station link');
-                }
-                if (!$db->delete(self::table($entity),$where)) throw new RuntimeException('Network delete failed');
-                if (!$db->execute('COMMIT')) throw new RuntimeException('Cannot commit station deletion');
-            } catch (Throwable $error) {
-                $db->execute('ROLLBACK');
-                throw $error;
-            }
-            return;
-        }
-        if (!$db->delete(self::table($entity),$where)) {
+        if (!Db::getInstance()->delete(self::table($entity),$where)) {
             throw new RuntimeException('Network delete failed');
         }
     }
