@@ -151,7 +151,11 @@ try {
   assert.equal(await legRow('CI-N6N7-connection').count(),1);
   await page.waitForFunction(()=>[...document.querySelectorAll('#grtrans-network-map path')]
     .some(p=>p.classList.contains('grtrans-land-road')||p.classList.contains('grtrans-land-gradient')));
-  await page.reload({waitUntil:'domcontentloaded'});
+  // Navigate via GET after the create POST. Reloading a POST would
+  // re-submit it and manufacture an additional connection in this fixture.
+  await visit('legs');
+  assert.equal(await legRow('CI-N6N7-connection').count(),1,
+    'GET refresh must show the one stored connection, not a duplicate');
   await page.waitForFunction(()=>[...document.querySelectorAll('#grtrans-network-map path')]
     .some(p=>(p.classList.contains('grtrans-land-road')||p.classList.contains('grtrans-land-gradient'))
       && getComputedStyle(p).stroke!=='none'));
