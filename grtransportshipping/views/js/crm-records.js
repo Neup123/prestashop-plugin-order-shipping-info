@@ -274,14 +274,23 @@
       panel.append(item);
     }
     details.append(panel);
-    // The BO navigation overlays the page's left edge. Place the expanded
-    // chooser in viewport coordinates, clamped clear of that navigation.
+    // The map workspace creates an isolated stacking context. Even a huge
+    // z-index inside that context can sit behind the PrestaShop BO navigation.
+    // Portal only the chooser surface to <body> while open, then restore it.
     const placePanel=()=>{
-      if(!details.open)return;
+      if(!details.open) {
+        if(panel.parentElement!==details)details.append(panel);
+        panel.style.left='';panel.style.top='';
+        return;
+      }
+      if(panel.parentElement!==document.body)document.body.append(panel);
       const rect=trigger.getBoundingClientRect();
-      const width=Math.min(320,Math.max(224,panel.offsetWidth||224));
-      const left=Math.min(Math.max(216,rect.left),Math.max(216,window.innerWidth-width-12));
-      const top=Math.min(rect.bottom+4,Math.max(8,window.innerHeight-Math.min(panel.scrollHeight,320)-12));
+      const width=Math.max(224,panel.getBoundingClientRect().width||224);
+      const sidebarEdge=window.innerWidth>=600
+        ? Math.max(216,document.querySelector('#content')?.getBoundingClientRect().left||0) : 8;
+      const left=Math.min(Math.max(sidebarEdge,rect.left),Math.max(8,window.innerWidth-width-8));
+      const height=Math.min(panel.scrollHeight||320,320,window.innerHeight-16);
+      const top=Math.min(Math.max(8,rect.bottom+4),Math.max(8,window.innerHeight-height-8));
       panel.style.left=left+'px';panel.style.top=top+'px';
     };
     details.addEventListener('toggle',placePanel);
