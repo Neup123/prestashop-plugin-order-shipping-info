@@ -27,6 +27,8 @@
 #grtrans-configure .grtrans-map-lists .table-responsive {overflow:auto;max-height:15rem!important}
 /* The station list's overflow:visible override defeats this scrollport, allowing rows to paint beneath the editor dock. */
 #grtrans-configure .grtrans-map-lists .grtrans-network-list[data-grtrans-entity="stations"] .table-responsive {overflow-x:auto;overflow-y:auto}
+#grtrans-configure .grtrans-map-lists .grtrans-compact-network[data-grtrans-entity="stations"] {min-width:32rem;max-width:none}
+#grtrans-configure .grtrans-map-lists .grtrans-compact-network[data-grtrans-entity="stations"] tr {min-width:32rem}
 #grtrans-configure .grtrans-map-lists .grtrans-row-action-strip :is(a,button,summary) {scroll-margin-top:6rem}
 #grtrans-configure .grtrans-map-lists .grtrans-compact-network td,
 #grtrans-configure .grtrans-map-lists .grtrans-compact-network th {font-size:.86rem;padding:.3rem .4rem}
