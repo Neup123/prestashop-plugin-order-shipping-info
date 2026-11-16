@@ -27,8 +27,8 @@
 #grtrans-configure .grtrans-map-lists .table-responsive {overflow:auto;max-height:15rem!important}
 /* The station list's overflow:visible override defeats this scrollport, allowing rows to paint beneath the editor dock. */
 #grtrans-configure .grtrans-map-lists .grtrans-network-list[data-grtrans-entity="stations"] .table-responsive {overflow-x:auto;overflow-y:auto}
-#grtrans-configure .grtrans-map-lists .grtrans-compact-network[data-grtrans-entity="stations"] {min-width:32rem;max-width:none}
-#grtrans-configure .grtrans-map-lists .grtrans-compact-network[data-grtrans-entity="stations"] tr {min-width:32rem}
+#grtrans-configure .grtrans-map-lists .grtrans-compact-network[data-grtrans-entity="stations"] {min-width:44rem;max-width:none}
+#grtrans-configure .grtrans-map-lists .grtrans-compact-network[data-grtrans-entity="stations"] tr {min-width:44rem;grid-template-columns:2.75rem minmax(12rem,1fr) 5.5rem 13rem}
 #grtrans-configure .grtrans-map-lists .grtrans-row-action-strip :is(a,button,summary) {scroll-margin-top:6rem}
 #grtrans-configure .grtrans-map-lists .grtrans-compact-network td,
 #grtrans-configure .grtrans-map-lists .grtrans-compact-network th {font-size:.86rem;padding:.3rem .4rem}
@@ -79,3 +79,12 @@
 #grtrans-configure .grtrans-inline-quantity input {max-width:6rem}
 #grtrans-configure .grtrans-inline-quantity .grtrans-inline-state[data-state=error] {color:#ac2925}
 #grtrans-configure .grtrans-inline-quantity .grtrans-inline-state[data-state=saved] {color:#186c3a}
+
+/* Every station header and action remains readable; the dock scrolls
+   horizontally instead of clipping a status switch or hiding columns. */
+#grtrans-configure .grtrans-map-lists .grtrans-compact-network[data-grtrans-entity="stations"] :is(th,td).grtrans-keep {
+  white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:break-word;
+}
+#grtrans-configure .grtrans-map-lists .grtrans-compact-network[data-grtrans-entity="stations"].grtrans-custom-columns {
+  min-width:max-content;
+}
