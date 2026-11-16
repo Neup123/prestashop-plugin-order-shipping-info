@@ -122,7 +122,7 @@
   function addDetails(row,headings,hiddenColumns,actions,title) {
     const details=el('details','grtrans-record-details');
     const summary=el('summary');
-    iconize(summary,'info_outline','Show details for '+title);
+    iconize(summary,'info','Show details for '+title);
     details.append(summary);
     const dl=el('dl','grtrans-record-facts');
     hiddenColumns.forEach(index=>{
@@ -396,7 +396,7 @@
   }
   function enhanceRouteStationPickers() {
     for(const select of root.querySelectorAll('#grtrans-route-editor select[data-grtrans-station-picker]')) {
-      const choices=[...select.options].filter(option=>option.value && !option.hasAttribute('data-grtrans-legacy'));
+      const choices=[...select.options].filter(option=>option.value);
       const search=el('input','form-control grtrans-size-m grtrans-select-search');
       search.type='search';search.placeholder='Filter stations by name or number';
       search.setAttribute('aria-label','Filter '+(select.labels?.[0]?.textContent?.trim() || 'stations'));
