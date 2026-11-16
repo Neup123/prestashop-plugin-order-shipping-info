@@ -215,8 +215,20 @@
     routeEditor.scrollIntoView({block:'nearest'});
     selected=null;showContext();return true;
   }
+  // The BO dock can shift Leaflet's reported center by one projected pixel
+  // when a scrollbar appears, without any navigation gesture. Retain the
+  // camera captured when the map was ready for such subpixel layout jitter.
+  let stableCamera=null;
   const saveView=()=>{
-    const centre=getMapPoint();const view={lat:centre.lat,lng:centre.lng,zoom:bridge.map.getZoom()};
+    let centre=getMapPoint();
+    const zoom=bridge.map.getZoom();
+    if(stableCamera && stableCamera.zoom===zoom){
+      const current=bridge.map.project([centre.lat,centre.lng],zoom);
+      const prior=bridge.map.project([stableCamera.lat,stableCamera.lng],zoom);
+      if(current.distanceTo(prior)<=1.1)centre=stableCamera;
+    }
+    const view={lat:centre.lat,lng:centre.lng,zoom};
+    stableCamera=view;
     try {sessionStorage.setItem(storedKey,JSON.stringify(view));} catch(_) { /* optional */ }
   };
   function visit(entity,id=0,nextMode=mode) {
@@ -656,6 +668,8 @@
     // before navigation after Leaflet has accounted for the new container size.
     // Editing a record intentionally focuses that record, so keep its camera.
     if(formId===0)restoreView();
+    const initial=getMapPoint();
+    stableCamera={lat:initial.lat,lng:initial.lng,zoom:bridge.map.getZoom()};
     stage.dataset.grtransViewReady='true';
   });
   // A new station must be a new signed record before its coordinates are drafted.
