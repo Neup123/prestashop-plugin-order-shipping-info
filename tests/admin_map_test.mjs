@@ -4,6 +4,9 @@ import vm from 'node:vm';
 
 const source = fs.readFileSync(new URL('../grtransportshipping/views/js/network-admin.js', import.meta.url), 'utf8');
 const geometrySource = fs.readFileSync(new URL('../grtransportshipping/views/js/coverage-geometry.js', import.meta.url), 'utf8');
+assert.match(source, /tile\.openstreetmap\.org/, 'Default map tiles must not require a Carto API key');
+assert.doesNotMatch(source, /basemaps\.cartocdn\.com/, 'Unkeyed Carto tiles must not be the default');
+assert.match(source, /grtrans-road-fallback/, 'Station connections need an immediate visible fallback');
 function fixture(data, options = {}) {
   const make = () => ({
     children: [], style: {}, attrs: {}, events: {}, disabled: true, hidden: true,
