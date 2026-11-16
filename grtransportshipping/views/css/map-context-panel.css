@@ -33,6 +33,6 @@
 #grtrans-configure .grtrans-map-editor-dock #grtrans-route-editor {padding:.45rem;margin:.5rem 0;border:0;box-shadow:none}
 #grtrans-configure .grtrans-map-editor-dock #grtrans-route-editor[hidden],
 #grtrans-configure .grtrans-map-editor-dock #grtrans-network-editor[hidden] {display:none!important}
-#grtrans-configure .grtrans-map-editor-dock #grtrans-network-editor [data-grtrans-server-groups] .grtrans-editor-group:first-child .grtrans-editor-fields {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.45rem}
+#grtrans-configure .grtrans-map-editor-dock #grtrans-network-editor [data-grtrans-server-groups] .grtrans-editor-group:first-child .grtrans-editor-fields {display:grid;grid-template-columns:minmax(0,1fr);gap:.45rem}
 #grtrans-configure .grtrans-map-editor-dock #grtrans-network-editor [data-grtrans-server-groups] .grtrans-editor-group:first-child .grtrans-editor-fields .form-group {min-width:0}
 @media(max-width:600px){#grtrans-configure .grtrans-map-editor-dock #grtrans-network-editor [data-grtrans-server-groups] .grtrans-editor-group:first-child .grtrans-editor-fields {grid-template-columns:1fr}}
