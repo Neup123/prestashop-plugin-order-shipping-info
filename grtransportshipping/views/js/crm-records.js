@@ -274,6 +274,19 @@
       panel.append(item);
     }
     details.append(panel);
+    // The BO navigation overlays the page's left edge. Place the expanded
+    // chooser in viewport coordinates, clamped clear of that navigation.
+    const placePanel=()=>{
+      if(!details.open)return;
+      const rect=trigger.getBoundingClientRect();
+      const width=Math.min(320,Math.max(224,panel.offsetWidth||224));
+      const left=Math.min(Math.max(216,rect.left),Math.max(216,window.innerWidth-width-12));
+      const top=Math.min(rect.bottom+4,Math.max(8,window.innerHeight-Math.min(panel.scrollHeight,320)-12));
+      panel.style.left=left+'px';panel.style.top=top+'px';
+    };
+    details.addEventListener('toggle',placePanel);
+    window.addEventListener('resize',placePanel);
+    window.addEventListener('scroll',placePanel,true);
     const container=entity==='routes'?table.closest('.grtrans-route-grid'):
       table.closest('.grtrans-network-list')?.querySelector('.grtrans-record-list-head');
     if(container){if(entity==='routes')container.before(details);else container.append(details);}
