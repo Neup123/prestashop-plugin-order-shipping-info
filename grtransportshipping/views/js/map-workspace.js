@@ -573,8 +573,14 @@
     expand.setAttribute('aria-pressed',String(document.fullscreenElement===stage));
     bridge.map.invalidateSize();
   });
-  // Preserve the camera when a late ResizeObserver callback reconciles layout.
-  const resize=()=>bridge.map.invalidateSize({pan:false});
+  // Leaflet can round a resized viewport by one projected pixel at low
+  // zoom. Preserve the exact camera across that size reconciliation instead
+  // of allowing a station-list width change to shift the restored view.
+  const resize=()=>{
+    const centre=bridge.map.getCenter(),zoom=bridge.map.getZoom();
+    bridge.map.invalidateSize({pan:false});
+    bridge.map.setView([centre.lat,centre.lng],zoom,{animate:false});
+  };
   if(typeof ResizeObserver==='function')new ResizeObserver(resize).observe(mapDock);
   for(const entity of entities){
     const list=listDock.querySelector('[data-grtrans-entity="'+entity+'"]');
