@@ -206,7 +206,7 @@ try {
   assert.ok(transferId>0,'New transfer has persisted ID');
   await assertReloadGET();
   assert.equal(await transferRows.count(),transfersBefore+1,'Reload must not duplicate transfer');
-  await removeRow(transferRows.locator('[data-grtrans-record-id="'+transferId+'"]'));
+  await removeRow(page.locator('#grtrans-network .grtrans-network-list[data-grtrans-entity="transfers"] tbody tr[data-grtrans-record-id="'+transferId+'"]'));
   await visit('transfers');
   assert.equal(await transferRows.count(),transfersBefore,'Transfer removed without stale dependency');
   confirm('PRG stations, legs, transfers and Back/Reload');
