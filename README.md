@@ -13,9 +13,22 @@ Work-in-progress module for Athens-origin parcel movement by KTEL, ferry and dom
 - Configure Greek zone/carrier restrictions and confirm checkout before production.
 - PHP 8.2/8.4 lint, pure pricing tests, live PrestaShop 9.2 Docker native cart checks, and Chromium admin/checkout browser acceptance run in GitHub Actions.
 
-## Security bar
+## Security and external integration boundaries
 
-Admin mutations use PrestaShop employee token verification, strict validated input and escaping; client-side prices are never trusted. Unknown destination => no quote. No credentials or external network access.
+Admin mutations use PrestaShop employee token verification, strict validated input and escaping; client-side prices are never trusted. Unknown destination => no quote.
+
+The module **does manage API credentials** and **does make external network requests**. The network API uses separate read and write tokens. Only SHA-256 token hashes are stored by the module; a newly rotated plaintext token is returned once to the authorized administrator. Treat that value as a secret and do not put it in logs or URLs.
+
+| Integration | Initiator and information sent | When used and failure behavior |
+| --- | --- | --- |
+| PrestaShop network API | Authorized API client sends its scoped token to the shop's network endpoint to read or mutate network records. | Only on explicit API calls; read/write scopes and server-side authorization apply. This is a shop endpoint, **not** a third-party map provider. |
+| Map tile provider (currently CARTO basemaps, with OpenStreetMap attribution) | Administrator's browser requests tile coordinates and exposes the usual request metadata, including client IP, to the tile host. | Map rendering in the back-office; missing tiles affect the background, not stored transport data. The provider or tile URL can change with later releases. |
+| Public OSRM routing service | Administrator's browser requests road geometry for selected preview endpoints, including geographic coordinates. | Only for route preview; service failures retain the module's documented graceful fallback rather than changing stored route or pricing records. |
+| Nominatim / OpenStreetMap reverse geocoding | Customer's browser sends the selected map pin's latitude and longitude to Nominatim. | Only after the customer opts to open/use the optional map and places or moves a pin; failures leave the coordinate-based quote path available. |
+
+These requests are browser-side integrations, not claims that API credentials are sent to a map provider. The map services can see client IP addresses and location parameters needed for their requests; review third-party service availability and privacy terms before operating a live shop. The customer's optional map is not required for the text-based quote check.
+
+The security boundary here is the shop's protected administrator/API access versus separate, public geographic-data providers. Any change in provider, endpoint or request payload must be reflected in this table and tested at the appropriate browser/integration layer.
 
 ## Automated core acceptance and additional production readiness
 
