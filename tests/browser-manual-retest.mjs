@@ -26,6 +26,23 @@ const removeRow=async(row)=>{
   await row.locator('button[data-grtrans-row-action="delete"]').click();
   await page.getByText('Network record updated.',{exact:true}).first().waitFor({timeout:20000});
 };
+const submitCreatePRG=async(button,entity)=>{
+  const [response]=await Promise.all([
+    page.waitForResponse(result=>
+      result.request().isNavigationRequest() &&
+      result.request().method()==='POST' &&
+      result.status()===303,{timeout:20000}),
+    button.click(),
+  ]);
+  assert.equal(response.status(),303,'Successful create must return 303 See Other');
+  assert.equal(new URL(page.url()).searchParams.get('network_entity'),entity,
+    'Redirect must return to the edited network entity');
+  assert.doesNotMatch(page.url(),/grtrans_network_action/,'Mutation must not remain in GET URL');
+};
+const assertReloadGET=async()=>{
+  const response=await page.reload({waitUntil:'domcontentloaded'});
+  assert.equal(response.request().method(),'GET','Reload after create must GET, never replay POST');
+};
 const addStation=async(name,lat,lng)=>{
   await visit();
   await page.getByRole('button',{name:'Place station',exact:true}).click();
@@ -36,10 +53,14 @@ const addStation=async(name,lat,lng)=>{
   await form.locator('[name="lng"]').fill(String(lng));
   await form.locator('[name="inner_radius_km"]').fill('2');
   await form.locator('[name="outer_radius_km"]').fill('5');
-  await form.getByRole('button',{name:'Create record'}).click();
+  await submitCreatePRG(form.getByRole('button',{name:'Create record'}),'stations');
   await page.getByText('Network record created.',{exact:true}).first().waitFor({timeout:20000});
   const row=stationRow(name);
   assert.equal(await row.count(),1,'Station created in disposable PrestaShop');
+  await assertReloadGET();
+  assert.equal(await row.count(),1,'Reload must not create a duplicate station');
+  assert.equal(await page.getByText('Network record created.',{exact:true}).count(),0,
+    'One-time success flash must disappear after refresh');
   return Number((await row.locator('td').first().innerText()).trim());
 };
 
@@ -146,21 +167,49 @@ try {
   await form.locator('[name="to_station_id"]').selectOption(String(target));
   await form.locator('[name="operator_label"]').fill('CI-N6N7-connection');
   await form.locator('[name="price"]').fill('3.33');
-  await form.getByRole('button',{name:'Create record'}).click();
+  await submitCreatePRG(form.getByRole('button',{name:'Create record'}),'legs');
   await page.getByText('Network record created.',{exact:true}).first().waitFor({timeout:20000});
   assert.equal(await legRow('CI-N6N7-connection').count(),1);
   await page.waitForFunction(()=>[...document.querySelectorAll('#grtrans-network-map path')]
     .some(p=>p.classList.contains('grtrans-land-road')||p.classList.contains('grtrans-land-gradient')));
-  // Navigate via GET after the create POST. Reloading a POST would
-  // re-submit it and manufacture an additional connection in this fixture.
+  // The defect in #163 was exactly page.reload() after a successful POST.
+  // A real 303 now means refresh and browser Back cannot duplicate the leg.
+  await assertReloadGET();
+  assert.equal(await legRow('CI-N6N7-connection').count(),1,
+    'Reload after create must preserve one connection, not add another');
+  await page.goBack({waitUntil:'domcontentloaded'});
   await visit('legs');
   assert.equal(await legRow('CI-N6N7-connection').count(),1,
-    'GET refresh must show the one stored connection, not a duplicate');
+    'Back and return must not duplicate the connection');
   await page.waitForFunction(()=>[...document.querySelectorAll('#grtrans-network-map path')]
     .some(p=>(p.classList.contains('grtrans-land-road')||p.classList.contains('grtrans-land-gradient'))
       && getComputedStyle(p).stroke!=='none'));
   assert.ok(await visibleConnection().count()>0,'Visible leg line must persist after reload');
   confirm('N6 saved line and reload');
+
+
+  // #163: the transfer editor also creates records and must use PRG.
+  await visit('transfers');
+  const transferRows=page.locator('#grtrans-network .grtrans-network-list[data-grtrans-entity="transfers"] tbody tr');
+  const transfersBefore=await transferRows.count();
+  await page.getByRole('button',{name:'Add transfer',exact:true}).click();
+  form=page.locator('#grtrans-network-editor form');
+  await form.locator('[name="from_station_id"]').selectOption(String(source));
+  await form.locator('[name="to_station_id"]').selectOption(String(target));
+  await form.locator('[name="connection_type"]').selectOption('walk');
+  await form.locator('[name="price"]').fill('1.00');
+  await submitCreatePRG(form.getByRole('button',{name:'Create record'}),'transfers');
+  await page.getByText('Network record created.',{exact:true}).first().waitFor({timeout:20000});
+  assert.equal(await transferRows.count(),transfersBefore+1,'One transfer created');
+  const transferId=await transferRows.evaluateAll(rows=>
+    Math.max(...rows.map(row=>Number(row.dataset.grtransRecordId))));
+  assert.ok(transferId>0,'New transfer has persisted ID');
+  await assertReloadGET();
+  assert.equal(await transferRows.count(),transfersBefore+1,'Reload must not duplicate transfer');
+  await removeRow(transferRows.locator('[data-grtrans-record-id="'+transferId+'"]'));
+  await visit('transfers');
+  assert.equal(await transferRows.count(),transfersBefore,'Transfer removed without stale dependency');
+  confirm('PRG stations, legs, transfers and Back/Reload');
 
   await removeRow(legRow('CI-N6N7-connection'));
   await visit('stations');
