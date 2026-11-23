@@ -211,6 +211,7 @@ try {
   assert.equal(await transferRows.count(),transfersBefore,'Transfer removed without stale dependency');
   confirm('PRG stations, legs, transfers and Back/Reload');
 
+  await visit('legs');
   await removeRow(legRow('CI-N6N7-connection'));
   await visit('stations');
   await removeRow(stationRow('CI-N7-target'));
