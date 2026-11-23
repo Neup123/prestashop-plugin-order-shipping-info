@@ -314,3 +314,11 @@ an idempotent \`upgrade-0.12.0.php\` for existing shops:
 The normal network repository/API and bulk importer use the same validated
 fields. Pre-existing rows keep \`none\`; no customer data or route requires an
 override to continue working.
+
+## Safe creation and browser reload (Issue #163)
+
+Successful authenticated **new** station, transport-connection, transfer, branch and stock-record submissions use Post/Redirect/Get: the module stores a one-time *record created* notice in the existing administrator cookie and returns HTTP **303 See Other** to the appropriate network category. Reload and browser Back therefore cannot repeat the create POST. The posted administrator token is validated before the write and is never copied into the flash notice; existing signed edits and validation-error draft retention are unchanged.
+
+The map's **Save transfer link** POST uses the same redirect. Failed validation does not redirect: the editor displays the existing errors with its submitted values for correction. Successful update, verify and delete actions retain their current behavior in this focused change.
+
+Disposable PrestaShop browser regression: `node tests/browser-manual-retest.mjs` asserts that station, leg and transfer create responses return HTTP 303, that reload makes a GET without duplicate rows, and that the recorded leg can still be deleted before deleting its station. Do not point this test at a real shop.
