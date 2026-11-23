@@ -6,6 +6,21 @@ on:
 permissions:
   contents: read
 jobs:
+  javascript-syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      # Covers every first-party shipped JS file and Node test script,
+      # including files not reached by the ordinary contract tests.
+      # Excludes bundled third-party vendor assets. Syntax alone does not
+      # establish DOM behavior, security, API compatibility or end-to-end correctness.
+      - name: Check shipped JavaScript and Node test script syntax
+        run: |
+          find grtransportshipping/views/js tests -type f \( -name '*.js' -o -name '*.mjs' -o -name '*.cjs' \) -print0 |
+            xargs -0 -r -n1 node --check
   php:
     runs-on: ubuntu-latest
     strategy:
