@@ -29,7 +29,9 @@ function fixture(data, options = {}) {
   const calls = {circles: [], lines: [], polygons: [], markers: [], mapEvents: {}, fits: [], views: []};
   const layer = (type, entry) => {
     const value = {
-      events: {}, svgPath: { attrs: {}, setAttribute(name, value) { this.attrs[name] = value; } },
+      events: {}, svgPath: { attrs: {}, classList: { toggle() {} },
+        style: { setProperty() {}, removeProperty() {} },
+        setAttribute(name, value) { this.attrs[name] = value; } },
       getElement() { return type === 'circles' || type === 'polygons' ? this.svgPath : null; },
       addTo() { this.removed = false; return this; },
       bindTooltip(content) { this.tooltip = content; return this; },
