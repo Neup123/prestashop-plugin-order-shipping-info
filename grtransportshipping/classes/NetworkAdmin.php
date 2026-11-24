@@ -60,6 +60,12 @@ return '<div class="alert alert-danger" data-grtrans-autosave-result="error">'
             GrTransportNetworkFields::fields($entity);
             $id=filter_var($_POST['network_id'] ?? 0,FILTER_VALIDATE_INT,
                 ['options'=>['min_range'=>0]]) ?: 0;
+            // Successful creates must never leave a POST document in browser history.
+            // Fail before writing if PrestaShop has already committed headers.
+            $createsRecord=($action==='save' && $id===0) || $action==='link';
+            if ($createsRecord && headers_sent()) {
+                throw new RuntimeException('The page cannot redirect safely. Reload Configure before creating a record.');
+            }
             if ($action==='delete') {
                 GrTransportNetworkRepository::delete($entity,(int)$id);
             } elseif ($action==='save') {
@@ -81,6 +87,11 @@ return '<div class="alert alert-danger" data-grtrans-autosave-result="error">'
                     'override_winner'=>$_POST['override_winner'] ?? 'none',
                 ]);
             } else throw new InvalidArgumentException('Unknown network action');
+            if ($createsRecord) {
+                // The authenticated POST has committed exactly one record.
+                // A 303 switches Reload/Back to a GET and prevents duplicate INSERTs.
+                self::redirectAfterCreate($module,$entity);
+            }
             $kinds=['stations'=>'Station','legs'=>'Transport connection',
                 'transfers'=>'Station transfer','branches'=>'Dispatch location',
                 'branch_stock'=>'Product availability'];
@@ -113,6 +124,39 @@ return '<div class="alert alert-danger" data-grtrans-autosave-result="error">'
                 .'<details><summary>'.self::esc($module->l('Technical details')).'</summary><code>'
                 .self::esc($error->getMessage()).'</code></details></div>';
         }
+    }
+
+
+    /** Commit the response as a GET; the administrator token was validated above. */
+    private static function redirectAfterCreate($module,string $entity): void
+    {
+        $context=Context::getContext();
+        $path=$context->link->getAdminLink('AdminModules',true,[],[
+            'configure'=>$module->name,
+            'module_name'=>$module->name,
+            'network_entity'=>$entity,
+        ]);
+        // Existing PrestaShop administrator cookie is the one-time flash carrier.
+        // The cookie stores only a validated entity type, never submitted values.
+        $context->cookie->grtrans_network_created=$entity;
+        header('Location: '.$path.'#grtrans-network-list',true,303);
+        exit;
+    }
+
+    /** Show the just-created message once on the redirected GET. */
+    private static function consumeCreatedFlash($module): string
+    {
+        $cookie=Context::getContext()->cookie;
+        $entity=(string)($cookie->grtrans_network_created ?? '');
+        if ($entity==='') return '';
+        unset($cookie->grtrans_network_created);
+        if (!in_array($entity,GrTransportNetworkFields::ENTITIES,true)) return '';
+        $kinds=['stations'=>'Station','legs'=>'Transport connection',
+            'transfers'=>'Station transfer','branches'=>'Dispatch location',
+            'branch_stock'=>'Product availability'];
+        return '<div class="alert alert-success" role="status"><strong>'
+            .self::esc($module->l('Network record created.')).'</strong> '
+            .self::esc($module->l(($kinds[$entity] ?? 'Record').' created.')).'</div>';
     }
 
     public static function render($module): string
@@ -234,6 +278,7 @@ return '<div class="alert alert-danger" data-grtrans-autosave-result="error">'
         $schema=self::esc(json_encode($fields,JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_THROW_ON_ERROR));
         $out.='<section id="grtrans-network-list" class="grtrans-network-list" data-grtrans-entity="'.self::esc($collection).'">'
             .'<h4>' . self::esc(ucwords(str_replace('_',' ',$collection))) . '</h4>'
+            . self::consumeCreatedFlash($module)
             . '<div class="table-responsive"><table class="table table-striped" data-grtrans-crm-schema="'.$schema.'"><thead><tr><th>ID</th>';
             $names=array_keys($fields);
             foreach ($names as $name) $out.='<th data-grtrans-field="'.self::esc($name).'">'
