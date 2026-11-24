@@ -135,10 +135,18 @@ try {
     map.fire('click',{latlng:window.L.latLng(38.05,23.75)});
   });
   const signedRequest=await phpPreviewRequest;
-  assert.ok(new URLSearchParams(signedRequest.postData()).get('token'),
-    'Map preview sends the signed employee token only in POST body');
-  assert.ok(!new URL(signedRequest.url()).searchParams.has('token'),
-    'Admin preview never transmits its token in a URL query');
+  // FormData serializes as multipart/form-data, not URLSearchParams.
+  // The existing PrestaShop administrator action URL itself carries a
+  // framework token; the preview form token is a separate POST field.
+  const requestBody=signedRequest.postData() || '';
+  assert.match(signedRequest.headers()['content-type'] || '',/multipart\/form-data/);
+  assert.match(requestBody,/name="token"\r?\n\r?\n[^\r\n]+/,
+    'Map preview sends its employee form token in the multipart POST body');
+  const previewUrl=new URL(signedRequest.url());
+  for(const key of ['grtrans_network_action','start_lat','start_lng','end_lat','end_lng']) {
+    assert.ok(!previewUrl.searchParams.has(key),
+      'Preview input '+key+' must not be serialized in the request URL');
+  }
   await page.waitForFunction(() =>
     /Route preview ready|Route preview unavailable/.test(
       document.getElementById('grtrans-preview-status')?.textContent||''
