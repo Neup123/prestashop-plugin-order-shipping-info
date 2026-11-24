@@ -1,4 +1,4 @@
-/* The GET text form works without Leaflet, tiles, reverse geocoding or JavaScript. */
+/* The POST quote form works without Leaflet, tiles, reverse geocoding or JavaScript. */
 (function () {
   'use strict';
   const option = document.getElementById('grtransport-map-option');

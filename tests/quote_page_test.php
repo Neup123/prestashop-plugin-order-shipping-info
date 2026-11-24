@@ -131,8 +131,11 @@ testAssert(!$context->smarty->vars['quote_submitted'], 'Reject array text input 
 Tools::$request = ['pin' => '1', 'lat' => ['invalid'], 'lng' => '24'];
 $controller->initContent();
 testAssert($context->smarty->vars['quote_route'] === null, 'Reject invalid pin');
+// Quote notes are POST-only, including for map pins and FAR confirmation.
+$_SERVER['REQUEST_METHOD'] = 'POST';
+$_POST = ['note' => 'Depends on storms <script>alert(1)</script>'];
 Tools::$request = ['pin'=>'1', 'lat'=>'37.1', 'lng'=>'25.37',
-    'destination'=>'Pinned address', 'note'=>'Depends on storms <script>alert(1)</script>'];
+    'destination'=>'Pinned address'];
 $controller->initContent();
 $vars = $context->smarty->vars;
 testAssert($vars['quote_is_pin'] === true, 'Pin request persists coordinate pricing mode');
@@ -147,7 +150,30 @@ testAssert($vars['quote_note'] === 'Depends on storms <script>alert(1)</script>'
 $template = file_get_contents(__DIR__ . '/../grtransportshipping/views/templates/front/quote.tpl');
 testAssert(str_contains($template, "\$quote_note|escape:'htmlall'"),
     'Quote note must be escaped by Smarty');
-Tools::$request = ['destination'=>'26221','note'=>['not a scalar']];
+testAssert(preg_match('/<form\\s+method="post"[^>]*id="grtransport-quote-form"/', $template) === 1,
+    'Public quote form must submit the note only via POST, not the browser URL');
+testAssert(str_contains($template, '<form method="post" action=') &&
+    str_contains($template, 'id="grtransport-quote-far-confirm"'),
+    'FAR confirmation remains POST-based');
+$_POST = ['note'=>['not a scalar']];
+Tools::$request = ['destination'=>'26221'];
 $controller->initContent();
-testAssert($context->smarty->vars['quote_note'] === '', 'Invalid note array is ignored');
+testAssert($context->smarty->vars['quote_note'] === '', 'Invalid POST note array is ignored');
+// A legacy GET link with a free-text note cannot re-display that query value.
+$_SERVER['REQUEST_METHOD'] = 'GET';
+$_POST = [];
+Tools::$request = ['destination'=>'26221', 'note'=>'private note from legacy URL'];
+$controller->initContent();
+testAssert($context->smarty->vars['quote_note'] === '', 'GET query note is never accepted or displayed');
+$_SERVER['REQUEST_METHOD'] = 'POST';
+$_POST = [];
+$controller->initContent();
+testAssert($context->smarty->vars['quote_note'] === '', 'POST without a note must not fall back to URL query');
+$_POST = ['note'=>'  kept in POST only  '];
+Tools::$request = ['destination'=>'26221'];
+$controller->initContent();
+testAssert($context->smarty->vars['quote_note'] === 'kept in POST only',
+    'POST body note remains available as escaped display-only context');
+$_POST = [];
+unset($_SERVER['REQUEST_METHOD']);
 echo "Quote page/controller and actual checkout entry point contracts passed\n";
