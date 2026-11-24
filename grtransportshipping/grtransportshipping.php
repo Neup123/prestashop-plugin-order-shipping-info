@@ -128,7 +128,7 @@ class Grtransportshipping extends CarrierModule
             `route_snapshot` LONGTEXT NULL,
             `estimate_min` DECIMAL(12,2) NULL,
             `estimate_max` DECIMAL(12,2) NULL,
-            `estimate_state` VARCHAR(16) NOT NULL DEFAULT \'not_estimate\',
+            `estimate_state` ' . GrTransportEstimateState::columnSql() . ',
             `actual_shipping_charge` DECIMAL(12,2) NULL,
             `external_receipt` VARCHAR(190) NULL,
             `settled_at` DATETIME NULL
@@ -219,7 +219,7 @@ class Grtransportshipping extends CarrierModule
         $original=GrTransportOrderSnapshot::originalQuote($info);
         $details=$original ? array_replace($info,$original) : $info;
         $settlement='';
-        if (($info['estimate_state'] ?? '')===GrTransportEstimateSettlement::PENDING) {
+        if (($info['estimate_state'] ?? '')===GrTransportEstimateState::PENDING) {
             $settlement='<div class="alert alert-warning"><strong>Final freight is pending, not charged at checkout.</strong>'
                 . '<p>Collect the customer-approved freight amount through a separate supported payment method. '
                 . 'Only after the payment processor confirms success, record its receipt below. '
@@ -232,7 +232,7 @@ class Grtransportshipping extends CarrierModule
                 . ' Customer approved the final freight price and external payment was confirmed</label>'
                 . '<button type="submit" class="btn btn-warning" name="grtrans_confirm_estimate" value="'
                 . $id . '">Record confirmed external freight receipt</button></form>';
-        } elseif (($info['estimate_state'] ?? '')===GrTransportEstimateSettlement::SETTLED) {
+        } elseif (($info['estimate_state'] ?? '')===GrTransportEstimateState::SETTLED) {
             $settlement='<div class="alert alert-success">External freight receipt confirmed: EUR '
                 . $this->escape(number_format((float)$info['actual_shipping_charge'],2))
                 . ' · reference ' . $this->escape($info['external_receipt'] ?? '') . '</div>';
@@ -269,7 +269,7 @@ class Grtransportshipping extends CarrierModule
         $original=GrTransportOrderSnapshot::originalQuote($info);
         $details=$original ? array_replace($info,$original) : $info;
         return $this->renderNotice($details, 'order') . $this->renderNetworkPath($original)
-            . (($info['estimate_state'] ?? '')===GrTransportEstimateSettlement::PENDING
+            . (($info['estimate_state'] ?? '')===GrTransportEstimateState::PENDING
                 ? '<p>Freight payment is pending separate confirmation; no estimated freight was charged at checkout.</p>'
                 : '');
     }

@@ -2,21 +2,23 @@
 require_once __DIR__ . '/CartQuote.php';
 require_once __DIR__ . '/CarrierLifecycle.php';
 require_once __DIR__ . '/OrderCharge.php';
+require_once __DIR__ . '/EstimateState.php';
 
 /**
  * Durable order pickup state machine (one write path):
  *
  * absent --capture()--> stored (immutable, idempotent on duplicate hooks)
  * absent --repair()---> stored (from original pinned cart quote ONLY)
- * stored --repair()---> regenerated (operator-requested, source verified)
- * no other transitions; a failed write throws and is logged. The record
+ * stored --repair()---> stored (operator-requested, source verified)
+ * Regeneration is an audited event, not a separate persisted state.
+ * A settled estimate cannot be repaired. No other transitions; a failed
+ * write throws and is logged. The record
  * remains in the DB on module uninstall by design, for order history.
  */
 final class GrTransportOrderSnapshot
 {
     public const ABSENT = 'absent';
     public const STORED = 'stored';
-    public const REGENERATED = 'regenerated';
 
     public static function find(int $orderId): ?array
     {
@@ -24,7 +26,7 @@ final class GrTransportOrderSnapshot
             return null;
         }
         $row = Db::getInstance()->getRow(
-            'SELECT * FROM `' . _DB_PREFIX_ . 'grtrans_order` WHERE id_order = ' . $orderId
+            'SELECT * FROM `' . _DB_PREFIX_ . 'grtrans_order` WHERE id_order = ' . $orderId, false
         );
         return is_array($row) ? $row : null;
     }
@@ -99,7 +101,7 @@ final class GrTransportOrderSnapshot
         // immutable order-time JSON snapshot, independent of mutable network tables.
         $encoded=json_encode($quote,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRESERVE_ZERO_FRACTION);
         if ($encoded===false) self::fail($orderId,'Cannot encode transport dispatch snapshot');
-        if ($existing && $regenerate && ($existing['estimate_state'] ?? '')==='settled') {
+        if ($existing && $regenerate && !GrTransportEstimateState::mayRepair($existing)) {
             self::fail($orderId,'A settled freight estimate must not be regenerated');
         }
         $isEstimate=!empty($quote['estimate']);
@@ -107,7 +109,7 @@ final class GrTransportOrderSnapshot
             'route_snapshot'=>pSQL($encoded,true),
             'estimate_min'=>$isEstimate ? round((float)($quote['estimate_min'] ?? 0),2) : null,
             'estimate_max'=>$isEstimate ? round((float)($quote['estimate_max'] ?? 0),2) : null,
-            'estimate_state'=>$isEstimate ? 'pending' : 'not_estimate',
+            'estimate_state'=>GrTransportEstimateState::initial($quote),
             'mode' => pSQL((string) $quote['mode']),
             'station_name' => pSQL((string) $quote['station_name']),
             'price' => round((float) $quote['price'], 2),
@@ -117,7 +119,8 @@ final class GrTransportOrderSnapshot
         ];
         $db = Db::getInstance();
         $ok = $existing
-            ? $db->update('grtrans_order', $payload, 'id_order = ' . $orderId)
+            ? $db->update('grtrans_order', $payload, 'id_order = ' . $orderId
+                . " AND estimate_state = '" . GrTransportEstimateState::status($existing) . "'")
             : $db->insert('grtrans_order', ['id_order' => $orderId] + $payload);
         if (!$ok) {
             // A concurrent duplicate callback can have successfully inserted
@@ -131,6 +134,10 @@ final class GrTransportOrderSnapshot
         $saved = self::find($orderId);
         if (!$saved) {
             self::fail($orderId, 'Pickup snapshot not readable after successful write');
+        }
+        if ($regenerate && ($saved['estimate_state'] !== $payload['estimate_state']
+            || $saved['route_snapshot'] !== $encoded)) {
+            self::fail($orderId, 'Pickup snapshot changed concurrently; repair was not confirmed');
         }
         return $saved;
     }

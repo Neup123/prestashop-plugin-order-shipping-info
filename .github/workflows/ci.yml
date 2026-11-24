@@ -32,7 +32,7 @@ jobs:
       - name: Stage-2 spatial form and GeoJSON geometry contract
         run: node tests/map_spatial_model_test.cjs
       - name: Order charged amount adjustment contract
-        run: php tests/order_charge_test.php
+        run: php tests/order_charge_test.php && php tests/estimate_state_test.php
       - name: Validate demo seed format
         run: php tests/seed_test.php
       - name: Quote map interaction contracts
