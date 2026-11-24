@@ -26,7 +26,39 @@ function fixture(data, options = {}) {
     stations: [], legs: [], transfers: [], cost: {}, leafletImagePath: '/leaflet/',
     ...data
   })};
-  const calls = {circles: [], lines: [], polygons: [], markers: [], mapEvents: {}, fits: [], views: []};
+  const calls = {circles: [], lines: [], polygons: [], markers: [], mapEvents: {},
+    fits: [], views: [], previewRequests: []};
+  // The preview is an authenticated Configure POST, not a browser-side graph.
+  const linkForm=elements['grtrans-map-link-form'];
+  linkForm.action='https://shop.example/admin/index.php?configure=grtransportshipping';
+  linkForm.querySelector=selector => selector==='[name="token"]'
+    ? {value:'disposable-admin-token'} : null;
+  const defaultPreview=() => {
+    const edges=data.legs || [];
+    if (!edges.length) return {status:'error',message:'No directed network connection'};
+    return {
+      status:'ok',source:'server',
+      origin_station_id:Number(data.stations[0].id_station),
+      destination_station_id:Number(data.stations[data.stations.length-1].id_station),
+      total:edges.reduce((sum,e)=>sum+Number(e.price),0),
+      estimate:false,
+      steps:edges.map(e=>({
+        from:Number(e.from_station_id),to:Number(e.to_station_id),
+        mode:e.mode,kind:'leg',id:e.id_leg,price:Number(e.price)
+      }))
+    };
+  };
+  class FakeFormData {
+    constructor(){ this.values=new Map(); }
+    set(name,value){this.values.set(name,String(value));}
+    get(name){return this.values.get(name);}
+  }
+  class FakeDomParser {
+    parseFromString(json) { return {
+      querySelector: selector => selector==='[data-grtrans-preview-result]'
+        ? {getAttribute:() => json} : null
+    }; }
+  }
   const layer = (type, entry) => {
     const value = {
       events: {}, addTo() { this.removed = false; return this; },
@@ -69,10 +101,17 @@ function fixture(data, options = {}) {
   const mapFeedback = make();
   mapFeedback.dataset = {};
   const runtime = {
-    window: runtimeWindow, L, Map,
-    fetch: options.fetch || (async () => ({ok:true,json:async () => ({
-      code:'Ok',routes:[{geometry:{coordinates:[[23.7,38.0],[23.72,38.02],[23.75,38.05]]}}]
-    })})), document: {
+    window: runtimeWindow, L, Map, FormData: FakeFormData, DOMParser: FakeDomParser,
+    fetch: async (url,opts) => {
+      if (opts?.method==='POST') {
+        calls.previewRequests.push({url,opts,fields:opts.body.values});
+        return {ok:true,text:async()=>JSON.stringify(options.preview ?? defaultPreview())};
+      }
+      const road=options.fetch || (async()=>({ok:true,json:async()=>({
+        code:'Ok',routes:[{geometry:{coordinates:[[23.7,38.0],[23.72,38.02],[23.75,38.05]]}}]
+      })}));
+      return road(url,opts);
+    }, document: {
       getElementById(id) { return elements[id] || null; },
       querySelector(selector) { return selector === '.grtrans-map-feedback' ? mapFeedback : null; },
       createElement: make
@@ -581,6 +620,13 @@ routing.calls.mapEvents.click({latlng:{lat:37.1,lng:25.37}});
 await new Promise(resolve => setImmediate(resolve));
 assert.equal(roadRequests,2,
   'One OSRM request for base road line and one for explicit preview; no ferry routing');
+assert.equal(routing.calls.previewRequests.length,1,
+  'The preview asks the authenticated server once, rather than running its own graph');
+assert.equal(routing.calls.previewRequests[0].fields.get('grtrans_network_action'),'preview_route');
+assert.equal(routing.calls.previewRequests[0].fields.get('token'),'disposable-admin-token');
+assert.equal(routing.calls.previewRequests[0].opts.credentials,'same-origin');
+assert.equal(routing.calls.previewRequests[0].fields.get('start_lat'),'38');
+assert.equal(routing.calls.previewRequests[0].fields.get('end_lng'),'25.37');
 assert.match(routing.elements['grtrans-preview-status'].textContent,/Route preview ready/);
 assert.ok(routing.calls.lines.some(line => line.points.length===3 &&
   line.options.weight===5),'Road preview contains OSRM bend');
