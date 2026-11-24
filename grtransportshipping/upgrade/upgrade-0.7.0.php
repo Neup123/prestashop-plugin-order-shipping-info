@@ -1,6 +1,7 @@
 <?php
 if (!defined('_PS_VERSION_')) { exit; }
 require_once __DIR__ . '/../classes/NetworkRepository.php';
+require_once __DIR__ . '/../classes/EstimateState.php';
 
 /** Safe additive migration of live merchant data; never rewrites fares/orders. */
 function upgrade_module_0_7_0($module)
@@ -19,7 +20,7 @@ function upgrade_module_0_7_0($module)
             'route_snapshot'=>'LONGTEXT NULL',
             'estimate_min'=>'DECIMAL(12,2) NULL',
             'estimate_max'=>'DECIMAL(12,2) NULL',
-            'estimate_state'=>"VARCHAR(16) NOT NULL DEFAULT 'not_estimate'",
+            'estimate_state'=>GrTransportEstimateState::columnSql(),
             'actual_shipping_charge'=>'DECIMAL(12,2) NULL',
             'external_receipt'=>'VARCHAR(190) NULL',
             'settled_at'=>'DATETIME NULL',

@@ -8,8 +8,9 @@ require_once __DIR__ . '/NetworkSettings.php';
  */
 final class GrTransportEstimateSettlement
 {
-    public const PENDING='pending';
-    public const SETTLED='settled';
+    // Compatibility aliases; persisted values are defined only by EstimateState.
+    public const PENDING=GrTransportEstimateState::PENDING;
+    public const SETTLED=GrTransportEstimateState::SETTLED;
 
     public static function validate(float $amount,string $receipt,int $employeeId,
         float $estimateLow,float $estimateHigh): array
@@ -45,12 +46,12 @@ final class GrTransportEstimateSettlement
         if (!$info) throw new RuntimeException('Original transport snapshot is missing');
         $checked=self::validate($amount,$receipt,$employeeId,
             (float)($info['estimate_min'] ?? 0),(float)($info['estimate_max'] ?? 0));
-        if ($info['estimate_state']===self::SETTLED) {
+        if (GrTransportEstimateState::status($info)===self::SETTLED) {
             if ((float)$info['actual_shipping_charge']===$checked['amount']
                 && (string)$info['external_receipt']===$checked['reference']) return $info;
             throw new RuntimeException('An estimate payment is already recorded; duplicate charge rejected');
         }
-        if ($info['estimate_state']!==self::PENDING) {
+        if (!GrTransportEstimateState::maySettle($info)) {
             throw new RuntimeException('This order has no pending estimated shipping balance');
         }
         $updated=Db::getInstance()->update('grtrans_order',[
@@ -61,7 +62,9 @@ final class GrTransportEstimateSettlement
         ],"id_order = ".$orderId." AND estimate_state = '".self::PENDING."'");
         if (!$updated) throw new RuntimeException('Could not persist confirmed freight payment');
         $saved=GrTransportOrderSnapshot::find($orderId);
-        if (!$saved || $saved['estimate_state']!==self::SETTLED) {
+        if (!$saved || GrTransportEstimateState::status($saved)!==self::SETTLED
+            || (float)$saved['actual_shipping_charge']!==$checked['amount']
+            || (string)$saved['external_receipt']!==$checked['reference']) {
             throw new RuntimeException('Payment receipt was not persisted');
         }
         PrestaShopLogger::addLog('External freight receipt recorded for order #'.$orderId
