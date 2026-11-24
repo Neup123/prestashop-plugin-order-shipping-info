@@ -1,5 +1,5 @@
 import { chromium } from 'playwright';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 // Visual review evidence only: real installed disposable PrestaShop, not
@@ -31,6 +31,20 @@ const shot=async (name,selector) => {
   });
   captured++;
   console.log('Captured real disposable interface: '+name+'.png');
+  // Structured, bounded log chunks allow the reviewer to inspect and
+  // approve the exact high-resolution binary before adding it to README.
+  // These pages contain synthetic CI users and data only. Never log an
+  // environment value, session cookie, URL, or live credential.
+  if (['01-configure-map-workspace','03-grouped-operating-settings',
+    '05-public-quote-check'].includes(name)) {
+    const encoded=readFileSync(join(directory,name+'.png')).toString('base64');
+    const size=24000;
+    const count=Math.ceil(encoded.length/size);
+    for (let i=0;i<count;i++) {
+      console.log('GRTRANS_SCREENSHOT_B64|'+name+'|'+i+'|'+count+'|'
+        +encoded.slice(i*size,(i+1)*size));
+    }
+  }
 };
 try {
   await page.goto('http://localhost:8080/admin-dev/',{
