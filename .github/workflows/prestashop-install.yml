@@ -43,6 +43,14 @@ jobs:
         run: docker compose -f tests/compose.yml exec -T -u www-data prestashop php /tmp/prestashop-real-order-smoke.php
       - name: Verify legacy route schema migration and one-time seed marker
         run: docker compose -f tests/compose.yml exec -T -u www-data prestashop php /tmp/prestashop-route-schema-upgrade-smoke.php
+      - name: Verify versioned network migrations through real PrestaShop module upgrade
+        run: |
+          set -euo pipefail
+          # This intentionally rewinds schema and version ONLY inside tests/compose.yml.
+          # GRTRANS_DISPOSABLE_UPGRADE_TEST is a mandatory safety gate in the test.
+          docker compose -f tests/compose.yml exec -T -e GRTRANS_DISPOSABLE_UPGRADE_TEST=1 -u www-data prestashop php /tmp/prestashop-network-upgrade-smoke.php prepare
+          docker compose -f tests/compose.yml exec -T -u www-data prestashop php bin/console prestashop:module upgrade grtransportshipping
+          docker compose -f tests/compose.yml exec -T -e GRTRANS_DISPOSABLE_UPGRADE_TEST=1 -u www-data prestashop php /tmp/prestashop-network-upgrade-smoke.php verify
       - name: Verify idempotent carrier install and deleted-carrier repair
         run: docker compose -f tests/compose.yml exec -T -u www-data prestashop php /tmp/prestashop-carrier-lifecycle-smoke.php
       - if: failure()
