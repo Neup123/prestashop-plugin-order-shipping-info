@@ -29,7 +29,9 @@ function fixture(data, options = {}) {
   const calls = {circles: [], lines: [], polygons: [], markers: [], mapEvents: {}, fits: [], views: []};
   const layer = (type, entry) => {
     const value = {
-      events: {}, addTo() { this.removed = false; return this; },
+      events: {}, svgPath: { attrs: {}, setAttribute(name, value) { this.attrs[name] = value; } },
+      getElement() { return this.svgPath; },
+      addTo() { this.removed = false; return this; },
       bindTooltip(content) { this.tooltip = content; return this; },
       on(event, fn) { this.events[event] = fn; return this; }, setLatLng(p) { this.point = p; },
       getLatLng() { return this.point; }, remove() { this.removed = true; },
@@ -137,6 +139,16 @@ const original = fixture({
 assert.equal(original.panes['grtrans-coverage-patches'].style.zIndex,'390');
 assert.equal(original.calls.circles.length,6,'Every radius tier uses a native Leaflet circle');
 assert.ok(original.calls.circles.every(c=>Number.isFinite(c.options.radius)&&c.options.radius>0));
+const coverageAttrs = entry => entry.layer.getElement().attrs;
+assert.deepEqual(Object.entries(coverageAttrs(original.calls.polygons[0])).sort(),
+  Object.entries({
+    'data-grtrans-coverage-source': 'area',
+    'data-grtrans-coverage-tier': 'far',
+    'data-grtrans-coverage-geometry': 'radius'
+  }).sort(), 'Area FAR circle has semantic SVG attributes independent of CSS');
+assert.equal(coverageAttrs(original.calls.polygons[1])['data-grtrans-coverage-tier'], 'normal');
+assert.equal(coverageAttrs(original.calls.polygons[2])['data-grtrans-coverage-source'], 'station');
+assert.equal(coverageAttrs(original.calls.polygons[2])['data-grtrans-coverage-geometry'], 'radius');
 assert.equal(original.calls.polygons.length,6,'Two area tiers first, then two station normal/FAR pairs');
 assert.equal(original.calls.polygons[0].options.fillOpacity,.16);
 assert.equal(original.calls.polygons[1].options.fillOpacity,.36);
@@ -160,6 +172,8 @@ assert.equal(postal.calls.polygons.length,2,
   'Postal reach has one exact outer polygon plus its shape-clipped inner tier');
 assert.equal(postal.calls.polygons[0].points.length,5,
   'Postal polygon geometry is used verbatim');
+assert.equal(coverageAttrs(postal.calls.polygons[0])['data-grtrans-coverage-geometry'], 'polygon',
+  'Stored polygon is tagged as polygon, not the cosmetically similar radius layer');
 assert.equal(postal.calls.polygons[0].points[0][1],23.6);
 const iso=fixture({stations:[{...station(1,'Walking routes',38,23.6),
   coverage_kind:'walking_isochrone',coverage_geojson:isochrone}]});
