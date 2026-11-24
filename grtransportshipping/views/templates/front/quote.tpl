@@ -5,7 +5,7 @@
 {block name='page_content'}
 <section class="grtransport-quote">
   <p>{l s='Enter a Greek postcode or city to check the current transport price. No account or cart is needed.' mod='grtransportshipping'}</p>
-  <form method="get" action="{$quote_action|escape:'htmlall':'UTF-8'}" id="grtransport-quote-form">
+  <form method="post" action="{$quote_action|escape:'htmlall':'UTF-8'}" id="grtransport-quote-form">
     {* Preserve legacy index.php module routing when friendly URLs are disabled. *}
     <input type="hidden" name="fc" value="module">
     <input type="hidden" name="module" value="grtransportshipping">
