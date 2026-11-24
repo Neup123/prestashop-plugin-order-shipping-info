@@ -32,13 +32,11 @@ For a local courier delivering to an address, choose **Direct area (no pickup st
 
 ## Transfer links (#66)
 
-A transfer carries a parcel physically between separate stations (for example a bus terminal and a port). On the coverage map, tap the first station, press **Link selected station**, then tap the second station:
+A transfer carries a parcel physically between separate stations (for example a bus terminal and a port). In the integrated coverage-map workspace, choose **Add transfer**, click the sending station, then click the receiving station. The **Transfers** editor opens with the selected pair; review the mode, direction, any advanced override and the actual transfer price, then explicitly **Save**. A nearby/free-walk suggestion is not proof of a real handoff and is **never saved merely by clicking two stations**.
 
-- When the **inner rings overlap**, the current conservative definition of “nearby”, a free `walk` link is created directly.
-- Otherwise a small form appears. Enter the real connection type, such as `taxi`, and its price (zero is allowed), then save. A priced transfer appears as a **short local dashed stitch** near its station patches, not a line across the journey. When patches are separated, the two short facing-rim marks leave the uncovered gap blank.
-- Links have a direction from first to second. To enable reverse travel, define a reverse transfer. Use the **Transfers** grid to edit or remove links.
-
-The issue does not specify a numerical near/far threshold. Using overlapping inner walking rings avoids assuming a fixed walking distance that would be unsafe in every location.
+- If walking is genuinely possible, choose a `walk` link with a zero price. Proximity hints use the configured walking allowance; do not assume touching map circles prove a usable transfer.
+- Otherwise choose the real mode (for example `taxi`) and its verified price; zero remains valid when truly free. A priced transfer appears as a **short local dashed stitch** near the station patches, not a line across the whole journey. When patches are separated, the two short facing-rim marks leave the uncovered gap blank.
+- Transfers are **directed**. Create the reverse link separately when travel is possible in both directions. Use the **Transfers** list to edit, confirm or remove an existing link. On a slow/failed save, inspect validation feedback and do not assume the record exists.
 
 ## Visual coverage map (#68)
 
@@ -66,7 +64,9 @@ The operator map uses bundled **Leaflet**, OpenStreetMap tiles and the dedicated
 
 **Origin pins and routed preview:** dispatch/origin stations have visually distinct admin-only pins. Press **Preview route between two pins**, then click two map points or station markers. Pins must be inside a station's effective outer radius; the preview follows valid directed legs/transfers, preferring the lowest configured price. Road segments use on-demand OSRM driving geometry; ferry segments are dashed port-to-port approximations, **not** recorded sailing tracks or schedules. If OSRM is unavailable or a directed path cannot be calculated, the status gives a visible error with **no straight-line fallback**. Flight geometry and unconnected direct-area services cannot be previewed. The schematic seam overlays are hidden during preview and return on **Clear preview**. This preview does not save routes or alter pricing.
 
-Edits made through the form or API appear on refresh. The map is optional: all data can also be managed in the tables or through the API.
+**Working in the current map/list/editor workspace.** The map and sidebar show the active record category and the selected record together. Use **Stations**, **Legs** and **Transfers** in the Manage navigation to switch lists; choose **Place station** to create a station, **Connect stations** for a priced leg, **Add transfer** for a physical handoff, or **Move station** to revise a saved position. Selecting a row or map item opens its contextual actions. The map viewport is restored after category navigation; a list selection is not an automatic save. Keyboard users can select rows with Space, move among list rows with arrow keys, and use Escape to leave a draft mode.
+
+Map placement, movement, radius/coverage changes and connection choices are **tentative drafts** until saved through the existing signed record form. Use **Use map centre** or the draft position controls when placing/moving a station; **Cancel draft** or Escape reverts tentative coordinates. Inspect the visible **Unsaved changes** state, save the form explicitly, and verify the result in the refreshed list/map. Failed validation retains entered values so the operator can correct errors; an API update similarly requires an explicit refresh to display a changed server record. Without JavaScript or map tiles, the server-rendered tables/forms remain usable; the authenticated network API is another option.
 
 ## Network CRUD and import API (#70)
 
@@ -113,7 +113,7 @@ If the map is unavailable, use the table forms or API. If an API request returns
 
 **Module upgrade required after deploying code:** If network edits fail with the generic **“Network write failed”** message, check **Module Manager → Upgrade**. New module files do not themselves install pending network-table columns: a shop still on an older schema needs its module upgrade run (including the relevant 0.11.0/0.12.0 migrations) before network records can save. Do not assume the map or the entered values were persisted.
 
-Later PRs extend these instructions with the cheapest-path checkout engine, variable tariffs, snapshots, delivery timing, data freshness and branch-aware origins. Parcel tracking/status (#74) and station contact fields (#75) remain explicitly post-first-release.
+The current guide sections below cover the implemented cheapest-path resolver, variable tariffs, frozen order snapshots, delivery-time windows, verification freshness and branch-aware origins. Parcel tracking/status (#74) and station contact fields (#75) remain explicitly outside the first release.
 
 ## Cheapest-route quotes and simulator (#67, #77)
 
@@ -125,9 +125,9 @@ A network quote is computed from origin hubs across explicitly configured **dire
 
 **FAR service-zone warning:** a destination in the selected station's or direct area's FAR tier shows the prominent warning in checkout, sourced from **Configure → Extended pickup notice**. Leave the field empty for the built-in English explanation. A normal-tier quote requires no FAR acknowledgement; the selected quote, not unrelated overlapping patches, determines consent.
 
-**Admin quote simulator:** open **Configure → Network quote simulator**. Select a destination station to test its exact path or supply a destination postcode/city and verified latitude/longitude. Parcel weight/volume inputs are shown for preparation; tariff calculation from these fields arrives in #71. Results show the winning hub, ring, station or direct area, per-leg and per-transfer price, and total EUR. A no-path result is explicit. The simulator calls the same PHP resolver as checkout, so path costs never rely on UI-only logic.
+**Admin quote simulator:** open **Configure → Network quote simulator**. Select a destination station to test its exact path or provide a destination postcode/city and verified WGS84 coordinates. The live simulator uses the same PHP resolver as checkout and applies the configured flat, weight and volume tariff rules to the supplied parcel/cart context; if a dispatch branch is configured, provide an existing Cart ID from the same shop for stock-aware evaluation. Results identify the winning hub, ring, station or direct area, per-leg and per-transfer prices and the resulting EUR amount or estimate range. A no-path/no-eligible-branch result is explicit. Do not treat a cartless simulation as proof of branch stock eligibility.
 
-A network quote is pinned in the existing cart quote store with its selected path and handling fee. The historical full-edge snapshot and estimate-handling upgrades arrive in #72. Test customer-facing addresses with the real PrestaShop 9.2 rig, not just the pure PHP tests.
+A network quote is pinned in the existing cart quote store with its selected path and handling fee. Current installed code freezes the full selected edge path in the order snapshot and keeps estimated freight separate from a confirmed checkout charge. Verify customer-facing addresses, FAR consent and original-order details in an installed PrestaShop 9.2 shop, not only against pure PHP tests.
 
 ## Parcel tariffs, estimates and frozen order charge (#71, #72)
 
@@ -168,7 +168,7 @@ Review [installation and acceptance](INSTALL-AND-ACCEPTANCE.md) for the test mat
 
 ## Configurable operating defaults (owner decision, 2026-11-09)
 
-Open **Module Manager → Greek public transport shipping → Configure → Transport network operating defaults**. All settings are initialized automatically on install/upgrade; the defaults apply even if an older installation has no configuration row. This is an **operator customization**, not a first-run requirement. Changing a default affects current coverage of places set to inherit, but never rewrites explicit overrides, pinned checkout quotes or frozen orders. Existing station outer radii are preserved as explicit overrides by upgrade 0.13.0.
+Open **Module Manager → Greek public transport shipping → Configure → Transport network operating defaults**. All settings are initialized automatically on install/upgrade; the defaults apply even if an older installation has no configuration row. This is an **operator customization**, not a first-run requirement. The settings are grouped into autosaving forms: changing a switch/selection sends a signed background save, and other edits are saved after a short pause. Watch the visible **Unsaved changes → Saving… → Saved** feedback. If it reports an error, correct the value and try again; do not assume the server accepted the setting. Changing a default affects current coverage of places set to inherit, but never rewrites explicit overrides, pinned checkout quotes or frozen orders. Existing station outer radii are preserved as explicit overrides by upgrade 0.13.0.
 
 | Setting / Configuration key | Default | Purpose |
 |---|---:|---|
@@ -196,7 +196,7 @@ The route quote sums each selected leg's preparation + lead + minimum transit fo
 
 For example, a bus with 2 h preparation, 3 h lead and 4–6 h transit, followed by a ferry with 1 h preparation, 2 h lead and 8–10 h transit, gives **20–24 hours**. A connection type/price without an explicitly modelled transfer duration is labelled *transfer travel time not included*: do not interpret the range as a guaranteed delivery deadline.
 
-To switch off time information, go to **Transport network operating defaults → Show delivery-time windows**, enter **0** (off), and save. The default is **1** (on), with an initial per-leg time of zero so untimed services simply show price. Disabling hides all time information on current quote, customer quote page, simulator and historical order notice without deleting stored timing data. The maximum individual time input is configurable (`GRTRANS_MAX_LEG_HOURS`, default **168 hours**); enter a higher limit before saving unusually long journeys.
+To switch off time information, go to **Transport network operating defaults → Show delivery-time windows**, turn the **switch off** and wait for the **Saved** autosave status (do not type `0` into a text field). The default is on, with an initial per-leg time of zero so untimed services simply show price. Disabling hides time information on the current quote, customer quote page, simulator and historical order notice without deleting stored timing data. The maximum individual time input is configurable (`GRTRANS_MAX_LEG_HOURS`, default **168 hours**); adjust the limit and wait for autosave before configuring unusually long journeys.
 
 ## Leg and transfer last-verified freshness (#76)
 
@@ -204,7 +204,7 @@ Every service **leg** and **transfer link** has an operator verification timesta
 
 The coverage map displays a **faded line / faded service circle and STALE label** for any unverified or old leg/link. By default, an entry becomes stale after **6 calendar months**; change **Mark leg/transfer data stale after months** in the network operating defaults (`GRTRANS_STALE_AFTER_MONTHS`). This is a reminder only; it does not automatically suspend the service or rewrite customer prices. A price is not externally verified merely because the module timestamp changed: the operator must actually confirm current freight terms with the transport operator.
 
-To hide freshness overlays entirely, set **Show stale leg/transfer markings on map** (`GRTRANS_SHOW_STALE_MAP`) to **0**, then save. Default is **1/on**. Disabling visualization **retains all dates** and has no effect on quote eligibility, network paths, charges, or order history. Existing database rows upgraded to 0.9.0 have a null timestamp and are shown as **Not yet verified**, rather than being falsely declared current.
+To hide freshness overlays, switch **Show stale leg/transfer markings on map** (`GRTRANS_SHOW_STALE_MAP`) **off** in the operating defaults and wait for the **Saved** autosave status. Default is on. Disabling the visualization **retains all verification dates** and has no effect on quote eligibility, paths, charges or order history. Existing database rows upgraded to 0.9.0 with null timestamps show **Not yet verified**, never a fabricated recent check.
 
 ## Branch-aware origin stock (#78)
 
@@ -296,8 +296,8 @@ checkout and the simulator's address flow. The same resolver produces
 **does not independently choose a price winner**. When two circular reaches
 overlap, the linked seam follows the supplied winning patch's reach boundary.
 Disjoint joins remain schematic and never extend sellable coverage. This
-touchpoint may require reconciliation with in-flight #103 / PR #106 map changes;
-the #107 branch is intentionally based only on current main.
+is the implemented shared-resolution contract: do not add a second price
+winner calculation to the map or treat visual seams as extra sellable coverage.
 
 ### Data migration
 
