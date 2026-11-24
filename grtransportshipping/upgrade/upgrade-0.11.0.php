@@ -28,5 +28,9 @@ function upgrade_module_0_11_0($module)
         }
     }
     // Existing shops must also load the checkout confirmation UI.
-    return $module->registerHook('displayHeader');
+    // The hook may already be registered on an existing installation.
+    // A redundant registration must not fail the whole upgrade after its
+    // schema ALTERs have already succeeded.
+    return $module->isRegisteredInHook('displayHeader')
+        || $module->registerHook('displayHeader');
 }
