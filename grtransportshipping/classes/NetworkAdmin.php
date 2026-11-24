@@ -119,8 +119,11 @@ return '<div class="alert alert-danger" data-grtrans-autosave-result="error">'
                 self::$failedId=(int)($_POST['network_id'] ?? 0);
                 self::$failedMessage=$error->getMessage();
             }
+            $recoveryMessage=str_contains($error->getMessage(),'Network settings rollback incomplete')
+                ? 'Some settings may have changed. Reload Configure and verify the values before retrying.'
+                : 'The change was not saved. Check the fields and try again.';
             return '<div class="alert alert-danger" role="alert" data-grtrans-autosave-result="error">'
-                .self::esc($module->l('The change was not saved. Check the fields and try again.'))
+                .self::esc($module->l($recoveryMessage))
                 .'<details><summary>'.self::esc($module->l('Technical details')).'</summary><code>'
                 .self::esc($error->getMessage()).'</code></details></div>';
         }
