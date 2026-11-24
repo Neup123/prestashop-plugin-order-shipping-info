@@ -1,0 +1,168 @@
+<?php
+/**
+ * Disposable PrestaShop 9.2 + MariaDB network migration acceptance (#145).
+ * Danger: PREPARE intentionally downgrades schema and registered module version.
+ * It is guarded by an explicit CI-only environment variable. Never run on demo.
+ * Covers versions 0.11, 0.12, 0.13, 0.15, 0.16 and preserved order data.
+ * Earlier legacy installations, geometry supplied after 0.11 and other DB
+ * engines need separate acceptance.
+ */
+if (getenv('GRTRANS_DISPOSABLE_UPGRADE_TEST') !== '1') {
+    throw new RuntimeException('Refusing destructive fixture outside disposable CI');
+}
+require_once __DIR__ . '/bootstrap.php';
+bootPrestaShop();
+$db=Db::getInstance();
+$module=Module::getInstanceByName('grtransportshipping');
+testAssert($module instanceof Grtransportshipping,'Installed transport module required');
+$phase=$argv[1] ?? '';
+$stateFile='/tmp/grtrans-network-upgrade-fixture.json';
+$tables=[
+    'station'=>_DB_PREFIX_.'grtrans_station',
+    'leg'=>_DB_PREFIX_.'grtrans_leg',
+    'transfer'=>_DB_PREFIX_.'grtrans_transfer',
+    'branch'=>_DB_PREFIX_.'grtrans_branch',
+    'branch_stock'=>_DB_PREFIX_.'grtrans_branch_stock',
+];
+$columns=static function (string $table) use ($db): array {
+    $rows=$db->executeS('SHOW COLUMNS FROM '.$table);
+    testAssert(is_array($rows),'Cannot inspect table '.$table);
+    return array_column($rows,'Field');
+};
+$row=static function (string $kind,string $pk,int $id) use ($db,$tables): array {
+    $result=$db->getRow('SELECT * FROM '.$tables[$kind].' WHERE '.$pk.'='.(int)$id);
+    testAssert(is_array($result),'Missing original merchant '.$kind.' #'.$id);
+    return $result;
+};
+$drop=static function (string $kind,array $names) use ($db,$tables,$columns): void {
+    foreach ($names as $name) {
+        testAssert(in_array($name,$columns($tables[$kind]),true),
+            'Missing current column before rewind: '.$kind.'.'.$name);
+        testAssert($db->execute('ALTER TABLE '.$tables[$kind].' DROP COLUMN '.$name),
+            'Cannot rewind column '.$kind.'.'.$name);
+    }
+};
+if ($phase==='prepare') {
+    $hub=GrTransportNetworkRepository::save('stations',[
+        'name'=>'CI migration source','type'=>'bus',
+        'address_text'=>'Synthetic merchant depot','lat'=>38.0,'lng'=>23.7,
+        'inner_radius_km'=>2,'outer_radius_km'=>8,'is_origin_hub'=>1,
+    ]);
+    $dest=GrTransportNetworkRepository::save('stations',[
+        'name'=>'CI migration destination','type'=>'bus',
+        'address_text'=>'Synthetic merchant destination','lat'=>38.02,'lng'=>23.75,
+        'inner_radius_km'=>1,'outer_radius_km'=>6,'is_origin_hub'=>0,
+    ]);
+    $leg=GrTransportNetworkRepository::save('legs',[
+        'from_station_id'=>$hub,'to_station_id'=>$dest,'mode'=>'bus',
+        'operator_label'=>'CI migration tariff','price'=>17.75,'bidirectional'=>0,
+    ]);
+    $transfer=GrTransportNetworkRepository::save('transfers',[
+        'from_station_id'=>$dest,'to_station_id'=>$hub,
+        'connection_type'=>'taxi','price'=>2.25,
+    ]);
+    $branch=GrTransportNetworkRepository::save('branches',[
+        'name'=>'CI migration dispatch','origin_station_id'=>$hub,
+    ]);
+    $product=(int)$db->getValue('SELECT id_product FROM '._DB_PREFIX_.'product ORDER BY id_product DESC LIMIT 1');
+    testAssert($product>0,'Expected a disposable product from order smoke');
+    $stock=GrTransportNetworkRepository::save('branch_stock',[
+        'id_branch'=>$branch,'id_product'=>$product,
+        'id_product_attribute'=>0,'quantity'=>7,
+    ]);
+    $order=$db->getRow('SELECT id_order,route_snapshot FROM '
+        ._DB_PREFIX_.'grtrans_order ORDER BY id_order DESC LIMIT 1');
+    testAssert(is_array($order) && (int)$order['id_order']>0,
+        'Expected original completed checkout snapshot from preceding CI smoke');
+    $state=[
+        'hub'=>$hub,'dest'=>$dest,'leg'=>$leg,'transfer'=>$transfer,
+        'branch'=>$branch,'stock'=>$stock,'product'=>$product,
+        'order_id'=>(int)$order['id_order'],
+        'snapshot'=>base64_encode((string)$order['route_snapshot']),
+    ];
+    testAssert(file_put_contents($stateFile,json_encode($state,JSON_THROW_ON_ERROR))!==false,
+        'Cannot save disposable fixture metadata');
+    // Pre-0.13 station FAR radii were mandatory, so normalize only this
+    // disposable copy. Preserve explicit 8km and 6km merchant overrides.
+    testAssert($db->execute('UPDATE '.$tables['station']
+        .' SET outer_radius_km=5 WHERE outer_radius_km IS NULL'),
+        'Cannot simulate old mandatory radius values');
+    testAssert($db->execute('ALTER TABLE '.$tables['station']
+        .' MODIFY COLUMN outer_radius_km DECIMAL(8,2) NOT NULL DEFAULT 5'),
+        'Cannot simulate pre-0.13 non-nullable radius');
+    $drop('station',['coverage_kind','coverage_geojson','patch_precedence','active']);
+    $drop('leg',['area_coverage_kind','area_coverage_geojson','route_geojson',
+        'patch_precedence','override_winner','area_outer_radius_km','active','stop_order']);
+    $drop('transfer',['override_winner','active']);
+    $drop('branch',['active']);
+    $drop('branch_stock',['active']);
+    testAssert($db->execute("UPDATE "._DB_PREFIX_."module SET version='0.10.0'"
+        ." WHERE name='grtransportshipping'"),'Cannot stage earlier registered version');
+    testAssert((string)$db->getValue("SELECT version FROM "._DB_PREFIX_
+        ."module WHERE name='grtransportshipping'")==='0.10.0',
+        'Stored module version rewind was not applied');
+    echo "DISPOSABLE NETWORK UPGRADE prepared: 0.10.0 schema and merchant rows\n";
+    exit;
+}
+if ($phase==='verify') {
+    $state=json_decode((string)file_get_contents($stateFile),true,512,JSON_THROW_ON_ERROR);
+    testAssert((string)$db->getValue("SELECT version FROM "._DB_PREFIX_
+        ."module WHERE name='grtransportshipping'")==='0.16.0',
+        'Real PrestaShop module upgrade did not reach 0.16.0');
+    $needed=[
+        'station'=>['coverage_kind','coverage_geojson','patch_precedence','active'],
+        'leg'=>['area_coverage_kind','area_coverage_geojson','route_geojson',
+            'patch_precedence','override_winner','area_outer_radius_km','active','stop_order'],
+        'transfer'=>['override_winner','active'],
+        'branch'=>['active'],'branch_stock'=>['active'],
+    ];
+    foreach ($needed as $kind=>$names) foreach ($names as $name) {
+        testAssert(in_array($name,$columns($tables[$kind]),true),
+            'Module upgrade did not add '.$kind.'.'.$name);
+    }
+    $stationMeta=$db->executeS('SHOW COLUMNS FROM '.$tables['station']);
+    $outer=array_values(array_filter($stationMeta,
+        static fn($field)=>$field['Field']==='outer_radius_km'));
+    testAssert(count($outer)===1 && $outer[0]['Null']==='YES',
+        '0.13 FAR override must allow SQL NULL');
+    $hub=$row('station','id_station',(int)$state['hub']);
+    $dest=$row('station','id_station',(int)$state['dest']);
+    testAssert($hub['name']==='CI migration source' && (float)$hub['outer_radius_km']===8.0
+        && $dest['name']==='CI migration destination'
+        && (float)$dest['outer_radius_km']===6.0,
+        'Existing stations and explicit outer radii survived upgrades');
+    testAssert($hub['coverage_kind']==='radius' && $hub['patch_precedence']==='none',
+        'Legacy station gains safe source geometry and precedence defaults');
+    $leg=$row('leg','id_leg',(int)$state['leg']);
+    testAssert($leg['operator_label']==='CI migration tariff' && (float)$leg['price']===17.75
+        && (int)$leg['from_station_id']===(int)$state['hub']
+        && (int)$leg['to_station_id']===(int)$state['dest'],
+        'Merchant price and directed link survived');
+    testAssert($leg['area_outer_radius_km']===null && $leg['override_winner']==='none'
+        && (int)$leg['stop_order']===0,
+        'New area FAR, precedence and ordered-leg fields have safe defaults');
+    $transfer=$row('transfer','id_transfer',(int)$state['transfer']);
+    testAssert((float)$transfer['price']===2.25 && $transfer['override_winner']==='none',
+        'Transfer price and safe override default survived');
+    $branch=$row('branch','id_branch',(int)$state['branch']);
+    $stock=$row('branch_stock','id_branch_stock',(int)$state['stock']);
+    testAssert($branch['name']==='CI migration dispatch'
+        && (int)$branch['origin_station_id']===(int)$state['hub']
+        && (int)$stock['quantity']===7
+        && (int)$stock['id_product']===(int)$state['product'],
+        'Original branch and stock records survived');
+    $order=$db->getRow('SELECT id_order,route_snapshot FROM '
+        ._DB_PREFIX_.'grtrans_order WHERE id_order='.(int)$state['order_id']);
+    testAssert(is_array($order) && base64_encode((string)$order['route_snapshot'])===$state['snapshot'],
+        'Earlier frozen checkout/order snapshot changed during schema migration');
+    foreach (['0.11.0','0.12.0','0.13.0','0.15.0','0.16.0'] as $version) {
+        require_once '/var/www/html/modules/grtransportshipping/upgrade/upgrade-'.$version.'.php';
+        $handler='upgrade_module_'.str_replace('.','_',$version);
+        testAssert($handler($module),'Versioned migration replay failed: '.$version);
+    }
+    testAssert((float)$row('leg','id_leg',(int)$state['leg'])['price']===17.75,
+        'Idempotent replays must not reset original merchant tariffs');
+    echo "REAL NETWORK UPGRADE PASS: PrestaShop CLI 0.10-to-0.16, merchant/branch/order preserved\n";
+    exit;
+}
+throw new InvalidArgumentException('Usage: upgrade-smoke.php prepare|verify');
