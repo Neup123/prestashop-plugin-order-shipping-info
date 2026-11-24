@@ -77,13 +77,55 @@ final class GrTransportNetworkSettings
         return $checked;
     }
 
+    /**
+     * Recover a failed grouped save, including Configuration's in-request cache.
+     * Each PrestaShop Configuration::updateValue() is an independent write;
+     * a bare DB rollback leaves its cache stale. Compensate in reverse order
+     * and verify that the effective values are back to their original state.
+     * An absent pre-upgrade key is restored to the equivalent safe default,
+     * rather than deleteByName(), which would delete other shop contexts.
+     */
     public static function save(array $raw): void
     {
         $values=self::validate($raw);
+        $before=[];
         foreach ($values as $name=>$value) {
-            if (!Configuration::updateValue(self::DEFINITIONS[$name]['key'],(string)$value)) {
-                throw new RuntimeException('Could not save network setting '.$name);
+            $spec=self::DEFINITIONS[$name];
+            $stored=Configuration::get($spec['key']);
+            $before[$name]=($stored===false || $stored===null || $stored==='')
+                ? (string)$spec['default'] : (string)$stored;
+        }
+        $attempted=[];
+        try {
+            foreach ($values as $name=>$value) {
+                $attempted[]=$name; // Failed calls may have already mutated storage.
+                if (!Configuration::updateValue(self::DEFINITIONS[$name]['key'],(string)$value)) {
+                    throw new RuntimeException('Could not save network setting '.$name);
+                }
             }
+        } catch (Throwable $error) {
+            $unrestored=[];
+            foreach (array_reverse($attempted) as $name) {
+                $key=self::DEFINITIONS[$name]['key'];
+                try {
+                    if (!Configuration::updateValue($key,$before[$name])
+                        || (string)Configuration::get($key)!==$before[$name]) {
+                        $unrestored[]=$name;
+                    }
+                } catch (Throwable $rollbackError) {
+                    $unrestored[]=$name;
+                }
+            }
+            if ($unrestored) {
+                throw new RuntimeException(
+                    'Network settings rollback incomplete for '.implode(', ',$unrestored)
+                    .'. Reload Configure and verify each setting before trying again.',
+                    0,$error
+                );
+            }
+            throw new RuntimeException(
+                'Network settings were not saved; previous values restored.',0,$error
+            );
         }
     }
 
