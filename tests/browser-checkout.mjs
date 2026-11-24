@@ -94,6 +94,32 @@ try {
   assert.match(await reloadedAlert.innerText(), noRouteReason);
   console.log('LIVE UNMATCHED RELOAD: no-quote message persists in freshly rendered checkout');
 
+  // #153: real storefront quote submission keeps optional notes out of URLs.
+  const publicQuoteUrl = new URL('/index.php?fc=module&module=grtransportshipping&controller=quote', fixture.login_url);
+  const quotePage = await browser.newPage({javaScriptEnabled:false});
+  try {
+    await quotePage.goto(publicQuoteUrl.toString(),{waitUntil:'domcontentloaded'});
+    const form = quotePage.locator('#grtransport-quote-form');
+    await form.locator('[name="destination"]').fill('26221');
+    const marker = 'CI note body only';
+    await form.locator('[name="note"]').fill(marker);
+    const [request] = await Promise.all([
+      quotePage.waitForRequest(r => r.isNavigationRequest() && r.method() === 'POST'),
+      form.locator('button[type="submit"]').first().click()
+    ]);
+    assert.ok(new URLSearchParams(request.postData()).get('note') === marker, 'Note is in POST body');
+    assert.ok(!new URL(request.url()).searchParams.has('note'), 'Request URL contains no note');
+    await quotePage.locator('.grtransport-quote-note').waitFor({state:'visible'});
+    assert.ok((await quotePage.locator('.grtransport-quote-note').innerText()).includes(marker));
+    assert.ok(!new URL(quotePage.url()).searchParams.has('note'), 'Result URL contains no note');
+    publicQuoteUrl.searchParams.set('destination','26221');
+    publicQuoteUrl.searchParams.set('note','legacy URL note');
+    await quotePage.goto(publicQuoteUrl.toString(),{waitUntil:'domcontentloaded'});
+    assert.equal(await quotePage.locator('[name="note"]').first().inputValue(),'');
+    assert.equal(await quotePage.locator('.grtransport-quote-note').count(),0);
+    console.log('LIVE PUBLIC QUOTE: POST note retained, absent from request/result URL; legacy GET note ignored');
+  } finally { await quotePage.close(); }
+
   // #45: Real Hummingbird customer checkout on a postcode that matches NO
   // seeded prefix. Only a city-named route for stored "Νάξος" is available.
   // Customer address "Ναξος" must restore the carrier and show station text.

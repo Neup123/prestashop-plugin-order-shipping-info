@@ -51,7 +51,9 @@ class GrtransportshippingQuoteModuleFrontController extends ModuleFrontControlle
         }
         // Notes are display-only context for this quote, never pricing inputs
         // or an order field. Escape at the Smarty output boundary.
-        $note = Tools::getValue('note', '');
+        // Read only the POST body: legacy or crafted query-string notes are ignored.
+        $note = strtoupper((string)($_SERVER['REQUEST_METHOD'] ?? 'GET')) === 'POST'
+            ? ($_POST['note'] ?? '') : '';
         $note = is_string($note) ? trim($note) : '';
         if (function_exists('mb_substr')) {
             $note = mb_substr($note, 0, 500, 'UTF-8');

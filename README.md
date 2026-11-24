@@ -73,7 +73,7 @@ This is a linked page, not an embedded CMS hook. No CMS template modification,
 new hook registration, API key or module reinstall is needed. Code that needs a
 friendly URL should use `$context->link->getModuleLink('grtransportshipping', 'quote')`.
 
-The one-field GET form works without JavaScript, Leaflet or map tiles. Greek
+The quote POST form works without JavaScript, Leaflet or map tiles. Greek
 city comparisons use the existing checkout normalisation (tonos, dialytika,
 case and final sigma). The terminal catalogue supplies Greek/English locality
 aliases and representative destination postcodes for the seeded routes. For
@@ -105,8 +105,9 @@ message; merchant pricing and pickup rules do not change.
 The optional free-text **note** (up to 500 characters) appears escaped in the
 quote result alongside the quoted price or no-route explanation. It is
 **display-only for this quote**: no order/customer-note persistence is
-implemented. The GET form includes the note in its URL, so do not enter
-sensitive text. A postcode or city can still be quoted without JavaScript,
+implemented. The form sends the note in the POST body, not in the URL;
+legacy query-string notes are ignored. Avoid sensitive text because the note
+is displayed in the response and request bodies may be logged by the hosting stack. A postcode or city can still be quoted without JavaScript,
 Leaflet, maps or reverse geocoding.
 
 The original demo catalogue matching still picks the nearest terminal within

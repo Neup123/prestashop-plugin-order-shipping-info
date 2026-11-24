@@ -133,6 +133,8 @@ $controller->initContent();
 testAssert($context->smarty->vars['quote_route'] === null, 'Reject invalid pin');
 Tools::$request = ['pin'=>'1', 'lat'=>'37.1', 'lng'=>'25.37',
     'destination'=>'Pinned address', 'note'=>'Depends on storms <script>alert(1)</script>'];
+$_SERVER['REQUEST_METHOD'] = 'POST';
+$_POST = ['note' => Tools::$request['note']];
 $controller->initContent();
 $vars = $context->smarty->vars;
 testAssert($vars['quote_is_pin'] === true, 'Pin request persists coordinate pricing mode');
@@ -147,7 +149,16 @@ testAssert($vars['quote_note'] === 'Depends on storms <script>alert(1)</script>'
 $template = file_get_contents(__DIR__ . '/../grtransportshipping/views/templates/front/quote.tpl');
 testAssert(str_contains($template, "\$quote_note|escape:'htmlall'"),
     'Quote note must be escaped by Smarty');
-Tools::$request = ['destination'=>'26221','note'=>['not a scalar']];
+testAssert(str_contains($template, '<form method="post" action='), 'Public quote must submit by POST');
+Tools::$request = ['destination'=>'26221','note'=>'legacy URL note'];
+$_SERVER['REQUEST_METHOD'] = 'GET';
+$_POST = [];
+$controller->initContent();
+testAssert($context->smarty->vars['quote_note'] === '', 'GET query-string note is ignored');
+$_SERVER['REQUEST_METHOD'] = 'POST';
+$controller->initContent();
+testAssert($context->smarty->vars['quote_note'] === '', 'POST without body note must not fall back to GET query');
+$_POST = ['note'=>['not a scalar']];
 $controller->initContent();
 testAssert($context->smarty->vars['quote_note'] === '', 'Invalid note array is ignored');
 echo "Quote page/controller and actual checkout entry point contracts passed\n";
