@@ -274,6 +274,18 @@
   const reachLayer = (tier,style) => tier.circle
     ? L.circle(tier.circle.centre,{...style,radius:tier.circle.radiusMeters})
     : L.polygon(geometry.leafletPaths(tier.paths),style);
+  // Stable test/inspection hooks on the actual Leaflet SVG element. These
+  // describe the rendered source, tier, and geometry; decorative CSS classes
+  // and fill-opacity values are deliberately not part of the hook contract.
+  const tagCoverageLayer = (layer, source, tier) => {
+    const element = layer.getElement?.();
+    if (element) {
+      element.setAttribute('data-grtrans-coverage-source', source);
+      element.setAttribute('data-grtrans-coverage-tier', tier.kind);
+      element.setAttribute('data-grtrans-coverage-geometry', tier.circle ? 'radius' : 'polygon');
+    }
+    return layer;
+  };
   const pairLanes = new Map();
   const drawStitch = (from, to, label, stale, fromOwner, toOwner, lane, decision) => {
     // Adapt #107's resolved winner/radius to #106's unchanged stitch geometry.
@@ -730,7 +742,7 @@
         className:'grtrans-source-patch grtrans-tier-' + tier.kind,
         fillColor:c, color:c, fillOpacity:leg._stale ? (far ? 0.1 : 0.18) : (far ? 0.16 : 0.36),
         stroke:false, opacity:0, weight:0};
-      const layer=bindColoredTooltip(reachLayer(tier,style).addTo(map),
+      const layer=bindColoredTooltip(tagCoverageLayer(reachLayer(tier,style).addTo(map), 'area', tier),
         (leg.area_name || 'Direct area #' + leg.id_leg)
           + ' · ' + (far ? 'Far tier' : 'Normal tier'), c);
       registerPatch([owner],layer,style);
@@ -769,7 +781,7 @@
         opacity:tier.outline?0.6:0,weight:tier.outline?1:0,
         stroke:tier.outline
       };
-      const layer=bindColoredTooltip(reachLayer(tier,style).addTo(map),
+      const layer=bindColoredTooltip(tagCoverageLayer(reachLayer(tier,style).addTo(map), 'station', tier),
         title+' · '+(tier.kind==='normal' ? 'Normal tier' : 'Far tier'), c);
       registerPatch(group.map(station=>'station:'+station.id_station),layer,style);
       layer.on('click',event=>{
