@@ -48,8 +48,9 @@
   // and below connections and the existing routed-preview overlay.
   const coveragePane = map.createPane('grtrans-coverage-patches');
   coveragePane.style.zIndex = '390';
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-    maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+  L.tileLayer(data.tileUrl || 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: data.tileAttribution || '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
   }).addTo(map);
   const selectedButton = document.getElementById('grtrans-map-link');
   const linkForm = document.getElementById('grtrans-map-link-form');
@@ -417,13 +418,28 @@
     const from={lat:Number(fromStation.lat),lng:Number(fromStation.lng)};
     const to={lat:Number(toStation.lat),lng:Number(toStation.lng)};
     const key=[from.lat,from.lng,to.lat,to.lng].join(':');
-    const points=stored.length?Promise.resolve(stored):
-      (roadCache.get(key) || (()=>{
-        const task=roadGeometry(from,to).then(pts=>[pts]);
-        roadCache.set(key,task);return task;
-      })());
-    points.then(paths => drawLandPath(paths,ca,cb,fromStation,toStation,stale))
-      .catch(error=>{
+    // Paint stored geometry immediately, or a visible straight fallback while
+    // road routing is unavailable or still pending. Never leave only an
+    // invisible selection hit path on the map.
+    if (stored.length) {
+      drawLandPath(stored,ca,cb,fromStation,toStation,stale);
+      return;
+    }
+    const fallback=paintSeam(L.polyline([[from.lat,from.lng],[to.lat,to.lng]],{
+      color:'#2259b5',weight:4,opacity:stale?0.45:0.95,
+      interactive:false,className:'grtrans-land-road grtrans-road-fallback'
+    }));
+    const points=roadCache.get(key) || (()=>{
+      const task=roadGeometry(from,to).then(pts=>[pts]);
+      roadCache.set(key,task);return task;
+    })();
+    points.then(paths => {
+      if (!paths.some(path => Array.isArray(path) && path.length >= 2)) return;
+      drawLandPath(paths,ca,cb,fromStation,toStation,stale);
+      map.removeLayer(fallback);
+      const index=seamLayers.indexOf(fallback);
+      if(index>=0) seamLayers.splice(index,1);
+    }).catch(error=>{
         const output=document.querySelector('.grtrans-map-feedback');
         if(output){output.textContent='Road route unavailable: '+error.message+'. Stored geometry retained.';output.dataset.state='error';}
       });

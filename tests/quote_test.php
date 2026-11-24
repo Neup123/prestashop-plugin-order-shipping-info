@@ -29,6 +29,16 @@ $suspended = [
 ];
 testAssert(GrTransportQuoteEngine::select($suspended, '84300', 'Naxos') === null, 'suspended Naxos may not fall back to regional rate');
 testAssert(GrTransportQuoteEngine::select($suspended, '84100', 'Syros')['price'] === 20, 'unaffected region remains available');
+$backfilled = $suspended;
+$backfilled[1]['city'] = 'Naxos';
+testAssert(GrTransportQuoteEngine::resolve($backfilled,'84300','Νάξος')['status'] === 'suspended',
+    'Backfilled Latin city must veto region fallback for the Greek alias');
+testAssert(GrTransportQuoteEngine::resolve($backfilled,'84300','Unrelated')['status'] === 'quoted',
+    'Unrelated customer city must not inherit a precise city-specific suspension');
+testAssert((float)GrTransportQuoteEngine::select(array_replace($backfilled,[
+    1=>array_replace($backfilled[1],['route_status'=>'available']),
+]),'84300','Νάξος')['price'] === 29.0,
+    'A reactivated backfilled city quote must survive Greek alias matching');
 $suspended[1]['route_status'] = 'available';
 testAssert(GrTransportQuoteEngine::select($suspended, '84300', 'Naxos')['price'] === 29, 'route resumes on reactivation');
 $suspended[0]['postal_prefix'] = '843';

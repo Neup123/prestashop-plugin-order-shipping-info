@@ -215,8 +215,20 @@
     routeEditor.scrollIntoView({block:'nearest'});
     selected=null;showContext();return true;
   }
+  // The BO dock can shift Leaflet's reported center by one projected pixel
+  // when a scrollbar appears, without any navigation gesture. Retain the
+  // camera captured when the map was ready for such subpixel layout jitter.
+  let stableCamera=null;
   const saveView=()=>{
-    const centre=getMapPoint();const view={lat:centre.lat,lng:centre.lng,zoom:bridge.map.getZoom()};
+    let centre=getMapPoint();
+    const zoom=bridge.map.getZoom();
+    if(stableCamera && stableCamera.zoom===zoom){
+      const current=bridge.map.project([centre.lat,centre.lng],zoom);
+      const prior=bridge.map.project([stableCamera.lat,stableCamera.lng],zoom);
+      if(current.distanceTo(prior)<=1.1)centre=stableCamera;
+    }
+    const view={lat:centre.lat,lng:centre.lng,zoom};
+    stableCamera=view;
     try {sessionStorage.setItem(storedKey,JSON.stringify(view));} catch(_) { /* optional */ }
   };
   function visit(entity,id=0,nextMode=mode) {
@@ -573,8 +585,14 @@
     expand.setAttribute('aria-pressed',String(document.fullscreenElement===stage));
     bridge.map.invalidateSize();
   });
-  // Preserve the camera when a late ResizeObserver callback reconciles layout.
-  const resize=()=>bridge.map.invalidateSize({pan:false});
+  // Leaflet can round a resized viewport by one projected pixel at low
+  // zoom. Preserve the exact camera across that size reconciliation instead
+  // of allowing a station-list width change to shift the restored view.
+  const resize=()=>{
+    const centre=bridge.map.getCenter(),zoom=bridge.map.getZoom();
+    bridge.map.invalidateSize({pan:false});
+    bridge.map.setView([centre.lat,centre.lng],zoom,{animate:false});
+  };
   if(typeof ResizeObserver==='function')new ResizeObserver(resize).observe(mapDock);
   for(const entity of entities){
     const list=listDock.querySelector('[data-grtrans-entity="'+entity+'"]');
@@ -650,6 +668,8 @@
     // before navigation after Leaflet has accounted for the new container size.
     // Editing a record intentionally focuses that record, so keep its camera.
     if(formId===0)restoreView();
+    const initial=getMapPoint();
+    stableCamera={lat:initial.lat,lng:initial.lng,zoom:bridge.map.getZoom()};
     stage.dataset.grtransViewReady='true';
   });
   // A new station must be a new signed record before its coordinates are drafted.
