@@ -33,6 +33,27 @@
 #grtrans-configure .grtrans-map-editor-dock #grtrans-route-editor {padding:.45rem;margin:.5rem 0;border:0;box-shadow:none}
 #grtrans-configure .grtrans-map-editor-dock #grtrans-route-editor[hidden],
 #grtrans-configure .grtrans-map-editor-dock #grtrans-network-editor[hidden] {display:none!important}
-#grtrans-configure .grtrans-map-editor-dock #grtrans-network-editor [data-grtrans-server-groups] .grtrans-editor-group:first-child .grtrans-editor-fields {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.45rem}
+#grtrans-configure .grtrans-map-editor-dock #grtrans-network-editor [data-grtrans-server-groups] .grtrans-editor-group:first-child .grtrans-editor-fields {display:grid;grid-template-columns:minmax(0,1fr);gap:.45rem}
 #grtrans-configure .grtrans-map-editor-dock #grtrans-network-editor [data-grtrans-server-groups] .grtrans-editor-group:first-child .grtrans-editor-fields .form-group {min-width:0}
 @media(max-width:600px){#grtrans-configure .grtrans-map-editor-dock #grtrans-network-editor [data-grtrans-server-groups] .grtrans-editor-group:first-child .grtrans-editor-fields {grid-template-columns:1fr}}
+
+/* The network editor lives in a ~440px dock: labels and controls cannot
+   share the desktop form grid without collapsing inputs to a few pixels. */
+#grtrans-configure .grtrans-map-editor-dock #grtrans-network-editor .grtrans-editor-group {
+  box-sizing:border-box;width:100%;max-width:100%;
+}
+#grtrans-configure .grtrans-map-editor-dock #grtrans-network-editor .grtrans-editor-fields {
+  box-sizing:border-box;width:100%;
+}
+#grtrans-configure .grtrans-map-editor-dock #grtrans-network-editor .grtrans-editor-fields .form-group {
+  width:100%;grid-template-columns:minmax(0,1fr);
+}
+#grtrans-configure .grtrans-map-editor-dock #grtrans-network-editor .grtrans-editor-fields .form-group>label {
+  grid-column:1;grid-row:auto;padding-top:0;
+}
+#grtrans-configure .grtrans-map-editor-dock #grtrans-network-editor .grtrans-editor-fields .form-group>:not(label) {
+  grid-column:1;grid-row:auto;min-width:0;max-width:100%;
+}
+#grtrans-configure .grtrans-map-editor-dock #grtrans-network-editor .grtrans-editor-fields .form-group>:is(input,select,textarea) {
+  box-sizing:border-box;width:100%!important;
+}

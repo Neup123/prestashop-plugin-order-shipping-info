@@ -79,6 +79,12 @@ jobs:
           TEST_ADMIN_PASSWORD: OnlyForEphemeralCI123!
         run: |
           ADMIN_URL="$(cat /tmp/grtrans-admin-url)" node tests/browser-map-spatial-editing.mjs
+      - name: Verify N1-N7 manual retest at 1600px in disposable browser
+        env:
+          TEST_ADMIN_EMAIL: ci@example.invalid
+          TEST_ADMIN_PASSWORD: OnlyForEphemeralCI123!
+        run: |
+          ADMIN_URL="$(cat /tmp/grtrans-admin-url)" node tests/browser-manual-retest.mjs
       - name: Prepare disposable Greek checkout
         env:
           TEST_CUSTOMER_PASSWORD: BrowserOnlyCiPassword123

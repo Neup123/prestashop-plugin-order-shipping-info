@@ -213,10 +213,20 @@ final class GrTransportNetworkRepository
     {
         if (!self::find($entity,$id)) throw new InvalidArgumentException('Network record not found');
         if ($entity==='stations') {
-            foreach (['legs'=>'grtrans_leg','transfers'=>'grtrans_transfer'] as $target=>$table) {
-                $count=(int)Db::getInstance()->getValue('SELECT COUNT(*) FROM `' . _DB_PREFIX_ . $table
-                    . '` WHERE from_station_id = ' . $id . ' OR to_station_id = ' . $id);
-                if ($count) throw new InvalidArgumentException('Delete connecting legs/transfers before deleting this station');
+            // Dependency counts must bypass PrestaShop's SELECT cache: a leg
+            // may just have been deleted, while its earlier COUNT is cached.
+            // Both active and inactive links are genuine database references
+            // and must be explicitly removed before station deletion.
+            $db=Db::getInstance();
+            foreach (['grtrans_leg','grtrans_transfer'] as $table) {
+                $count=$db->getValue('SELECT COUNT(*) FROM `' . _DB_PREFIX_ . $table
+                    . '` WHERE from_station_id = ' . $id . ' OR to_station_id = ' . $id, false);
+                if ($count === false || $count === null) {
+                    throw new RuntimeException('Could not verify station connection dependencies');
+                }
+                if ((int)$count > 0) {
+                    throw new InvalidArgumentException('Delete connecting legs/transfers before deleting this station');
+                }
             }
         }
         if ($entity==='stations') {

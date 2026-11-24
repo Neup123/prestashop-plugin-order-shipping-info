@@ -108,9 +108,18 @@ final class GrTransportQuoteEngine
     {
         $prefix = (string) ($route['postal_prefix'] ?? '');
         $ruleCity = self::normalize((string) ($route['city'] ?? ''));
-        return !($prefix === '' && $ruleCity === '')
-            && ($prefix === '' || strpos($postal, $prefix) === 0)
-            && ($ruleCity === '' || $ruleCity === $city);
+        if ($prefix === '' && $ruleCity === '') return false;
+        if ($prefix !== '' && strpos($postal, $prefix) !== 0) return false;
+        if ($ruleCity === '' || $ruleCity === $city) return true;
+        // A backfilled city may be stored in Latin script while checkout
+        // addresses use the Greek synonym (or vice versa). Use the maintained
+        // destination catalog as an alias list rather than losing a precise
+        // route and accidentally falling back to a broader postal rule.
+        foreach (require __DIR__ . '/../data/stations.php' as $station) {
+            $aliases = array_map([self::class,'normalize'], $station['cities'] ?? []);
+            if (in_array($ruleCity,$aliases,true) && in_array($city,$aliases,true)) return true;
+        }
+        return false;
     }
 
     private static function specificity(array $route): int
