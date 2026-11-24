@@ -104,3 +104,39 @@ testAssert(GrTransportNetworkSettings::effectiveOuterKm(null,4)===4.0,
     'Inherited FAR extent cannot remove normal reach');
 
 echo "Operational defaults and runtime FAR radius tests passed\\n";
+
+
+ // #141: exercise persisted rows, not only the configuration accessor.
+if (!defined('_DB_PREFIX_')) define('_DB_PREFIX_', 'ps_');
+class Db {
+    public static $row;
+    public static $where;
+    public static function getInstance() { return new self(); }
+    public function getRow($sql) { return self::$row; }
+    public function delete($table, $where, $limit, $cache) {
+        self::$where = $where;
+        return true;
+    }
+}
+foreach ([10, 30, 45] as $minutes) {
+    $settings['quote_ttl_minutes'] = $minutes;
+    GrTransportNetworkSettings::save($settings);
+    $now = time();
+    Db::$row = ['id_address'=>7, 'address_fingerprint'=>'fixture',
+        'quote_status'=>GrTransportCartQuote::PINNED, 'quote_data'=>'{"price":12}',
+        'created_at'=>gmdate('Y-m-d H:i:s', $now - $minutes * 60 + 10)];
+    testAssert(GrTransportCartQuote::pinned(1, 7, 'fixture') === ['price'=>12],
+        'Fresh persisted quote must respect configured TTL: '.$minutes);
+    Db::$row['created_at'] = gmdate('Y-m-d H:i:s', $now - $minutes * 60 - 10);
+    testAssert(GrTransportCartQuote::pinned(1, 7, 'fixture') === null,
+        'Expired persisted quote must respect configured TTL: '.$minutes);
+    GrTransportCartQuote::pruneExpired();
+    testAssert(preg_match("/^quote_status = 'pinned' AND created_at < '([^']+)'$/", Db::$where, $match) === 1,
+        'Pruning must only target unconsumed quotes');
+    $cutoff = strtotime($match[1].' UTC');
+    testAssert($cutoff >= $now - $minutes * 60 && $cutoff <= time() - $minutes * 60,
+        'Pruning cutoff must respect configured TTL: '.$minutes);
+    Db::$row['quote_status'] = GrTransportCartQuote::CONSUMED;
+    testAssert(GrTransportCartQuote::pinned(1, 7, 'fixture') === ['price'=>12],
+        'Consumed quote must remain readable after expiry');
+}

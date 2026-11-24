@@ -87,7 +87,7 @@ final class GrTransportCartQuote
         }
         // Consumed quotes remain immutable for audit and duplicate callbacks.
         if ($row['quote_status'] !== self::CONSUMED
-            && strtotime((string) $row['created_at'] . ' UTC') < time() - self::TTL_SECONDS) {
+            && strtotime((string) $row['created_at'] . ' UTC') < time() - self::ttlSeconds()) {
             return null;
         }
         return self::decode($row);
