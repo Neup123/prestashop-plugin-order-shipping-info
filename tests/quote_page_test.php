@@ -166,6 +166,9 @@ Tools::$request = ['destination'=>'26221', 'note'=>'private note from legacy URL
 $controller->initContent();
 testAssert($context->smarty->vars['quote_note'] === '', 'GET query note is never accepted or displayed');
 $_SERVER['REQUEST_METHOD'] = 'POST';
+$_POST = [];
+$controller->initContent();
+testAssert($context->smarty->vars['quote_note'] === '', 'POST without a note must not fall back to URL query');
 $_POST = ['note'=>'  kept in POST only  '];
 Tools::$request = ['destination'=>'26221'];
 $controller->initContent();

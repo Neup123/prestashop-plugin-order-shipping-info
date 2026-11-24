@@ -107,7 +107,8 @@ quote result alongside the quoted price or no-route explanation. It is
 **display-only for this quote**: no order/customer-note persistence is
 implemented. The note is read only from the POST body, never from URL query
 parameters; the quoted result does not retain it as an order field. Avoid
-sensitive data in optional notes. A postcode or city can still be quoted
+sensitive data in optional notes: the response displays the note and hosting
+infrastructure may log request bodies. A postcode or city can still be quoted
 without JavaScript, Leaflet, maps or reverse geocoding.
 
 The original demo catalogue matching still picks the nearest terminal within
