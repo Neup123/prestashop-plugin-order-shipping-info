@@ -42,6 +42,31 @@ $drop=static function (string $kind,array $names) use ($db,$tables,$columns): vo
             'Cannot rewind column '.$kind.'.'.$name);
     }
 };
+if ($phase==='diagnose') {
+    // CI-only diagnostic after an unsuccessful genuine PrestaShop upgrade.
+    // Probe individual idempotent migrations in the already failed disposable
+    // shop to locate a hidden error (never used as a success substitute).
+    $record=$db->getRow("SELECT version,active FROM "._DB_PREFIX_
+        ."module WHERE name='grtransportshipping'");
+    echo 'FAILED CLI state: '.json_encode($record,JSON_THROW_ON_ERROR)."\n";
+    foreach (['station','leg','transfer','branch','branch_stock'] as $entity) {
+        echo $entity.' columns: '.implode(',',$columns($tables[$entity]))."\n";
+    }
+    foreach (['0.11.0','0.12.0','0.13.0','0.15.0','0.16.0'] as $version) {
+        require_once '/var/www/html/modules/grtransportshipping/upgrade/upgrade-'.$version.'.php';
+        $handler='upgrade_module_'.str_replace('.','_',$version);
+        try {
+            $ok=$handler($module);
+            echo 'DIRECT DIAGNOSTIC '.$version.': '.($ok?'PASS':'FAILED')."\n";
+            if (!$ok) break;
+        } catch (Throwable $error) {
+            echo 'DIRECT DIAGNOSTIC '.$version.': exception '
+                .get_class($error).' - '.$error->getMessage()."\n";
+            break;
+        }
+    }
+    exit;
+}
 if ($phase==='prepare') {
     $hub=GrTransportNetworkRepository::save('stations',[
         'name'=>'CI migration source','type'=>'bus',
