@@ -30,7 +30,7 @@ function fixture(data, options = {}) {
   const layer = (type, entry) => {
     const value = {
       events: {}, svgPath: { attrs: {}, setAttribute(name, value) { this.attrs[name] = value; } },
-      getElement() { return this.svgPath; },
+      getElement() { return type === 'circles' || type === 'polygons' ? this.svgPath : null; },
       addTo() { this.removed = false; return this; },
       bindTooltip(content) { this.tooltip = content; return this; },
       on(event, fn) { this.events[event] = fn; return this; }, setLatLng(p) { this.point = p; },
