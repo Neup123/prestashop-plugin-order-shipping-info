@@ -31,14 +31,16 @@ function upgrade_module_0_11_0($module)
     // The hook may already be registered on an existing installation.
     // A redundant registration must not fail the whole upgrade after its
     // schema ALTERs have already succeeded.
-    $wasRegistered=$module->isRegisteredInHook('displayHeader');
-    $registered=$wasRegistered || $module->registerHook('displayHeader');
-    // Disposable acceptance diagnostic only. No merchant IDs or values logged.
-    if (getenv('GRTRANS_DISPOSABLE_UPGRADE_TEST')==='1') {
-        error_log('CI upgrade 0.11 hook: module-id-present='
-            .((int)$module->id>0?'yes':'no')
-            .' pre-existing='.($wasRegistered?'yes':'no')
-            .' registered='.($registered?'yes':'no'));
+    // The CLI upgrade can pass a module object without its numeric ID while
+    // refreshing the module cache. Hook::registerHook then returns false
+    // AFTER schema migrations have already changed the tables. Recover only
+    // the existing installed-module ID; never create or guess an ID.
+    if ((int)$module->id<=0) {
+        $id=(int)$db->getValue('SELECT id_module FROM '
+            ._DB_PREFIX_.'module WHERE name = \''.pSQL($module->name).'\'');
+        if ($id<=0) return false;
+        $module->id=$id;
     }
-    return $registered;
+    return $module->isRegisteredInHook('displayHeader')
+        || $module->registerHook('displayHeader');
 }
