@@ -64,8 +64,23 @@ if ($phase==='prepare') {
     $branch=GrTransportNetworkRepository::save('branches',[
         'name'=>'CI migration dispatch','origin_station_id'=>$hub,
     ]);
-    $product=(int)$db->getValue('SELECT id_product FROM '._DB_PREFIX_.'product ORDER BY id_product DESC LIMIT 1');
-    testAssert($product>0,'Expected a disposable product from order smoke');
+    // Create our own product through the same PrestaShop entity API as the
+    // real-order smoke. Earlier tests may remove their own fixtures.
+    $idLang=(int)Configuration::get('PS_LANG_DEFAULT');
+    $productRecord=new Product();
+    $productRecord->name=[$idLang=>'CI migration parcel'];
+    $productRecord->link_rewrite=[$idLang=>'ci-migration-parcel'];
+    $productRecord->description_short=[$idLang=>'Disposable upgrade acceptance item'];
+    $productRecord->id_shop_default=(int)Context::getContext()->shop->id;
+    $productRecord->id_category_default=(int)Configuration::get('PS_HOME_CATEGORY');
+    $productRecord->id_tax_rules_group=0;
+    $productRecord->price=5;
+    $productRecord->active=1;
+    $productRecord->available_for_order=1;
+    $productRecord->visibility='both';
+    testAssert($productRecord->add(),'Could not create a disposable product');
+    $product=(int)$productRecord->id;
+    testAssert($product>0,'Could not resolve new disposable product ID');
     $stock=GrTransportNetworkRepository::save('branch_stock',[
         'id_branch'=>$branch,'id_product'=>$product,
         'id_product_attribute'=>0,'quantity'=>7,
