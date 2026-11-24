@@ -50,7 +50,7 @@ jobs:
           # GRTRANS_DISPOSABLE_UPGRADE_TEST is a mandatory safety gate in the test.
           docker compose -f tests/compose.yml exec -T -e GRTRANS_DISPOSABLE_UPGRADE_TEST=1 -u www-data prestashop php /tmp/prestashop-network-upgrade-smoke.php prepare
           set +e
-          upgrade_output="$(docker compose -f tests/compose.yml exec -T -u www-data prestashop php bin/console prestashop:module upgrade grtransportshipping 2>&1)"
+          upgrade_output="$(docker compose -f tests/compose.yml exec -T -e GRTRANS_DISPOSABLE_UPGRADE_TEST=1 -u www-data prestashop php bin/console prestashop:module upgrade grtransportshipping 2>&1)"
           upgrade_rc=$?
           set -e
           printf '%s\n' "$upgrade_output"
