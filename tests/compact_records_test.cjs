@@ -31,6 +31,13 @@ assert.deepEqual(GROUPS.legs.map(([title])=>title),['Connection','Price','Timing
 const source=readFileSync(require.resolve('../grtransportshipping/views/js/compact-records.js'),'utf8');
 const styles=readFileSync(require.resolve('../grtransportshipping/views/css/compact-records.css'),'utf8');
 const workspace=readFileSync(require.resolve('../grtransportshipping/views/js/map-workspace.js'),'utf8');
+const contextStyles=readFileSync(require.resolve('../grtransportshipping/views/css/map-context-panel.css'),'utf8');
+const workspaceStyles=readFileSync(require.resolve('../grtransportshipping/views/css/map-workspace.css'),'utf8');
+assert.match(source,/iconize\(summary,'info','Show details/, 'Details must use a supported Material glyph');
+assert.doesNotMatch(source,/info_outline/, 'Invalid details icon ligature must not regress');
+assert.match(contextStyles,/grid-template-columns:minmax\(0,1fr\);gap:\.45rem/, 'Station form must use full panel width');
+assert.match(workspaceStyles,/overflow-x:auto;overflow-y:auto/, 'Station table must scroll when wider than dock');
+assert.match(styles,/\.grtrans-columns-panel \{position:fixed/, 'Column chooser must escape the BO sidebar overlap');
 const crm=readFileSync(require.resolve('../grtransportshipping/views/js/crm-records.js'),'utf8');
 assert.match(source,/checkbox\.type='checkbox'/,'row selection must be a checkbox');
 assert.doesNotMatch(source,/setAttribute\('aria-pressed',String\(active\)\)/);
