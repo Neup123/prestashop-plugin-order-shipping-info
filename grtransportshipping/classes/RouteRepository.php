@@ -32,6 +32,17 @@ final class GrTransportRouteRepository
         if ($id > 0 && !$old) {
             throw new InvalidArgumentException('Route does not exist');
         }
+        // Historical demo routes store terminal names independently from the
+        // station map. Backfill only blank city on edit, using the maintained
+        // destination catalog; never overwrite a merchant-supplied city.
+        if ($id > 0 && trim((string)($named['city'] ?? '')) === '') {
+            foreach (require __DIR__ . '/../data/stations.php' as $station) {
+                if (($named['station_name'] ?? '') === $station['name']) {
+                    $named['city'] = (string)($station['cities'][0] ?? '');
+                    break;
+                }
+            }
+        }
         $normalized = self::prepare($named, $old, $employeeId);
         $record = [];
         foreach ($normalized as $field => $value) {

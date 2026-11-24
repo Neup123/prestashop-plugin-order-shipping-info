@@ -777,6 +777,16 @@ class Grtransportshipping extends CarrierModule
         foreach (require __DIR__ . '/data/stations.php' as $station) {
             $cityByStation[$station['name']] = $station['cities'][0] ?? '';
         }
+        // Terminals in the seeded route catalog are named route endpoints, not
+        // network station records. Keep them available in route pickers even
+        // before a station record has been created.
+        $routeTerminalNames=[];
+        foreach (require __DIR__ . '/demo/routes.php' as $seedRoute) {
+            foreach (['origin_name','station_name'] as $endpoint) {
+                $name=trim((string)($seedRoute[$endpoint] ?? ''));
+                if ($name!=='') $routeTerminalNames[$name]=true;
+            }
+        }
         $routeSchema=$this->escape(json_encode(GrTransportRouteFields::formFields(),
             JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_THROW_ON_ERROR));
         $out .= '<div class="grtrans-route-grid table-responsive"><table class="table table-hover"'
@@ -935,7 +945,19 @@ class Grtransportshipping extends CarrierModule
                         . ($chosen ? ' selected' : '') . '>' . $this->escape($stationName)
                         . ' (#' . (int) $station['id_station'] . ')</option>';
                 }
-                // Editing a historical route must not silently rewrite an unmatched name.
+                // Route terminals are valid named endpoints, independent of
+                // geocoded network station records.
+                foreach (array_keys($routeTerminalNames) as $terminalName) {
+                    if ($terminalName === $value && !$matchedStation) $matchedStation=true;
+                    $known=false;
+                    foreach ($routeStations as $station) {
+                        if (trim((string)($station['name'] ?? '')) === $terminalName) {$known=true;break;}
+                    }
+                    if (!$known) $out.='<option value="'.$this->escape($terminalName).'"'
+                        .($terminalName===$value ? ' selected' : '').'>'
+                        .$this->escape($terminalName).'</option>';
+                }
+                // Editing a historical custom route must not rewrite its endpoint.
                 if (!$matchedStation && $value !== '' && ($editing !== null || $submitted !== null)) {
                     $out .= '<option value="' . $this->escape($value) . '" selected data-grtrans-legacy>'
                         . $this->escape($this->l('Existing value not in stations:')) . ' '
