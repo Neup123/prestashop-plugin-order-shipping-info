@@ -85,10 +85,28 @@ if ($phase==='prepare') {
         'id_branch'=>$branch,'id_product'=>$product,
         'id_product_attribute'=>0,'quantity'=>7,
     ]);
+    // The order smoke may clean its own purchase records. Seed one isolated
+    // historical snapshot in the real module table to test byte-exact
+    // preservation without relying on the lifetime of another test's order.
+    // This is a synthetic historical record, not a second paid checkout.
+    $legacyOrderId=900000001;
+    $historical=json_encode([
+        'origin'=>'CI original origin','destination'=>'CI original pickup',
+        'mode'=>'ferry','price'=>12.75,'legs'=>[
+            ['id'=>17,'from'=>'Original hub','to'=>'Original port','price'=>12.75],
+        ],
+    ],JSON_THROW_ON_ERROR|JSON_UNESCAPED_SLASHES);
+    testAssert($db->insert('grtrans_order',[
+        'id_order'=>$legacyOrderId,
+        'mode'=>'ferry','station_name'=>'CI original pickup',
+        'price'=>12.75,'pickup_only'=>1,'notice'=>'CI synthetic order snapshot',
+        'demo'=>0,'route_snapshot'=>pSQL($historical,true),
+        'estimate_state'=>'not_estimate',
+    ]),'Cannot create isolated historical snapshot fixture');
     $order=$db->getRow('SELECT id_order,route_snapshot FROM '
-        ._DB_PREFIX_.'grtrans_order ORDER BY id_order DESC LIMIT 1');
-    testAssert(is_array($order) && (int)$order['id_order']>0,
-        'Expected original completed checkout snapshot from preceding CI smoke');
+        ._DB_PREFIX_.'grtrans_order WHERE id_order='.$legacyOrderId);
+    testAssert(is_array($order) && (int)$order['id_order']===$legacyOrderId,
+        'Synthetic historical record was not persisted');
     $state=[
         'hub'=>$hub,'dest'=>$dest,'leg'=>$leg,'transfer'=>$transfer,
         'branch'=>$branch,'stock'=>$stock,'product'=>$product,
