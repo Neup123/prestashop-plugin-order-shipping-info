@@ -4,14 +4,30 @@ Work-in-progress module for Athens-origin parcel movement by KTEL, ferry and dom
 
 **Demo amounts are invented illustrative parcel fees, not verified carrier freight tariffs.** Never operate a live shop with demo prices.
 
-## Current scope
+## Current module and operator workflow
 
-- Carrier pricing and route/destination administration, including explicitly retained demo/verified flags.
-- Greek delivery address required; unmatched/disabled destinations unavailable.
-- Demo routes represent plausible links but have no contractual or operational guarantee.
-- For installation, copy the entire `grtransportshipping` directory into `modules/`, then install in Module Manager. The module creates a carrier and seeds assumed routes.
-- Configure Greek zone/carrier restrictions and confirm checkout before production.
-- PHP 8.2/8.4 lint, pure pricing tests, live PrestaShop 9.2 Docker native cart checks, and Chromium admin/checkout browser acceptance run in GitHub Actions.
+The current 0.16.0 codebase combines flat merchant-defined shipping rules with an explicit directed transport network in one PrestaShop Configure screen.
+
+- **Map workspace:** select a station, service connection or record; place/move stations, connect stations, create transfer links and direct service areas. Edit radius, source polygons and route-line geometry as drafts; use Save to persist and Cancel draft/Escape to discard spatial changes. The rendered coverage uses the source-defined reach geometry, not an invented union of areas.
+- **Record management:** switch between routes, stations, legs, transfers, branches and branch stock. Compact tables support selection, filtering, column choice, row actions and inline editing where available. New records and spatial changes require explicit saves.
+- **Operating defaults:** grouped settings and extended pickup notice use signed autosave with visible save/error feedback. FAR reach overrides and service tariffs remain record-specific.
+- **Quote simulator:** choose Address or Station, enter parcel inputs or an eligible cart, and calculate a test price. Checkout independently enforces Greek address, active records, explicit transfer paths, whole-cart branch eligibility and FAR consent. A map preview is not a checkout guarantee.
+- **Customer flow:** public quote check, pickup/coverage notices, fixed or estimated transport price, pinned checkout quote and frozen order snapshot. An estimated freight receipt is recorded only after external payment; the module is not a payment gateway.
+- **Install and test:** obtain the module ZIP or copy the complete `grtransportshipping` directory into `modules/`; use Module Manager to install or upgrade. Configure carrier zones/groups and replace or draft demo tariffs before live use. CI runs PHP 8.2/8.4, Node contracts, a disposable PrestaShop 9.2 installation, Chromium admin/customer flows and ZIP validation.
+
+### Where to start
+
+| Document | Purpose |
+| --- | --- |
+| [Operator guide](docs/network-operator-guide.md) | Configure workflow, map tools, pricing, branches, API and troubleshooting |
+| [Architecture and data flow](docs/architecture.md) | Component boundaries, data scope, security, persistence, build and deployment |
+| [Install and acceptance](docs/INSTALL-AND-ACCEPTANCE.md) | Installation, migration procedures and verification coverage |
+| [Demo data sources](docs/DEMO-SOURCES.md) | Illustrative route data and provenance |
+| [Geographic connection model](docs/map-model/connection-model.svg) | Source-defined coverage and connection rendering reference |
+
+Known limitations: branch stock is supplemental, not an automatic stock ledger; no live parcel tracking or automatic payment capture; live transport contracts, merchant data, shop theme and payment acceptance need separate operator validation. The network and flat routes are installation-wide, while branch availability is shop-scoped. See architecture for boundaries.
+
+The subsequent sections retain detailed behavior and historical milestones; they are not a substitute for the current operator guide.
 
 ## Security bar
 
