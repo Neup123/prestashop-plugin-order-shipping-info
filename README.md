@@ -29,6 +29,25 @@ Known limitations: branch stock is supplemental, not an automatic stock ledger; 
 
 The subsequent sections retain detailed behavior and historical milestones; they are not a substitute for the current operator guide.
 
+## Running UI screenshots (pre-release CI shop)
+
+These are genuine screenshots from an installed **disposable PrestaShop 9.2.2** shop running the current module, captured with Chromium at a 1600×1000 CSS-pixel viewport (device scale 2) and **synthetic test data**. They are not pictures of a production shop, merchant-approved freight prices, or final UX approval. The [browser acceptance workflow](.github/workflows/browser-admin.yml) regenerates the original PNGs as a short-retention review artifact after relevant UI changes.
+
+### Configure — service map and records
+
+![Real PrestaShop Configure service map and station records in a disposable test shop](docs/screenshots/configure-map-workspace.png)
+
+The map and sidebar are shown as currently implemented, including known visual issues: contextual sidebar density/layout ([#131](https://github.com/Neup123/prestashop-plugin-order-shipping-info/issues/131)) and the stock OSM tile map style ([#132](https://github.com/Neup123/prestashop-plugin-order-shipping-info/issues/132)). This image is a **development-state reference, not release visual sign-off**.
+
+### Grouped transport settings and quote simulator
+
+![Real grouped shipping operating settings and beginning of quote simulator in the PrestaShop back office](docs/screenshots/grouped-settings.png)
+
+### Public shipping quote check
+
+![Real public transport shipping quote-check form on the disposable PrestaShop storefront](docs/screenshots/public-quote-check.png)
+
+
 ## Security and external integration boundaries
 
 Admin mutations use PrestaShop employee token verification, strict validated input and escaping; client-side prices are never trusted. Unknown destination => no quote.
