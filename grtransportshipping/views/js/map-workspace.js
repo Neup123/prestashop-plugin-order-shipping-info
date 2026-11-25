@@ -428,7 +428,7 @@
     const finish=()=>{if(mode==='move'&&dragMarker===marker)draft(marker.getLatLng());};
     marker.off('dragend',marker._grtransStageDrag);
     marker._grtransStageDrag=finish;marker.on('dragend',finish);
-    notice('Drag the station's position handle, or use the arrow buttons. Save to commit.');
+    notice('Drag the station position handle, or use the arrow buttons. Save to commit.');
   }
   function switchMode(next) {
     if (!model.modesEnabled(next)) return;
