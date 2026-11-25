@@ -370,6 +370,7 @@
     if (dragMarker) {
       dragMarker.dragging?.disable();
       if (originalPosition) dragMarker.setLatLng(originalPosition);
+      bridge.endStationMove(dragMarker);
       dragMarker=null;
     }
     originalPosition=null;firstStation=0;
@@ -420,14 +421,14 @@
   function enableMove(id) {
     if(!matchingEditor('stations',id)){visit('stations',id,'move');return;}
     revertDraft();mode='move';
-    const marker=bridge.marker(id);
+    const marker=bridge.beginStationMove(id);
     if(!marker){notice('The selected station is not on this map.',true);return;}
     dragMarker=marker;originalPosition=marker.getLatLng();
     marker.dragging?.enable();
     const finish=()=>{if(mode==='move'&&dragMarker===marker)draft(marker.getLatLng());};
     marker.off('dragend',marker._grtransStageDrag);
     marker._grtransStageDrag=finish;marker.on('dragend',finish);
-    notice('Drag the selected station pin, or use the arrow buttons. Save to commit.');
+    notice('Drag the station position handle, or use the arrow buttons. Save to commit.');
   }
   function switchMode(next) {
     if (!model.modesEnabled(next)) return;
@@ -441,7 +442,7 @@
     if(next==='connect-leg'&&!matchingEditor('legs',0)){visit('legs',0,'connect-leg');return;}
     if(next==='connect-transfer'&&!matchingEditor('transfers',0)){visit('transfers',0,'connect-transfer');return;}
     if(next==='move'&&selected?.entity==='stations'){enableMove(selected.id);return;}
-    if(next==='preview'){bridge.startPreview();notice('Choose two map points or station pins to preview a route.');return;}
+    if(next==='preview'){bridge.startPreview();notice('Choose a starting point and destination on the map.');return;}
     const labels={select:'Select a station, line, or list record.',place:'Choose a map point to place a new station.',
       move:'Select the station you wish to move.',
       'connect-leg':'Click a sending station, then a receiving station.',
@@ -506,10 +507,13 @@
     if(mode==='preview')return false;
     if(mode==='place'){draft(latlng);return true;}
     if(mode==='move'){notice('Select or drag the station pin to move it.');return true;}
-    if(mode.startsWith('connect')){notice('Choose two station pins, not empty map space.');return true;}
+    if(mode.startsWith('connect')){notice('Choose two station coverage patches or origin pins, not empty map space.');return true;}
     return true; // Select mode never mutates coordinate inputs on bare map clicks.
   }
-  window.GrtransMapWorkspaceHooks={stationPick,mapClick};
+  // Placement has priority over ALL existing map objects. The coordinates
+  // are taken from the actual click, never the saved station centre.
+  const placementPick=latlng=>{if(mode!=='place')return false;draft(latlng);return true;};
+  window.GrtransMapWorkspaceHooks={stationPick,mapClick,placementPick};
   root.addEventListener('grtrans:record-selected',event=>{
     const {entity,id}=event.detail||{};
     if(!entities.includes(entity)||!(Number(id)>0))return;
@@ -616,7 +620,7 @@
       color:'#111',opacity:.001,weight:15,interactive:true,className:'grtrans-map-record-hit'}).addTo(bridge.map);
     hit.on('click',event=>{
       L.DomEvent.stopPropagation(event);
-      if(mode==='preview') {bridge.map.fire('click',{latlng:event.latlng});return;}
+      if(mode==='preview'||mode==='place') {bridge.map.fire('click',{latlng:event.latlng});return;}
       if(mode!=='select') {notice('Finish or cancel the active map tool before selecting a connection.');return;}
       const available=records.filter(item=>item.entity===activeEntity);
       const choices=available.length?available:records;

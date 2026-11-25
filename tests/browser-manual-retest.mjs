@@ -149,11 +149,17 @@ try {
     'Station form field is clipped: '+JSON.stringify(field));
   await visit();
   const tableScroll=page.locator('#grtrans-network .grtrans-network-list[data-grtrans-entity="stations"] .table-responsive');
-  const horizontal=await tableScroll.evaluate(el=>({
-    view:el.clientWidth,total:el.scrollWidth,overflow:getComputedStyle(el).overflowX
-  }));
-  assert.ok(horizontal.total>horizontal.view && ['auto','scroll'].includes(horizontal.overflow),
-    'Station action columns must remain accessible by horizontal scrolling: '+JSON.stringify(horizontal));
+  const horizontal=await tableScroll.evaluate(el=>{
+    const strip=el.querySelector('tbody .grtrans-row-action-strip');
+    if(!strip)return null;
+    const bounds=el.getBoundingClientRect();
+    const actions=strip.getBoundingClientRect();
+    return {view:el.clientWidth,total:el.scrollWidth,overflow:getComputedStyle(el).overflowX,
+      actionLeft:actions.left-bounds.left+el.scrollLeft,actionRight:actions.right-bounds.left+el.scrollLeft};
+  });
+  assert.ok(horizontal && horizontal.actionLeft>=-2 && horizontal.actionRight<=horizontal.total+2 &&
+    (horizontal.actionRight<=horizontal.view+2 || ['auto','scroll'].includes(horizontal.overflow)),
+    'Station actions must fit or remain reachable by horizontal scrolling: '+JSON.stringify(horizontal));
   confirm('N5 station form and table');
 
   // N6/N7: a newly saved leg paints a line before/without OSRM, survives

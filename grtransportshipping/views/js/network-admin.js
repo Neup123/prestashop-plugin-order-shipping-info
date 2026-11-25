@@ -663,15 +663,15 @@
   function addPreviewPin(latlng) {
     if (!previewSelecting || previewPoints.length >= 2) return;
     previewPoints.push({lat:Number(latlng.lat),lng:Number(latlng.lng)});
+    if (previewPoints.length === 1) {
+      previewMessage('Starting point set. Choose the destination point or station.');
+      return;
+    }
     const marker = makePreviewMarker(latlng, {
-      alt: 'Preview point ' + previewPoints.length,
+      alt: 'Preview destination',
       icon: new L.Icon.Default({className:'grtrans-preview-pin'})
     }).addTo(map);
     previewMarkers.push(marker);
-    if (previewPoints.length === 1) {
-      previewMessage('Starting pin set. Choose the destination point or station.');
-      return;
-    }
     previewSelecting = false;
     const generation = ++previewGeneration;
     previewMessage('Computing routed preview…');
@@ -767,11 +767,15 @@
       registerPatch(group.map(station=>'station:'+station.id_station),layer,style);
       layer.on('click',event=>{
         L.DomEvent.stopPropagation(event);
+        if (event.latlng && window.GrtransMapWorkspaceHooks?.placementPick?.(event.latlng) === true) return;
+        // A clicked coverage point is a coordinate, not the station centre.
+        if (previewSelecting && event.latlng) {addPreviewPin(event.latlng);return;}
         select(s);
       });
     });
   });
-  // Pins and their source boundaries remain independent within a shared colour group.
+  // Only dispatch origins have permanent pins (#114). Non-origin stations
+  // keep coverage/list selection and an unmounted marker for an explicit move draft.
   // Keep references for reversible draft dragging; the persisted station
   // coordinates and coverage paint are untouched until the existing Save.
   const stationMarkers = new Map();
@@ -779,11 +783,12 @@
     const title = s.name + (Number(s.is_origin_hub) === 1 ? ' · Origin hub' : '');
     const color = zoneColors.get('station:' + s.id_station) || '#3874ae';
     // Omit native title: it duplicates the custom Leaflet tooltip.
+    const isOrigin=Number(s.is_origin_hub)===1;
     const marker = L.marker(point(s), {alt: s.name,
-      ...(Number(s.is_origin_hub) === 1 ? {
-        icon: new L.Icon.Default({className: 'grtrans-origin-marker'})
-      } : {})})
-      .addTo(map);
+      icon: new L.Icon.Default({className:isOrigin?'grtrans-origin-marker':'grtrans-move-draft-pin'}),
+      grtransDraftOnly:!isOrigin
+    });
+    if(isOrigin)marker.addTo(map);
     bindColoredTooltip(marker, title, color);
     marker.on('mouseover', () => {
       toggleHoverClass(marker, 'grtrans-hovered-marker', true, color);
@@ -793,6 +798,7 @@
     });
     marker.on('click', event => {
         L.DomEvent.stopPropagation(event);
+        if (event.latlng && window.GrtransMapWorkspaceHooks?.placementPick?.(event.latlng) === true) return;
         select(s);
       });
     stationMarkers.set(Number(s.id_station),marker);
@@ -894,6 +900,14 @@
     },
     station:id=>stations.get(Number(id)),
     marker:id=>stationMarkers.get(Number(id)),
+    beginStationMove:id=>{
+      const marker=stationMarkers.get(Number(id));
+      if(marker?.options.grtransDraftOnly && !map.hasLayer(marker))marker.addTo(map);
+      return marker;
+    },
+    endStationMove:marker=>{
+      if(marker?.options.grtransDraftOnly && map.hasLayer(marker))map.removeLayer(marker);
+    },
     focusStation:id=>{pinnedOwners=['station:'+Number(id)];focusExactly(pinnedOwners);},
     focusStations:ids=>{pinnedOwners=ids.map(id=>'station:'+Number(id));focusExactly(pinnedOwners);},
     clearFocus:()=>{pinnedOwners=[];restoreFocus();},

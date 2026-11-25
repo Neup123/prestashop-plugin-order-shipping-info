@@ -194,7 +194,11 @@ assert.equal(original.calls.polygons.length,6,'Two area tiers first, then two st
 assert.equal(original.calls.polygons[0].options.fillOpacity,.16);
 assert.equal(original.calls.polygons[1].options.fillOpacity,.36);
 assert.ok(original.calls.polygons.every(p=>p.options.pane==='grtrans-coverage-patches'));
-assert.equal(original.calls.markers.length,2,'Station pins remain independently clickable');
+assert.equal(original.calls.markers.length,2,'Station move handles remain independently addressable');
+assert.equal(original.calls.markers.filter(m=>m.layer.removed===false).length,1,
+  'Only origin hub has a permanent map pin');
+assert.equal(original.calls.markers.find(m=>m.options.grtransDraftOnly).layer.removed,undefined,
+  'Non-origin station marker stays unmounted');
 const legendItems = original.elements['grtrans-zone-legend'].children;
 assert.equal(legendItems.filter(item => item.children.some(
   child => child.className === 'grtrans-zone-swatch')).length, 3,
@@ -631,8 +635,13 @@ routing.elements['grtrans-map-preview'].events.click();
 assert.equal(routing.calls.polygons.length,6,
   'All three source stations retain their normal and FAR circle tiers');
 assert.ok(routing.calls.polygons.every(p => !p.layer.removed));
+const permanentPins=()=>routing.calls.markers.filter(m=>m.layer.removed===false);
+const originCount=permanentPins().length;
 routing.calls.mapEvents.click({latlng:{lat:38,lng:23.7}});
+assert.equal(permanentPins().length,originCount,'Starting point never adds a pin');
 routing.calls.mapEvents.click({latlng:{lat:37.1,lng:25.37}});
+assert.equal(permanentPins().length,originCount+1,'One regular destination pin only');
+assert.equal(permanentPins().filter(m=>m.options.icon.options.className==='grtrans-preview-pin').length,1);
 await new Promise(resolve => setImmediate(resolve));
 assert.equal(roadRequests,2,
   'One OSRM request for base road line and one for explicit preview; no ferry routing');
@@ -649,6 +658,7 @@ assert.ok(routing.calls.lines.some(line => line.points.length===3 &&
 assert.ok(routing.calls.lines.some(line => line.options.weight===5 &&
   line.options.dashArray==='10 5'),'Preview ferry uses direct port-to-port line');
 routing.elements['grtrans-map-preview-clear'].events.click();
+assert.equal(permanentPins().length,originCount,'Clear removes destination only');
 assert.ok(routing.calls.polygons.every(p => !p.layer.removed));
 assert.ok(routing.calls.lines.some(l => l.options.className==='grtrans-sea-line' && !l.layer.removed),
   'Clearing preview restores the actual ferry transport line');
