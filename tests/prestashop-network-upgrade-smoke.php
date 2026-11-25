@@ -4,8 +4,8 @@
  * Danger: PREPARE intentionally downgrades schema and registered module version.
  * It is guarded by an explicit CI-only environment variable. Never run on demo.
  * Covers versions 0.11, 0.12, 0.13, 0.15, 0.16 and preserved order data.
- * Earlier legacy installations, geometry supplied after 0.11 and other DB
- * engines need separate acceptance.
+ * Also covers preserved geometry and precedence from a representative 0.12 schema.
+ * Earlier legacy installations and other DB engines need separate acceptance.
  */
 if (getenv('GRTRANS_DISPOSABLE_UPGRADE_TEST') !== '1') {
     throw new RuntimeException('Refusing destructive fixture outside disposable CI');
@@ -160,6 +160,61 @@ if ($phase==='prepare') {
         ."module WHERE name='grtransportshipping'")==='0.10.0',
         'Stored module version rewind was not applied');
     echo "DISPOSABLE NETWORK UPGRADE prepared: 0.10.0 schema and merchant rows\n";
+    exit;
+}
+if ($phase==='prepare_geometry') {
+    // Rewind a second representative historical installation, this time
+    // with operator-authored geometry and precedence already present (0.12).
+    $state=json_decode((string)file_get_contents($stateFile),true,512,JSON_THROW_ON_ERROR);
+    $polygon=json_encode(['type'=>'Polygon','coordinates'=>[[[23.69,37.99],[23.71,37.99],[23.71,38.01],[23.69,38.01],[23.69,37.99]]]],JSON_THROW_ON_ERROR);
+    $line=json_encode(['type'=>'LineString','coordinates'=>[[23.7,38.0],[23.725,38.01],[23.75,38.02]]],JSON_THROW_ON_ERROR);
+    testAssert($db->update('grtrans_station',['coverage_kind'=>'postal_polygon',
+        'coverage_geojson'=>pSQL($polygon,true),'patch_precedence'=>'override'],
+        'id_station='.(int)$state['hub']),'Cannot stage historical station polygon');
+    testAssert($db->update('grtrans_leg',['route_geojson'=>pSQL($line,true),
+        'override_winner'=>'to'],'id_leg='.(int)$state['leg']),'Cannot stage historical route geometry');
+    $state['polygon']=$row('station','id_station',(int)$state['hub'])['coverage_geojson'];
+    $state['line']=$row('leg','id_leg',(int)$state['leg'])['route_geojson'];
+    testAssert($state['polygon']===$polygon && $state['line']===$line,'Historical geometry must be persisted before rewind');
+    testAssert(file_put_contents($stateFile,json_encode($state,JSON_THROW_ON_ERROR))!==false,'Cannot save geometry fixture');
+    testAssert($db->execute('UPDATE '.$tables['station'].' SET outer_radius_km=5 WHERE outer_radius_km IS NULL'),'Cannot stage old radii');
+    testAssert($db->execute('ALTER TABLE '.$tables['station'].' MODIFY COLUMN outer_radius_km DECIMAL(8,2) NOT NULL DEFAULT 5'),'Cannot stage pre-0.13 radius');
+    $drop('station',['active']);
+    $drop('leg',['area_outer_radius_km','active','stop_order']);
+    $drop('transfer',['active']);
+    $drop('branch',['active']);
+    $drop('branch_stock',['active']);
+    testAssert($db->execute("UPDATE "._DB_PREFIX_."module SET version='0.12.0' WHERE name='grtransportshipping'"),'Cannot stage version 0.12.0');
+    echo "DISPOSABLE GEOMETRY UPGRADE prepared: 0.12.0 schema and operator geometry\n";
+    exit;
+}
+if ($phase==='verify_geometry') {
+    $state=json_decode((string)file_get_contents($stateFile),true,512,JSON_THROW_ON_ERROR);
+    testAssert((string)$db->getValue("SELECT version FROM "._DB_PREFIX_."module WHERE name='grtransportshipping'")==='0.16.0','Geometry upgrade must reach current version');
+    $hub=$row('station','id_station',(int)$state['hub']);
+    $leg=$row('leg','id_leg',(int)$state['leg']);
+    testAssert($hub['coverage_kind']==='postal_polygon' && $hub['coverage_geojson']===$state['polygon']
+        && $hub['patch_precedence']==='override' && (float)$hub['outer_radius_km']===8.0,
+        'Original polygon, precedence and explicit radius survived');
+    testAssert($leg['route_geojson']===$state['line'] && $leg['override_winner']==='to'
+        && (float)$leg['price']===17.75 && $leg['area_outer_radius_km']===null,
+        'Original route line, operator override and tariff survived; new area FAR inherits');
+    $new=GrTransportNetworkRepository::save('stations',[
+        'name'=>'CI inherited FAR','type'=>'bus','address_text'=>'Synthetic new station',
+        'lat'=>38.3,'lng'=>23.9,'inner_radius_km'=>1,'outer_radius_km'=>'','is_origin_hub'=>0,
+    ]);
+    testAssert($row('station','id_station',$new)['outer_radius_km']===null,'New station inherits global FAR via NULL');
+    $order=$db->getRow('SELECT id_order,route_snapshot FROM '._DB_PREFIX_.'grtrans_order WHERE id_order='.(int)$state['order_id']);
+    testAssert(base64_encode((string)$order['route_snapshot'])===$state['snapshot'],'Historical order remains byte-identical');
+    foreach (['0.13.0','0.15.0','0.16.0'] as $version) {
+        require_once '/var/www/html/modules/grtransportshipping/upgrade/upgrade-'.$version.'.php';
+        $handler='upgrade_module_'.str_replace('.','_',$version);
+        testAssert($handler($module),'Geometry migration replay failed: '.$version);
+    }
+    testAssert($row('station','id_station',(int)$state['hub'])['coverage_geojson']===$state['polygon']
+        && $row('leg','id_leg',(int)$state['leg'])['route_geojson']===$state['line']
+        && $row('station','id_station',$new)['outer_radius_km']===null,'Replays preserve geometry and NULL inheritance');
+    echo "REAL GEOMETRY UPGRADE PASS: PrestaShop CLI 0.12-to-0.16, geometry/override/NULL preserved\n";
     exit;
 }
 if ($phase==='verify') {
