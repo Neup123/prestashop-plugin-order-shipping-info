@@ -230,11 +230,12 @@
       row.addEventListener('keydown',event=>{
         // Native controls preserve their own keyboard interaction.
         if(event.target!==row || event.altKey || event.ctrlKey || event.metaKey)return;
-        const visible=records.filter(item=>!item.row.hidden);
-        const index=visible.indexOf(record);
+        // The rendered order changes when the toolbar sorts the table.
+        const visible=[...row.parentElement.rows].filter(item=>!item.hidden && item.hasAttribute('data-grtrans-record-id'));
+        const index=visible.indexOf(row);
         if(event.key==='ArrowUp' || event.key==='ArrowDown') {
           const next=visible[index+(event.key==='ArrowDown'?1:-1)];
-          if(next) {event.preventDefault();next.row.focus();}
+          if(next) {event.preventDefault();next.focus();}
         } else if(event.key===' ' || event.key==='Spacebar') {
           const checkbox=row.querySelector('input[data-grtrans-select-record]');
           if(checkbox) {
@@ -576,8 +577,8 @@
     variantChoice.addEventListener('change',()=>{variant.value=variantChoice.value;});
     syncVariants();
   }
-  // Coordinate native Details and more-actions popovers in one shared slot.
-  const popupSelector='details.grtrans-record-details,details.grtrans-row-more';
+  // Coordinate Details, more-actions and the portaled column chooser in one slot.
+  const popupSelector='details.grtrans-record-details,details.grtrans-row-more,details.grtrans-columns-chooser';
   const dismissPopovers=except=>{
     for(const panel of root.querySelectorAll(popupSelector))
       if(panel!==except && panel.open)panel.open=false;
@@ -587,11 +588,11 @@
     if(panel.matches?.(popupSelector) && panel.open)dismissPopovers(panel);
   },true);
   document.addEventListener('pointerdown',event=>{
-    if(!event.target.closest?.(popupSelector))dismissPopovers();
+    if(!event.target.closest?.(popupSelector+',body > .grtrans-columns-panel'))dismissPopovers();
   });
   document.addEventListener('keydown',event=>{
     if(event.key!=='Escape')return;
-    const open=root.querySelector('details.grtrans-record-details[open],details.grtrans-row-more[open]');
+    const open=[...root.querySelectorAll(popupSelector)].find(panel=>panel.open);
     if(!open)return;
     event.preventDefault();event.stopPropagation();
     open.open=false;open.querySelector('summary')?.focus();
