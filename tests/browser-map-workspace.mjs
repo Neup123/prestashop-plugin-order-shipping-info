@@ -132,6 +132,29 @@ try {
     assert.equal(await firstDetails.getAttribute('open'),null,'Click outside closes Details');
   }
   assert.ok(await stage.locator('.grtrans-record-filters .material-icons').count()>0,'Sort icon visible');
+  const stationRows=stage.locator('[data-grtrans-entity="stations"] tr[data-grtrans-record-id]:not([hidden])');
+  const sort=stage.getByRole('combobox',{name:'Sort records'});
+  const rowIds=()=>stationRows.evaluateAll(rows=>rows.map(row=>row.dataset.grtransRecordId));
+  const originalIds=await rowIds();
+  assert.ok(originalIds.length>=2,'Keyboard regression requires multiple stations');
+  let reordered=false;
+  for(const value of ['name','recent','price']) {
+    await sort.selectOption(value);
+    const ids=await rowIds();
+    if(JSON.stringify(ids)===JSON.stringify(originalIds))continue;
+    reordered=true;
+    // Traverse every adjacent pair: at least one differs from the server order.
+    await stationRows.first().focus();
+    for(let i=1;i<ids.length;i++) {
+      await page.keyboard.press('ArrowDown');
+      assert.equal(await stationRows.nth(i).evaluate(row=>document.activeElement===row),true,'ArrowDown follows visible sorted rows');
+    }
+    await page.keyboard.press('ArrowUp');
+    assert.equal(await stationRows.nth(ids.length-2).evaluate(row=>document.activeElement===row),true,'ArrowUp follows visible sorted rows');
+    break;
+  }
+  assert.ok(reordered,'Seed stations must expose a different sort order');
+  await sort.selectOption('original');
   await stage.getByRole('button',{name:'Place station'}).click();
   assert.equal(await stage.locator('#grtrans-network-editor').isVisible(),true,
     'Place station opens the network form on demand');
