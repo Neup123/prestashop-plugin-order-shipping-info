@@ -150,12 +150,22 @@ try {
   const seamRing = page.locator('#grtrans-network-map path.grtrans-linked-island-perimeter');
   await seamRing.first().waitFor({ timeout: 20000 });
   assert.ok(await seamRing.count() >= 1, 'Panel H: rendered area has a linked island stitch');
-  const farSea = page.locator('#grtrans-network-map path.grtrans-source-patch.grtrans-tier-far[stroke="none"][fill-opacity="0.16"]');
-  const normalSea = page.locator('#grtrans-network-map path.grtrans-source-patch.grtrans-tier-normal[stroke="none"][fill-opacity="0.36"]');
+  // Select semantic coverage roles, not the renderer's cosmetic class names or
+  // exact opacity constants; still verify actual SVG visibility and hierarchy.
+  const farSea = page.locator('#grtrans-network-map path[data-grtrans-coverage-source="area"][data-grtrans-coverage-tier="far"][data-grtrans-coverage-geometry="radius"]');
+  const normalSea = page.locator('#grtrans-network-map path[data-grtrans-coverage-source="area"][data-grtrans-coverage-tier="normal"][data-grtrans-coverage-geometry="radius"]');
   await farSea.first().waitFor({ timeout: 20000 });
   await normalSea.first().waitFor({ timeout: 20000 });
   assert.ok(await farSea.count() >= 1 && await normalSea.count() >= 1,
-    'Panels H/I: unframed FAR area and stronger normal-area tier are rendered');
+    'Panels H/I: FAR and normal area layers are rendered using semantic source/tier hooks');
+  assert.equal(await farSea.first().getAttribute('stroke'), 'none', 'FAR sea has no hard coastline');
+  assert.equal(await normalSea.first().getAttribute('stroke'), 'none', 'Normal sea has no hard coastline');
+  const farOpacity = Number(await farSea.first().getAttribute('fill-opacity'));
+  const normalOpacity = Number(await normalSea.first().getAttribute('fill-opacity'));
+  assert.ok(Number.isFinite(farOpacity) && farOpacity > 0 && farOpacity < 1,
+    'FAR area is visibly translucent');
+  assert.ok(Number.isFinite(normalOpacity) && normalOpacity > farOpacity && normalOpacity <= 1,
+    'Normal area is visibly stronger than FAR while both remain actual fill layers');
 
   // Editing the SAME area leg must preserve NULL in Db::update as well.
   const areaRow = page.locator('#grtrans-network .grtrans-network-list[data-grtrans-entity="legs"] table')
