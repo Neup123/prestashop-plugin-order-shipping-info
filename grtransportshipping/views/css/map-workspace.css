@@ -27,12 +27,12 @@
 #grtrans-configure .grtrans-map-lists .table-responsive {overflow:auto;max-height:15rem!important}
 /* The station list's overflow:visible override defeats this scrollport, allowing rows to paint beneath the editor dock. */
 #grtrans-configure .grtrans-map-lists .grtrans-network-list[data-grtrans-entity="stations"] .table-responsive {overflow-x:auto;overflow-y:auto}
-#grtrans-configure .grtrans-map-lists .grtrans-compact-network[data-grtrans-entity="stations"] {min-width:44rem;max-width:none}
-#grtrans-configure .grtrans-map-lists .grtrans-compact-network[data-grtrans-entity="stations"] tr {min-width:44rem;grid-template-columns:2.75rem minmax(12rem,1fr) 5.5rem 13rem}
+#grtrans-configure .grtrans-map-lists .grtrans-compact-network[data-grtrans-entity="stations"] {min-width:25rem;max-width:100%}
+#grtrans-configure .grtrans-map-lists .grtrans-compact-network[data-grtrans-entity="stations"] tr {min-width:25rem;grid-template-columns:3.5rem minmax(0,1fr) 4.5rem 10.5rem}
 #grtrans-configure .grtrans-map-lists .grtrans-row-action-strip :is(a,button,summary) {scroll-margin-top:6rem}
 #grtrans-configure .grtrans-map-lists .grtrans-compact-network td,
 #grtrans-configure .grtrans-map-lists .grtrans-compact-network th {font-size:.86rem;padding:.3rem .4rem}
-#grtrans-configure .grtrans-map-lists .grtrans-record-details[open] .grtrans-record-facts {min-width:min(23rem,80vw);max-height:16rem}
+#grtrans-configure .grtrans-map-lists .grtrans-record-details[open] .grtrans-record-facts {max-height:16rem}
 #grtrans-configure .grtrans-map-context {border-top:1px solid var(--grtrans-map-edge);border-bottom:1px solid var(--grtrans-map-edge);padding:.6rem .2rem;margin:.7rem 0}
 #grtrans-configure .grtrans-map-context p {font-size:.88rem;margin:.35rem 0 .5rem}
 #grtrans-configure .grtrans-map-editor-dock[hidden] {display:none}
@@ -80,8 +80,8 @@
 #grtrans-configure .grtrans-inline-quantity .grtrans-inline-state[data-state=error] {color:#ac2925}
 #grtrans-configure .grtrans-inline-quantity .grtrans-inline-state[data-state=saved] {color:#186c3a}
 
-/* Every station header and action remains readable; the dock scrolls
-   horizontally instead of clipping a status switch or hiding columns. */
+/* Default station columns fit the normal dock. Narrow docks and custom
+   column sets retain horizontal scrolling rather than hiding controls. */
 #grtrans-configure .grtrans-map-lists .grtrans-compact-network[data-grtrans-entity="stations"] :is(th,td).grtrans-keep {
   white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:break-word;
 }
