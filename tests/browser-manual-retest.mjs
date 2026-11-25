@@ -96,7 +96,16 @@ try {
   await choice.click();
   assert.notEqual(await choice.isChecked(),original,'Chooser checkbox must be mouse-clickable');
   await choice.click();assert.equal(await choice.isChecked(),original);
-  await trigger.click();
+  await page.keyboard.press('Escape');
+  await chooser.waitFor({state:'detached'});
+  assert.equal(await trigger.evaluate(el=>document.activeElement===el),true,'Escape restores chooser trigger focus');
+  await trigger.click();await chooser.waitFor({state:'visible'});
+  await page.locator('#grtrans-routes .grtrans-record-details summary').first().click();
+  await chooser.waitFor({state:'detached'});
+  await trigger.click();await chooser.waitFor({state:'visible'});
+  assert.equal(await page.locator('#grtrans-routes details.grtrans-record-details[open]').count(),0,'Chooser excludes row Details');
+  await page.locator('#grtrans-routes .grtrans-record-count').click();
+  await chooser.waitFor({state:'detached'});
   confirm('N2 chooser');
 
   // N4: real seed terminal names survive unchanged save; price edit persists.
