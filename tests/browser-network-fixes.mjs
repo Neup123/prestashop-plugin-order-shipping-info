@@ -85,12 +85,24 @@ try {
   await checkMarkerAssets('#grtrans-network-map', 'admin station map');
   const stationRow = page.locator('#grtrans-network table').first().locator('tbody tr')
     .filter({ hasText: 'CI map source' });
+  // #130: inline saves must update the raw record used by the map editor,
+  // not just the rendered table and effective map data.
+  const nameCell=stationRow.locator('[data-grtrans-field="name"]');
+  await nameCell.click();
+  const inlineName=nameCell.locator('.grtrans-crm-inline input');
+  await inlineName.fill('CI map source renamed');
+  await inlineName.press('Enter');
+  await nameCell.locator('output[data-state="saved"]').waitFor({timeout:20000});
+  const rawName=await page.evaluate(id=>window.GrtransMapBridge.rawRecords.stations.find(s=>Number(s.id_station)===Number(id))?.name,source);
+  assert.equal(rawName,'CI map source renamed','Map editor must not reuse the stale pre-autosave name');
+  assert.equal(await nameCell.locator('[data-grtrans-cell-value]').textContent(),'CI map source renamed');
   await stationRow.getByRole('link', { name: 'Edit' }).click();
   let form = page.locator('#grtrans-network-editor form');
   assert.equal((await form.locator('button[name="grtrans_network_submit"]').innerText()).trim(),
     'Save changes','Editing a station in place must update the submit action');
   assert.equal(new URL(await form.getAttribute('action'),page.url()).searchParams.get('network_edit'),source,
     'Editing must bind the correct GET target as well as the hidden network_id');
+  assert.equal(await form.locator('input[name="name"]').inputValue(),'CI map source renamed','Inline save must persist into subsequent editor');
   await form.locator('input[name="address_text"]').fill('CI edited station');
   await form.getByRole('button', { name: 'Save changes' }).click();
   await page.getByText('Network record updated.', { exact: true }).first().waitFor({ timeout: 20000 });

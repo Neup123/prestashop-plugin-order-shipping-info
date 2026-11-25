@@ -58,7 +58,12 @@
       if(sw){sw.disabled=record.route_status==='draft';sw.checked=record.route_status==='available';}
     }else row.classList.toggle('grtrans-disabled-record',!active(record));
     row.dataset.grtransRecord=JSON.stringify(record);
-    const all=window.GrtransMapWorkspace?.bridge?.data?.[entity];
+    // Keep the raw persisted editor snapshot in sync, including nullable
+    // inherited radii. The map's effective geometry is a separate view.
+    const bridge=window.GrtransMapWorkspace?.bridge;
+    const raw=bridge?.rawRecords?.[entity]?.find(item=>Number(item[idField[entity]])===model.id);
+    if(raw)Object.assign(raw,record);
+    const all=bridge?.data?.[entity];
     const live=Array.isArray(all)?all.find(item=>Number(item[idField[entity]])===model.id):null;
     if(live)live[field]=value;
   };
