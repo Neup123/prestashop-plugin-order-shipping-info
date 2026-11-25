@@ -131,8 +131,25 @@ try {
   await stage.locator('#grtrans-network-editor input[name="name"]').fill('Not yet saved');
   assert.equal(await networkStatus.getAttribute('data-state'),'unsaved');
   assert.equal(await page.evaluate(()=>window.GrtransMapWorkspace.stage.id),'grtrans-map-workspace');
-  await stage.getByRole('button',{name:'Use map centre'}).click();
   const form=stage.locator('#grtrans-network-editor form');
+  // Real pointer click inside a saved station's coverage, not JS fire().
+  // At high zoom an interior point lies away from the station's icon.
+  const patchPoint=await page.evaluate(()=>{
+    const bridge=window.GrtransMapBridge;
+    const s=bridge.data.stations.find(s=>Number(s.inner_radius_km)>0);
+    if(!s)throw new Error('Expected a seeded coverage patch');
+    const target=[Number(s.lat)+0.001,Number(s.lng)+0.001];
+    bridge.map.setView(target,15,{animate:false});
+    const p=bridge.map.latLngToContainerPoint(target);
+    return {lat:target[0],lng:target[1],x:p.x,y:p.y};
+  });
+  await map.scrollIntoViewIfNeeded();
+  const mapBox=await map.boundingBox();
+  await page.mouse.click(mapBox.x+patchPoint.x,mapBox.y+patchPoint.y);
+  assert.ok(Math.abs(Number(await form.locator('input[name="lat"]').inputValue())-patchPoint.lat)<0.001,
+    'Placement must use actual coordinates even when a saved coverage patch receives the click');
+  assert.ok(Math.abs(Number(await form.locator('input[name="lng"]').inputValue())-patchPoint.lng)<0.001);
+  await stage.getByRole('button',{name:'Use map centre'}).click();
   assert.notEqual(await form.locator('input[name="lat"]').inputValue(),'');
   assert.notEqual(await form.locator('input[name="lng"]').inputValue(),'');
   assert.ok(await stage.locator('.grtrans-map-unsaved').isVisible());

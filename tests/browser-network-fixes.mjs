@@ -125,6 +125,10 @@ try {
       body:JSON.stringify({code:'Ok',routes:[{geometry:{coordinates:[
         [23.7,38.0],[23.725,38.025],[23.75,38.05]
       ]},distance:7400}]})}));
+  const originCount=await page.evaluate(()=>window.GrtransMapBridge.data.stations.filter(s=>Number(s.is_origin_hub)===1).length);
+  const pinCount=()=>page.locator('#grtrans-network-map img.leaflet-marker-icon').count();
+  assert.equal(await pinCount(),originCount,'Only dispatch origins receive permanent pins');
+  assert.equal(await page.locator('#grtrans-network-map img.grtrans-origin-marker').count(),originCount);
   await page.getByRole('button',{name:'Preview route',exact:true}).click();
   const phpPreviewRequest=page.waitForRequest(req =>
     req.method()==='POST' && req.postData()?.includes('preview_route'),{timeout:20000});
@@ -132,8 +136,11 @@ try {
     const map=window.GrtransMapBridge?.map;
     if (!map) throw new Error('No loaded live map bridge');
     map.fire('click',{latlng:window.L.latLng(38.0,23.7)});
-    map.fire('click',{latlng:window.L.latLng(38.05,23.75)});
   });
+  assert.equal(await pinCount(),originCount,'Choosing start adds no marker');
+  await page.evaluate(()=>window.GrtransMapBridge.map.fire('click',{latlng:window.L.latLng(38.05,23.75)}));
+  assert.equal(await pinCount(),originCount+1,'Only one extra destination marker');
+  assert.equal(await page.locator('#grtrans-network-map img.grtrans-preview-pin').count(),1);
   const signedRequest=await phpPreviewRequest;
   // FormData serializes as multipart/form-data, not URLSearchParams.
   // The existing PrestaShop administrator action URL itself carries a
