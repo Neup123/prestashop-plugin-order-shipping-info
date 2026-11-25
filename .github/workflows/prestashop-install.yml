@@ -1,5 +1,7 @@
 name: PrestaShop 9.2 install
 on:
+  push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
 permissions:
