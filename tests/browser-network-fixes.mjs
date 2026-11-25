@@ -115,6 +115,47 @@ try {
   assert.equal(await legRow.count(), 1);
   console.log('LIVE NETWORK FEEDBACK: stations and leg created, station edited with correct notices');
 
+  // #139/#140: use the REAL authenticated Configure endpoint rather than
+  // a JavaScript Dijkstra or distance-only decision. The test fills two map
+  // points through the live Leaflet event path and intercepts only the remote
+  // OSRM geometry request, never the signed local PHP selection.
+  await page.goto(adminUrl,{waitUntil:'domcontentloaded',timeout:45000});
+  await page.route('https://router.project-osrm.org/route/v1/driving/**',route =>
+    route.fulfill({status:200,contentType:'application/json',
+      body:JSON.stringify({code:'Ok',routes:[{geometry:{coordinates:[
+        [23.7,38.0],[23.725,38.025],[23.75,38.05]
+      ]},distance:7400}]})}));
+  await page.getByRole('button',{name:'Preview route',exact:true}).click();
+  const phpPreviewRequest=page.waitForRequest(req =>
+    req.method()==='POST' && req.postData()?.includes('preview_route'),{timeout:20000});
+  await page.evaluate(()=>{
+    const map=window.GrtransMapBridge?.map;
+    if (!map) throw new Error('No loaded live map bridge');
+    map.fire('click',{latlng:window.L.latLng(38.0,23.7)});
+    map.fire('click',{latlng:window.L.latLng(38.05,23.75)});
+  });
+  const signedRequest=await phpPreviewRequest;
+  // FormData serializes as multipart/form-data, not URLSearchParams.
+  // The existing PrestaShop administrator action URL itself carries a
+  // framework token; the preview form token is a separate POST field.
+  const requestBody=signedRequest.postData() || '';
+  assert.match(signedRequest.headers()['content-type'] || '',/multipart\/form-data/);
+  assert.match(requestBody,/name="token"\r?\n\r?\n[^\r\n]+/,
+    'Map preview sends its employee form token in the multipart POST body');
+  const previewUrl=new URL(signedRequest.url());
+  for(const key of ['grtrans_network_action','start_lat','start_lng','end_lat','end_lng']) {
+    assert.ok(!previewUrl.searchParams.has(key),
+      'Preview input '+key+' must not be serialized in the request URL');
+  }
+  await page.waitForFunction(() =>
+    /Route preview ready|Route preview unavailable/.test(
+      document.getElementById('grtrans-preview-status')?.textContent||''
+    ),{timeout:20000});
+  const livePreviewText=await page.locator('#grtrans-preview-status').innerText();
+  assert.match(livePreviewText,/Route preview ready.*server-selected/,
+    'Actual map preview must consume the PHP graph selection, not a browser fallback');
+  console.log('LIVE SERVER PREVIEW: authenticated POST, real PHP route choice and Leaflet drawing passed');
+
 
   // #103 Panel H: create a direct-area leg through the REAL admin form and
   // verify that its DB-backed map snapshot has SQL NULL (not numeric zero).

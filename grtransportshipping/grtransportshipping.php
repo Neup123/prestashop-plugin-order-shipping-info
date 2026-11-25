@@ -626,7 +626,7 @@ class Grtransportshipping extends CarrierModule
         // Short authenticated requests reuse the existing form handlers without
         // re-rendering the entire Configure screen after an autosaved setting.
         if (Tools::isSubmit('grtrans_autosave') && isset($_POST['grtrans_network_action'])
-            && in_array($_POST['grtrans_network_action'],['save_operational_settings','save_extended_notice'],true)) {
+            && in_array($_POST['grtrans_network_action'],['save_operational_settings','save_extended_notice','preview_route'],true)) {
             return GrTransportNetworkAdmin::handle($this);
         }
         $assets=$this->escape(_MODULE_DIR_.$this->name.'/views/');

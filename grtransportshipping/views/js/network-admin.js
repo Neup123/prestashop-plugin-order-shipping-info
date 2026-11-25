@@ -549,66 +549,41 @@
       + Math.cos(a[0] * r) * Math.cos(b[0] * r) * Math.sin(dLng / 2) ** 2;
     return 6371.0088 * 2 * Math.asin(Math.sqrt(Math.min(1, x)));
   };
-  // Preview is read-only. It uses the persisted directed leg/transfer graph
-  // without changing prices, quote eligibility, forms or stored network data.
-  const nearestCoveredStation = p => {
-    let best = null, bestKm = Infinity;
-    for (const station of data.stations) {
-      const km = distance([p.lat, p.lng], point(station));
-      if (km <= Number(station.outer_radius_km) && km < bestKm) {
-        best = station; bestKm = km;
-      }
+  // Preview point eligibility and route choice live in PHP. Authenticated
+  // Configure POSTs reuse the same employee/CSRF check as network edits.
+  // Raw graph prices, radii, client-side shortest paths and hidden browser
+  // assumptions must never decide whether a map route is available.
+  const serverPreview = async (start, end) => {
+    const token=linkForm?.querySelector('[name="token"]')?.value;
+    if (!token || !linkForm.action) throw new Error('Admin session unavailable. Reload Configure.');
+    const body=new FormData();
+    body.set('grtrans_autosave','1');
+    body.set('grtrans_network_action','preview_route');
+    body.set('token',token);
+    body.set('start_lat',start.lat);
+    body.set('start_lng',start.lng);
+    body.set('end_lat',end.lat);
+    body.set('end_lng',end.lng);
+    // Apply the same explicit simulator parcel/cart context when present.
+    // No guessed product dimensions, stock or shipping authorization.
+    const simulator=document.querySelector('#grtrans-simulator form');
+    for (const key of ['cart_id','weight','volume']) {
+      const value=simulator?.querySelector('[name="'+key+'"]')?.value;
+      if (value !== undefined && value !== '') body.set(key,value);
     }
-    return best;
-  };
-  const previewPath = (start, finish) => {
-    const adjacency = new Map();
-    const add = edge => {
-      if (!adjacency.has(edge.from)) adjacency.set(edge.from, []);
-      adjacency.get(edge.from).push(edge);
-    };
-    for (const leg of data.legs) {
-      const from = Number(leg.from_station_id), to = Number(leg.to_station_id);
-      if (!stations.has(from) || !stations.has(to) || Number(leg.price) < 0) continue;
-      add({from, to, mode: leg.mode, price: Number(leg.price)});
-      if (Number(leg.bidirectional) === 1) {
-        add({from: to, to: from, mode: leg.mode, price: Number(leg.price)});
-      }
+    const response=await fetch(linkForm.action,{
+      method:'POST',body,credentials:'same-origin',
+      headers:{'X-Requested-With':'XMLHttpRequest'}
+    });
+    if (!response.ok) throw new Error('Admin preview request failed (HTTP '+response.status+').');
+    const html=new DOMParser().parseFromString(await response.text(),'text/html');
+    const node=html.querySelector('[data-grtrans-preview-result]');
+    if (!node) throw new Error('Preview response unavailable. Reload Configure and try again.');
+    const result=JSON.parse(node.getAttribute('data-grtrans-preview-result'));
+    if (result?.status!=='ok' || result.source!=='server') {
+      throw new Error(result?.message || 'No server-validated preview is available.');
     }
-    for (const transfer of data.transfers) {
-      const from = Number(transfer.from_station_id), to = Number(transfer.to_station_id);
-      if (!stations.has(from) || !stations.has(to) || Number(transfer.price) < 0) continue;
-      add({from, to, mode: transfer.connection_type, price: Number(transfer.price)});
-    }
-    const cost = new Map([[Number(start.id_station), 0]]);
-    const parent = new Map();
-    const pending = new Set(stations.keys());
-    while (pending.size) {
-      let current = null, best = Infinity;
-      for (const id of pending) {
-        if ((cost.get(id) ?? Infinity) < best) {
-          current = id; best = cost.get(id);
-        }
-      }
-      if (current === null || current === Number(finish.id_station)) break;
-      pending.delete(current);
-      for (const edge of adjacency.get(current) || []) {
-        const candidate = best + edge.price;
-        if (pending.has(edge.to) && candidate + 0.000001 < (cost.get(edge.to) ?? Infinity)) {
-          cost.set(edge.to, candidate); parent.set(edge.to, edge);
-        }
-      }
-    }
-    const steps = [];
-    let cursor = Number(finish.id_station);
-    while (cursor !== Number(start.id_station)) {
-      const edge = parent.get(cursor);
-      if (!edge) throw new Error('No directed network connection between the selected coverage zones.');
-      steps.unshift(edge);
-      cursor = edge.from;
-      if (steps.length > stations.size) throw new Error('Invalid network route cycle.');
-    }
-    return steps;
+    return result;
   };
   const roadRoute = async (a, b) => {
     const coords = p => Number(p.lng).toFixed(7) + ',' + Number(p.lat).toFixed(7);
@@ -643,10 +618,14 @@
   };
   async function renderPreview(generation) {
     const [a, b] = previewPoints;
-    const from = nearestCoveredStation(a), to = nearestCoveredStation(b);
-    if (!from || !to) throw new Error(
-      'A pin is outside every station coverage radius. No network route can be previewed.');
-    const path = previewPath(from, to);
+    const selection = await serverPreview(a,b);
+    if (generation !== previewGeneration) return;
+    const from=stations.get(Number(selection.origin_station_id));
+    const to=stations.get(Number(selection.destination_station_id));
+    if (!from || !to || !Array.isArray(selection.steps)) {
+      throw new Error('Server preview refers to unavailable station geometry.');
+    }
+    const path=selection.steps;
     const pieces = [];
     const append = async (p, q, mode) => {
       if (distance([p.lat,p.lng],[q.lat,q.lng]) < 0.005) return;
@@ -675,9 +654,11 @@
     if (pieces.length) map.fitBounds(pieces.flatMap(piece => piece.points), {
       padding: [25,25], maxZoom: 12
     });
-    previewMessage('Route preview ready: ' + path.length + ' stored network legs. '
-      + 'Roads: OSRM driving geometry; ferries: direct port-to-port segments. '
-      + 'This is not a timetable or pedestrian itinerary.');
+    previewMessage('Route preview ready: ' + path.length + ' server-selected steps; '
+      + 'comparison cost ' + fmt(selection.total) + ' EUR'
+      + (selection.estimate ? ' (upper estimate; not an exact charge)' : '') + '. '
+      + 'Road geometry: OSRM; ferries: direct port-to-port. '
+      + 'Station-to-station planning only, not a checkout quote or timetable.');
   }
   function addPreviewPin(latlng) {
     if (!previewSelecting || previewPoints.length >= 2) return;

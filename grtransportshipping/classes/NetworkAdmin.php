@@ -3,6 +3,7 @@ require_once __DIR__ . '/NetworkApi.php';
 require_once __DIR__ . '/NetworkGraph.php';
 require_once __DIR__ . '/NetworkFreshness.php';
 require_once __DIR__ . '/NetworkResolution.php';
+require_once __DIR__ . '/NetworkPreview.php';
 
 /** Operator interface over the exact NetworkRepository/NetworkApi contract. */
 final class GrTransportNetworkAdmin
@@ -26,6 +27,12 @@ return '<div class="alert alert-danger" data-grtrans-autosave-result="error">'
         }
         try {
             $action=(string)$_POST['grtrans_network_action'];
+            if ($action==='preview_route') {
+                $result=GrTransportNetworkPreview::route(
+                    GrTransportNetworkRepository::snapshot(),$_POST
+                );
+                return self::previewPayload($result);
+            }
             if ($action==='save_operational_settings') {
                 GrTransportNetworkSettings::save($_POST);
                 return '<div class="alert alert-success" data-grtrans-autosave-result="ok">'
@@ -112,6 +119,14 @@ return '<div class="alert alert-danger" data-grtrans-autosave-result="error">'
             return '<div class="alert alert-success" role="status"><strong>'
                 .self::esc($module->l($message)).'</strong> '.self::esc($module->l($detail)).'</div>';
         } catch (Throwable $error) {
+            if (isset($action) && $action==='preview_route') {
+                return self::previewPayload([
+                    'status'=>'error',
+                    'message'=>$error instanceof InvalidArgumentException
+                        ? $error->getMessage()
+                        : 'Preview unavailable. Retry with a valid cart and covered points.',
+                ]);
+            }
             if (isset($action) && $action==='save' && isset($entity) &&
                 in_array($entity,GrTransportNetworkFields::ENTITIES,true)) {
                 self::$failedEntity=$entity;
@@ -129,6 +144,14 @@ return '<div class="alert alert-danger" data-grtrans-autosave-result="error">'
         }
     }
 
+
+    /** A safe, machine-readable fragment within the authenticated Configure response. */
+    private static function previewPayload(array $result): string
+    {
+        return '<output data-grtrans-preview-result="'
+            .self::esc(json_encode($result,JSON_THROW_ON_ERROR
+                | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)).'"></output>';
+    }
 
     /** Commit the response as a GET; the administrator token was validated above. */
     private static function redirectAfterCreate($module,string $entity): void
