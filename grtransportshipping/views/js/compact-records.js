@@ -375,7 +375,7 @@
     const caption='Add '+(TITLES[entity]||entity).toLowerCase().replace(/s$/,'');
     add.title=caption;add.setAttribute('aria-label',caption);
     const addIcon=el('span','material-icons','add');addIcon.setAttribute('aria-hidden','true');
-    add.append(addIcon,el('span','',caption));
+    add.append(addIcon);
     const url=new URL(location.href);url.searchParams.set('network_entity',entity);url.searchParams.delete('network_edit');
     add.href=url.pathname+url.search+'#grtrans-network-editor';selector.append(add);
     const optionSets=[];

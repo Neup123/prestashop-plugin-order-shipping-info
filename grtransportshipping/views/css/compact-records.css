@@ -37,7 +37,7 @@
 #grtrans-configure .grtrans-compact-network[data-grtrans-entity="stations"] tbody {display:block;width:100%;min-width:0}
 #grtrans-configure .grtrans-compact-network[data-grtrans-entity="stations"] tr {
   display:grid;
-  grid-template-columns:2.25rem minmax(0,1fr) 4.5rem 8.75rem;
+  grid-template-columns:3.5rem minmax(0,1fr) 4.5rem 10.5rem;
   grid-template-rows:auto auto;
   column-gap:.2rem;
   align-items:center;
@@ -58,8 +58,8 @@
 #grtrans-configure .grtrans-compact-network[data-grtrans-entity="stations"] :is(th,td):nth-child(2) {grid-column:2 / 4;grid-row:1}
 #grtrans-configure .grtrans-compact-network[data-grtrans-entity="stations"] :is(th,td):nth-child(3) {grid-column:1;grid-row:2}
 #grtrans-configure .grtrans-compact-network[data-grtrans-entity="stations"] :is(th,td):nth-child(4) {grid-column:2;grid-row:2}
-#grtrans-configure .grtrans-compact-network[data-grtrans-entity="stations"] :is(th,td):nth-child(9) {grid-column:4;grid-row:2}
-#grtrans-configure .grtrans-compact-network[data-grtrans-entity="stations"] :is(th,td):nth-child(13) {grid-column:3;grid-row:2}
+#grtrans-configure .grtrans-compact-network[data-grtrans-entity="stations"] :is(th,td):nth-child(9) {grid-column:3;grid-row:2}
+#grtrans-configure .grtrans-compact-network[data-grtrans-entity="stations"] :is(th,td):nth-child(14) {grid-column:4;grid-row:2}
 #grtrans-configure .grtrans-compact-network[data-grtrans-entity="stations"] :is(th,td):last-child {
   grid-column:4;
   grid-row:1;

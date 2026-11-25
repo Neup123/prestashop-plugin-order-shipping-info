@@ -5,7 +5,7 @@ const user=process.env.TEST_ADMIN_EMAIL;
 const password=process.env.TEST_ADMIN_PASSWORD;
 if(!adminUrl||!user||!password)throw new Error('Missing ephemeral browser test configuration');
 const browser=await chromium.launch({headless:true});
-const page=await browser.newPage({viewport:{width:1440,height:1000}});
+const page=await browser.newPage({viewport:{width:1600,height:1000}});
 page.on('pageerror',error=>{
   console.error('[map-workspace pageerror]',error.message);
   console.error(error.stack||String(error));
@@ -92,6 +92,15 @@ try {
   await page.waitForURL(/network_entity=stations/,{waitUntil:'domcontentloaded',timeout:20000});
   await waitForWorkspace('stations',before);
   const firstRow=stage.locator('[data-grtrans-entity="stations"] tr[data-grtrans-record-id]').first();
+  const visibleActions=await firstRow.evaluate(row=>{
+    const port=row.closest('.table-responsive');
+    const strip=row.querySelector('.grtrans-row-action-strip');
+    if(!port||!strip)return null;
+    const bounds=port.getBoundingClientRect();
+    const actions=strip.getBoundingClientRect();
+    return {left:actions.left-bounds.left,right:bounds.right-actions.right};
+  });
+  assert.ok(visibleActions&&visibleActions.left>=-2&&visibleActions.right>=-2,'Default station controls fit the normal map dock: '+JSON.stringify(visibleActions));
   const checkbox=firstRow.locator('input[type=checkbox][data-grtrans-select-record]');
   await checkbox.check();
   assert.equal(await checkbox.isChecked(),true);
