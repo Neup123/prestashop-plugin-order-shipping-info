@@ -2,8 +2,25 @@
 require_once __DIR__ . '/bootstrap.php';
 class Configuration {
     public static $values=[];
+    public static $failOnceKey=null;
+    public static $throwOnceKey=null;
+    public static $failRestoreKey=null;
+    public static $failRestoreValue=null;
     public static function get($key) { return self::$values[$key] ?? false; }
-    public static function updateValue($key,$value) { self::$values[$key]=$value; return true; }
+    public static function updateValue($key,$value) {
+        if (self::$failRestoreKey===$key && self::$failRestoreValue===(string)$value) return false;
+        // Inject failure after the underlying configuration has changed.
+        self::$values[$key]=$value;
+        if (self::$failOnceKey===$key) {
+            self::$failOnceKey=null;
+            return false;
+        }
+        if (self::$throwOnceKey===$key) {
+            self::$throwOnceKey=null;
+            throw new RuntimeException('Injected configuration I/O exception');
+        }
+        return true;
+    }
 }
 require_once __DIR__ . '/../grtransportshipping/classes/NetworkSettings.php';
 require_once __DIR__ . '/../grtransportshipping/classes/QuoteCheck.php';
@@ -103,7 +120,66 @@ testAssert(GrTransportNetworkGraph::candidates([$station],$north(7),23.7)[0]['ri
 testAssert(GrTransportNetworkSettings::effectiveOuterKm(null,4)===4.0,
     'Inherited FAR extent cannot remove normal reach');
 
-echo "Operational defaults and runtime FAR radius tests passed\\n";
+// #138: a failure on any of the 15 independent writes must restore the
+// previously saved group, including when a failing call already mutated.
+$baseline=Configuration::$values;
+$changed=$settings;
+$changed['pin_radius_km']=15;
+$changed['station_outer_km']=7;
+$changed['max_coverage_km']=800;
+$changed['max_freight_eur']=88000;
+$assertRestored=static function (string $label) use ($baseline): void {
+    testAssert(Configuration::$values===$baseline,$label.' restores all original settings');
+};
+foreach (['GRTRANS_PIN_RADIUS_KM','GRTRANS_STATION_OUTER_KM','GRTRANS_MAX_FREIGHT_EUR'] as $failureKey) {
+    Configuration::$failOnceKey=$failureKey;
+    try {
+        GrTransportNetworkSettings::save($changed);
+        throw new RuntimeException('Expected injected failure did not reach save');
+    } catch (RuntimeException $e) {
+        testAssert(str_contains($e->getMessage(),'previous values restored'),
+            'Failed write acknowledges rollback: '.$failureKey);
+    }
+    $assertRestored('Failed '.$failureKey);
+}
+Configuration::$throwOnceKey='GRTRANS_STATION_OUTER_KM';
+try {
+    GrTransportNetworkSettings::save($changed);
+    throw new RuntimeException('Expected injected exception');
+} catch (RuntimeException $e) {
+    testAssert(str_contains($e->getMessage(),'previous values restored'),
+        'Thrown write must compensate previous successful writes');
+}
+$assertRestored('Thrown write');
+// A compensation failure is an explicitly reported partial state, not success.
+Configuration::$failOnceKey='GRTRANS_STATION_OUTER_KM';
+Configuration::$failRestoreKey='GRTRANS_PIN_RADIUS_KM';
+Configuration::$failRestoreValue=(string)$baseline['GRTRANS_PIN_RADIUS_KM'];
+try {
+    GrTransportNetworkSettings::save($changed);
+    throw new RuntimeException('Expected injected rollback failure');
+} catch (RuntimeException $e) {
+    testAssert(str_contains($e->getMessage(),'rollback incomplete')
+        && str_contains($e->getMessage(),'pin_radius_km')
+        && str_contains($e->getMessage(),'Reload Configure'),
+        'Partial rollback surfaces exact field and safe recovery');
+}
+Configuration::$failRestoreKey=null;
+Configuration::$failRestoreValue=null;
+Configuration::$values=$baseline;
+unset(Configuration::$values['GRTRANS_PIN_RADIUS_KM']);
+Configuration::$failOnceKey='GRTRANS_STATION_OUTER_KM';
+try {
+    GrTransportNetworkSettings::save($changed);
+    throw new RuntimeException('Expected failure with missing legacy key');
+} catch (RuntimeException $e) {
+    testAssert(str_contains($e->getMessage(),'previous values restored'),
+        'Absent key is restored to the effective default without global delete');
+}
+testAssert(GrTransportNetworkSettings::get('pin_radius_km')===25.0,
+    'Absent setting still has effective safe default after failed update');
+Configuration::$values=$baseline;
+echo "Operational defaults, checked rollback and runtime FAR radius tests passed\n";
 
 
  // #141: exercise persisted rows, not only the configuration accessor.
