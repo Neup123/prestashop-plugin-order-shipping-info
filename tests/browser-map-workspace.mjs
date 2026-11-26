@@ -62,8 +62,19 @@ try {
   assert.ok(height>=600,'Map must use a substantial viewport-relative height: '+height);
   assert.equal(await stage.locator('section.grtrans-network-list').count(),1,'Only the active server-rendered list exists');
   assert.equal(await stage.locator('section.grtrans-network-list:not([hidden])').count(),1);
-  assert.match(await stage.locator('[data-grtrans-entity="stations"] thead').innerText(),/Can dispatch parcels/);
-  assert.doesNotMatch(await stage.locator('[data-grtrans-entity="stations"] thead').innerText(),/is origin hub/);
+  // Fixed-width station rows show concise column labels, while the
+  // full names stay available as native tooltips and accessible labels.
+  const stationHead=stage.locator('[data-grtrans-entity="stations"] thead');
+  assert.match(await stationHead.innerText(),/Origin/);
+  assert.doesNotMatch(await stationHead.innerText(),/Can dispatch parcels|is origin hub/);
+  const stationIdHeader=stationHead.locator('th').first();
+  assert.equal((await stationIdHeader.innerText()).trim(),'No.');
+  assert.equal(await stationIdHeader.getAttribute('title'),'Record number');
+  assert.equal(await stationIdHeader.getAttribute('aria-label'),'Record number');
+  const originHeader=stationHead.locator('th').nth(8);
+  assert.equal((await originHeader.innerText()).trim(),'Origin');
+  assert.equal(await originHeader.getAttribute('title'),'Can dispatch parcels');
+  assert.equal(await originHeader.getAttribute('aria-label'),'Can dispatch parcels');
   const before=await page.evaluate(()=>{
     const bridge=window.GrtransMapBridge;
     return {id:bridge.map._leaflet_id,lat:bridge.map.getCenter().lat,lng:bridge.map.getCenter().lng,zoom:bridge.map.getZoom()};

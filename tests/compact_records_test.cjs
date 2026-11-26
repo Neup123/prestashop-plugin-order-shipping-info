@@ -22,6 +22,9 @@ assert.ok(GROUPS.legs[0][1].includes('stop_order'),'Stop order is an actual netw
 assert.deepEqual(KEEP.routes,[1,2,3,4,5,7,9,10,12]);
 assert.ok(KEEP.stations.includes(15) && KEEP.stations.includes(1));
 assert.equal(FIELDS.active,'Enabled');
+// Narrow station-list headings must not wrap one word into many lines.
+// The full semantic labels must remain the accessible name and tooltip.
+
 assert.ok(GROUPS.stations.some(([,members])=>members.includes('active')));
 assert.ok(KEEP.stations.length<14 && KEEP.transfers.length<8);
 assert.equal(FIELDS.area_lat,'Area latitude');
@@ -29,6 +32,20 @@ assert.equal(SIZE.area_lat,'s');
 assert.ok(GROUPS.branch_stock.some(([name,fields])=>fields.includes('id_product_attribute')));
 assert.deepEqual(GROUPS.legs.map(([title])=>title),['Connection','Price','Timing','Direct service area','Advanced']);
 const source=readFileSync(require.resolve('../grtransportshipping/views/js/compact-records.js'),'utf8');
+for (const [key, short] of Object.entries({id_station:'No.',type:'Type',address_text:'Address',is_origin_hub:'Origin',outer_radius_km:'FAR reach'})) {
+  assert.ok(source.includes(key + ": '" + short + "'"),'Compact station heading is missing: '+key);
+}
+// Server-generated table headers can already be human labels rather than field keys.
+for (const [label, short] of Object.entries({'Record number':'No.','Station type':'Type','Street address':'Address','Can dispatch parcels':'Origin','Extended service reach':'FAR reach'})) {
+  assert.ok(source.includes("'" + label + "': '" + short + "'"), 'Server label alias missing: '+label);
+}
+assert.match(source,/STATION_HEADER_SHORT\[fullLabel\]/,
+  'The compact header must resolve a server-supplied full label');
+assert.match(source,/th\.setAttribute\('aria-label',fullLabel\)/,
+  'Station heading must preserve its full accessible name');
+assert.match(source,/th\.title=fullLabel/,
+  'Station heading must expose the original label on hover');
+
 const styles=readFileSync(require.resolve('../grtransportshipping/views/css/compact-records.css'),'utf8');
 const workspace=readFileSync(require.resolve('../grtransportshipping/views/js/map-workspace.js'),'utf8');
 const contextStyles=readFileSync(require.resolve('../grtransportshipping/views/css/map-context-panel.css'),'utf8');

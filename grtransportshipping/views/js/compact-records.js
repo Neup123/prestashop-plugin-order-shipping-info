@@ -7,6 +7,16 @@
   const KEEP = {routes:[1,2,3,4,5,7,9,10,12],
     stations:[1,2,3,4,9,14,15], legs:[1,2,3,4,5,6,28,31],
     transfers:[1,2,3,4,5,8,9], branches:[1,2,3,5], branch_stock:[1,2,3,4,5,7]};
+  // Full labels remain in FIELDS for accessibility and column chooser.
+  // The fixed-width station sidebar needs concise visible headings.
+  const STATION_HEADER_SHORT = {
+    id_station: 'No.', type: 'Type', address_text: 'Address',
+    is_origin_hub: 'Origin', outer_radius_km: 'FAR reach',
+    // The server may emit human labels instead of schema keys.
+    'Record number': 'No.', 'Station type': 'Type',
+    'Street address': 'Address', 'Can dispatch parcels': 'Origin',
+    'Extended service reach': 'FAR reach'
+  };
   const FIELDS = {
     id_station:'Record number', id_leg:'Record number', id_transfer:'Record number',
     id_branch:'Dispatch location number', id_branch_stock:'Stock entry number',
@@ -327,8 +337,14 @@
       const old=text(th);const key=old.toLowerCase().replace(/\s+/g,'_');
       th.textContent=FIELDS[old] || FIELDS[key] || old.replace(/_/g,' ');
       if(keep.includes(i+1)) th.classList.add('grtrans-keep');
-      if(entity==='stations' && keep.includes(i+1) && i+1!==headings.length)
-        th.title=th.textContent;
+      if(entity==='stations' && keep.includes(i+1) && i+1!==headings.length) {
+        // Preserve the full semantic name for screen readers and hover,
+        // even when the compact two-line grid shows a shorter heading.
+        const fullLabel=th.textContent;
+        th.title=fullLabel;
+        th.setAttribute('aria-label',fullLabel);
+        th.textContent=STATION_HEADER_SHORT[old] || STATION_HEADER_SHORT[key] || STATION_HEADER_SHORT[fullLabel] || fullLabel;
+      }
     });
     const records=rows.map(row=>{
       [...row.cells].forEach((cell,i)=>{
