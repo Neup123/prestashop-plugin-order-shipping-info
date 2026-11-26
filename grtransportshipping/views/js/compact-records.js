@@ -11,7 +11,11 @@
   // The fixed-width station sidebar needs concise visible headings.
   const STATION_HEADER_SHORT = {
     id_station: 'No.', type: 'Type', address_text: 'Address',
-    is_origin_hub: 'Origin', outer_radius_km: 'FAR reach'
+    is_origin_hub: 'Origin', outer_radius_km: 'FAR reach',
+    // The server may emit human labels instead of schema keys.
+    'Record number': 'No.', 'Station type': 'Type',
+    'Street address': 'Address', 'Can dispatch parcels': 'Origin',
+    'Extended service reach': 'FAR reach'
   };
   const FIELDS = {
     id_station:'Record number', id_leg:'Record number', id_transfer:'Record number',
@@ -339,7 +343,7 @@
         const fullLabel=th.textContent;
         th.title=fullLabel;
         th.setAttribute('aria-label',fullLabel);
-        th.textContent=STATION_HEADER_SHORT[old] || STATION_HEADER_SHORT[key] || fullLabel;
+        th.textContent=STATION_HEADER_SHORT[old] || STATION_HEADER_SHORT[key] || STATION_HEADER_SHORT[fullLabel] || fullLabel;
       }
     });
     const records=rows.map(row=>{
