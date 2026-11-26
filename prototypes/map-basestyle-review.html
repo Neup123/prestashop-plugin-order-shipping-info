@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Map base style review - issue 132</title><link rel="stylesheet" href="../grtransportshipping/views/vendor/leaflet/leaflet.css">
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f2f5f8;color:#213246;font:15px/1.45 system-ui,sans-serif}
+header{padding:16px 20px;background:#fff;border-bottom:1px solid #ced9e3}h1{font-size:21px;margin:0}h2{font-size:16px;margin:0 0 12px}
+small{color:#58687a}main{display:grid;grid-template-columns:310px minmax(0,1fr);min-height:calc(100vh - 85px)}
+aside{background:#fff;border-right:1px solid #ced9e3;padding:16px;display:grid;gap:16px;align-content:start}
+fieldset{border:1px solid #ced9e3;border-radius:9px;padding:12px}legend{padding:0 6px;font-weight:650}
+.option{display:flex;gap:9px;margin:10px 0}.option label{cursor:pointer}.option input{accent-color:#1b5d94}
+button,input{font:inherit}button{padding:9px 11px;border-radius:7px;background:white;border:1px solid #b8c6d4;cursor:pointer}
+button:focus-visible,input:focus-visible{outline:3px solid #216fba;outline-offset:2px}
+input[type=password]{width:100%;padding:10px;border-radius:7px;border:1px solid #9eacbb}
+#status{background:#edf5fc;padding:10px;border-radius:7px;min-height:44px}
+#map{width:100%;height:calc(100vh - 85px);min-height:460px}.maparea{position:relative;min-width:0}
+#maptitle{position:absolute;z-index:500;top:15px;left:50%;transform:translateX(-50%);border-radius:7px;padding:8px 13px;background:#fffE;box-shadow:0 2px 6px #0002;white-space:nowrap}
+.controls{display:flex;gap:7px;flex-wrap:wrap}p{margin:9px 0}
+@media(max-width:820px){main{grid-template-columns:1fr}aside{border-right:0;border-bottom:1px solid #ced9e3}#map{height:65vh;min-height:380px}}
+</style></head>
+<body><header><h1>Transport map · base style review</h1><small>Interactive prototype for #132 — no merchant data, no saves, no production changes.</small></header>
+<main><aside><section><h2>Choose a background</h2><p>Switch styles while keeping the same sample stations and service coverage.</p>
+<fieldset><legend>Map style</legend>
+<div class="option"><input type="radio" name="style" id="osm" value="osm" checked><label for="osm"><strong>Current OpenStreetMap</strong><br><small>Reference: mountain-peak and purple boundary symbols.</small></label></div>
+<div class="option"><input type="radio" name="style" id="light" value="light"><label for="light"><strong>CARTO Positron</strong><br><small>Quieter style with place names. API key required.</small></label></div>
+<div class="option"><input type="radio" name="style" id="nolabels" value="nolabels"><label for="nolabels"><strong>CARTO Positron (no labels)</strong><br><small>Minimal background. API key required.</small></label></div>
+</fieldset></section>
+<section><label for="cartokey"><strong>Optional CARTO basemap key</strong></label><input type="password" id="cartokey" autocomplete="off" placeholder="Local preview only">
+<small>The key stays in this page's memory; selecting CARTO sends it in tile URLs to CARTO. Do not enter other credentials. <a href="https://carto.com/basemaps/apikey/" target="_blank" rel="noopener noreferrer">Official terms and key</a>.</small></section>
+<div id="status" role="status" aria-live="polite">Current map selected.</div>
+<fieldset><legend>Review location</legend><div class="controls"><button type="button" id="athens">Athens</button><button type="button" id="islands">Islands</button><button type="button" id="country">Greece</button></div></fieldset>
+<section><h2>Same illustrative overlays</h2><p>Blue: bus coverage. Teal: ferry coverage. Purple: airport coverage. No real routes, prices, or operational promises.</p><small>Review at phone and desktop widths; this prototype requires the repository's bundled Leaflet files and network access for tiles. Compare borders/peaks and overlay readability before choosing a production provider.</small></section>
+</aside><div class="maparea"><div id="maptitle">OpenStreetMap Standard</div><div id="map" role="region" aria-label="Interactive base map review"></div></div></main>
+<script src="../grtransportshipping/views/vendor/leaflet/leaflet.js"></script>
+<script>
+(function(){
+'use strict';
+const status=document.getElementById('status');
+if(!window.L){status.textContent='Leaflet assets not available; serve the prototype from the repository directory.';return;}
+const map=L.map('map').setView([38.5,24],6);let tiles;
+const configs={
+osm:{name:'OpenStreetMap Standard',url:'https://tile.openstreetmap.org/{z}/{x}/{y}.png',attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>'},
+light:{name:'CARTO Positron',url:'https://basemaps.cartocdn.com/rastertiles/light_all/{z}/{x}/{y}.png',attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>, &copy; <a href="https://carto.com/attribution/">CARTO</a>'},
+nolabels:{name:'CARTO Positron (no labels)',url:'https://basemaps.cartocdn.com/rastertiles/light_nolabels/{z}/{x}/{y}.png',attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>, &copy; <a href="https://carto.com/attribution/">CARTO</a>'}
+};
+function select(style){
+const cfg=configs[style];let url=cfg.url;
+if(style!=='osm'){const key=document.getElementById('cartokey').value.trim();if(!key){status.textContent='A CARTO basemap key is required. Showing the original map instead.';document.getElementById('osm').checked=true;return select('osm');}url+='?key='+encodeURIComponent(key);}
+if(tiles)map.removeLayer(tiles);
+tiles=L.tileLayer(url,{maxZoom:19,attribution:cfg.attribution}).addTo(map);
+tiles.on('tileerror',()=>{status.textContent='Tile loading failed: check provider access, quota and network.';});
+document.getElementById('maptitle').textContent=cfg.name;
+status.textContent=cfg.name+' selected. Verify the appearance at different zoom levels.';
+}
+document.querySelectorAll('input[name="style"]').forEach(el=>el.addEventListener('change',()=>{if(el.checked)select(el.value);}));
+document.getElementById('cartokey').addEventListener('change',()=>{const style=document.querySelector('input[name="style"]:checked').value;if(style!=='osm')select(style);});
+const stations=[
+[37.98,23.72,'Sample Athens bus hub','#2473b6',23000],
+[37.94,23.64,'Sample Piraeus ferry hub','#168ca2',17000],
+[37.94,23.95,'Sample airport','#845bb7',20000],
+[36.45,25.41,'Sample Santorini ferry hub','#168ca2',14000]
+];
+stations.forEach(([lat,lng,label,color,radius])=>{
+L.circle([lat,lng],{radius:radius*1.6,color,weight:1,fillOpacity:.09,interactive:false}).addTo(map);
+L.circle([lat,lng],{radius,color,weight:1,fillOpacity:.29,interactive:false}).addTo(map);
+L.circleMarker([lat,lng],{radius:7,color:'#fff',weight:2,fillColor:color,fillOpacity:1}).addTo(map).bindTooltip(label);
+});
+L.polyline([[37.98,23.72],[37.94,23.64]],{color:'#2473b6',weight:3,dashArray:'6 4'}).addTo(map);
+L.polyline([[37.94,23.64],[36.45,25.41]],{color:'#168ca2',weight:3,dashArray:'8 6'}).addTo(map);
+document.getElementById('athens').addEventListener('click',()=>map.setView([37.98,23.75],10));
+document.getElementById('islands').addEventListener('click',()=>map.setView([37.2,25],8));
+document.getElementById('country').addEventListener('click',()=>map.setView([38.5,24],6));
+select('osm');
+})();
+</script></body></html>
