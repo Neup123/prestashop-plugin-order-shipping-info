@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Contextual transport map editor — clickable prototype #131</title>
+<link rel="stylesheet" href="../grtransportshipping/views/vendor/leaflet/leaflet.css">
+<style>
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 system-ui,Arial,sans-serif;color:#21344d;background:#f5f7fa}
+header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;padding:14px 18px;background:white;border-bottom:1px solid #d2dce5}
+h1{font-size:19px;margin:0}h2{font-size:17px;margin:0 0 8px}h3{font-size:14px;margin:10px 0}
+small{color:#596b7c}.tag{display:inline-block;padding:2px 9px;border-radius:16px;background:#eef4fa;font-size:12px}
+main{display:grid;grid-template-columns:minmax(0,1fr) 350px;height:calc(100vh - 75px);min-height:550px}
+#map{height:100%;width:100%;background:#e9edf2}.map-shell{min-width:0;position:relative}
+.toolbar{position:absolute;z-index:500;top:12px;left:12px;display:flex;gap:6px;flex-wrap:wrap;max-width:calc(100% - 30px)}
+button{border:1px solid #b6c5d6;background:#fff;color:#21466a;border-radius:7px;padding:8px 10px;font:inherit;cursor:pointer}
+button:hover{background:#eef5fb}button[aria-pressed=true]{background:#215a92;color:white}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid #1e68af;outline-offset:2px}
+aside{background:#fff;border-left:1px solid #d2dce5;overflow:auto;padding:16px}
+aside>div[hidden]{display:none}fieldset{border:1px solid #d0dbe5;border-radius:8px;padding:11px;margin:10px 0}
+legend{padding:0 6px;font-weight:650}label{cursor:pointer}input[type=text],input[type=number],select{padding:9px;border:1px solid #b5c4d2;border-radius:7px;width:100%;font:inherit}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.station{display:grid;grid-template-columns:22px 20px 1fr auto;align-items:center;gap:5px;padding:9px 6px;border:1px solid #d8e1e9;border-radius:8px;margin:7px 0;background:#fff}
+.station.dragging{opacity:.5}.station.selected{outline:2px solid #1e68af}
+.station .name{border:0;background:transparent;padding:3px;text-align:left;min-width:0;overflow-wrap:break-word}
+.rowact{display:flex;gap:3px}.rowact button{padding:5px 7px;min-width:27px}
+#status{position:absolute;bottom:28px;left:15px;z-index:500;background:#fffD;padding:8px 12px;border-radius:7px;max-width:calc(100% - 30px);box-shadow:0 1px 5px #0002}
+.info{background:#f1f7fc;padding:10px;border-radius:7px}p{margin:8px 0}
+@media(max-width:880px){main{grid-template-columns:1fr;height:auto}#map{height:55vh;min-height:400px}aside{border:0;border-top:1px solid #d2dce5;max-height:none}}
+</style></head>
+<body><header><div><h1>Transport map workspace <span class="tag">Prototype #131</span></h1><small>Mock data; no merchant writes. Click a line, station or Add route to change the contextual sidebar.</small></div>
+<span class="tag">Draft preview only — nothing is saved</span></header>
+<main>
+<div class="map-shell"><div id="map" aria-label="Interactive transport map"></div>
+<div class="toolbar" role="toolbar" aria-label="Map actions"><button id="showbus" type="button">🚌 Bus 45</button><button id="showferry" type="button">⛴ Ferry</button><button id="showcourier" type="button">🚕 Courier</button><button id="addroute" type="button">＋ Add route</button><button id="place" type="button" aria-pressed="false">⌖ Place station</button></div>
+<output id="status" role="status" aria-live="polite">Select Bus 45 to inspect its own stations.</output></div>
+<aside aria-label="Selected record editor"><div id="context"></div></aside></main>
+<script src="../grtransportshipping/views/vendor/leaflet/leaflet.js"></script>
+<script>
+(function(){
+'use strict';
+const panel=document.getElementById('context'),status=document.getElementById('status');
+if(!window.L){status.textContent='The bundled Leaflet library is unavailable; serve the HTML from its repository directory.';return;}
+const map=L.map('map').setView([37.97,23.74],11);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>'}).addTo(map);
+const stations=[
+{id:1,name:'Demo West Terminal',lat:37.975,lng:23.69,price:3.5},
+{id:2,name:'Demo Centre',lat:37.983,lng:23.728,price:6},
+{id:3,name:'Demo East Station',lat:37.991,lng:23.774,price:8.5}
+];
+const escape=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let mode='line',dynamic=false,selected=0,markers=[],road=null,routeGeneration=0,placement=false,previewMarker=null;
+const msg=t=>status.textContent=t;
+const mix=(price)=>{const light=Math.max(24,65-Math.round(Number(price)*4));return 'hsl(210, 64%, '+light+'%)';};
+function clearMarkers(){markers.forEach(m=>map.removeLayer(m));markers=[];if(road){map.removeLayer(road);road=null;}}
+function renderPins(){
+clearMarkers();
+stations.forEach((s,i)=>{
+ const m=L.circleMarker([s.lat,s.lng],{radius:8,color:'#fff',weight:2,fillColor:dynamic?mix(s.price):'#2367aa',fillOpacity:1}).addTo(map);
+ m.bindTooltip(s.name);m.on('click',()=>{if(placement)return;mode='station';selected=i;renderPanel();});
+ markers.push(m);
+});
+}
+async function route(){
+const generation=++routeGeneration;
+if(road){map.removeLayer(road);road=null;}
+msg('Loading an actual road path for the displayed station order…');
+const locations=stations.map(s=>s.lng+','+s.lat).join(';');
+try{
+const url='https://router.project-osrm.org/route/v1/driving/'+locations+'?overview=full&geometries=geojson';
+const response=await fetch(url);if(!response.ok)throw new Error('Routing service unavailable');
+const result=await response.json();
+if(generation!==routeGeneration)return;
+if(result.code!=='Ok'||!result.routes?.[0]?.geometry?.coordinates)throw new Error('No valid road path');
+road=L.geoJSON(result.routes[0].geometry,{style:{color:'#276da5',weight:4,opacity:.9}}).addTo(map);
+msg('Road geometry loaded from OSRM. Prototype preview only; travel eligibility and pricing are not confirmed.');
+}catch(error){if(generation!==routeGeneration)return;msg('No valid road route is available. No straight-line fallback was drawn. '+error.message);}
+}
+function row(s,i){
+return '<div class="station '+(selected===i&&mode==='station'?'selected':'')+'" draggable="true" data-row="'+i+'">'+
+'<span title="Drag to reorder" aria-hidden="true">⠿</span><input type="checkbox" aria-label="Select '+escape(s.name)+'" data-select="'+i+'" '+(selected===i&&mode==='station'?'checked':'')+'>'+
+'<button class="name" data-open="'+i+'" title="Open '+escape(s.name)+'">'+escape(s.name)+'<br><small>€'+s.price.toFixed(2)+'</small></button>'+
+'<div class="rowact"><button title="Move up" aria-label="Move '+escape(s.name)+' up" data-up="'+i+'">↑</button><button title="Move down" aria-label="Move '+escape(s.name)+' down" data-down="'+i+'">↓</button><button title="Centre map" aria-label="Centre '+escape(s.name)+'" data-center="'+i+'">◎</button></div></div>';
+}
+function renderPanel(){
+const line=mode==='line'||mode==='station';
+if(line){
+panel.innerHTML='<h2>Bus — line 45</h2><p class="info">Only the selected line and its stations appear here. This is illustrative data, not a persisted network model.</p>'+
+'<fieldset><legend>Line settings</legend><div class="grid2"><label>Vehicle<select><option>Bus</option><option>Train</option></select></label><label>Line label<input type="text" value="45" aria-label="Line label"></label></div>'+
+'<label><input id="dynamic" type="checkbox" '+(dynamic?'checked':'')+'> Price varies by station</label></fieldset>'+
+'<h3>Stations in this line</h3><small>Drag rows or use ↑ ↓. Reordering requests new road geometry; nothing is saved.</small><div id="rows">'+stations.map(row).join('')+'</div>';
+if(mode==='station'){
+const s=stations[selected];panel.innerHTML+='<fieldset><legend>Station: '+escape(s.name)+'</legend><div class="grid2"><label>Name<input type="text" value="'+escape(s.name)+'"></label><label>Fare (EUR)<input type="number" value="'+s.price.toFixed(2)+'"></label><label>Latitude<input type="text" value="'+s.lat+'"></label><label>Longitude<input type="text" value="'+s.lng+'"></label></div><p><small>Editable preview fields only. No server write.</small></p></fieldset>';
+}
+panel.querySelector('#dynamic').addEventListener('change',e=>{dynamic=e.target.checked;renderPins();renderPanel();});
+panel.querySelectorAll('[data-open],[data-select]').forEach(el=>el.addEventListener('click',()=>{mode='station';selected=Number(el.dataset.open??el.dataset.select);renderPanel();}));
+panel.querySelectorAll('[data-center]').forEach(el=>el.addEventListener('click',()=>{const s=stations[Number(el.dataset.center)];map.setView([s.lat,s.lng],14);}));
+panel.querySelectorAll('[data-up],[data-down]').forEach(el=>el.addEventListener('click',()=>{const i=Number(el.dataset.up??el.dataset.down),next=i+(el.hasAttribute('data-up')?-1:1);move(i,next);}));
+panel.querySelectorAll('.station').forEach(el=>{
+el.addEventListener('dragstart',e=>{e.dataTransfer.setData('text/plain',el.dataset.row);el.classList.add('dragging');});
+el.addEventListener('dragend',()=>el.classList.remove('dragging'));
+el.addEventListener('dragover',e=>e.preventDefault());
+el.addEventListener('drop',e=>{e.preventDefault();move(Number(e.dataTransfer.getData('text/plain')),Number(el.dataset.row));});
+});return;
+}
+if(mode==='ferry'){panel.innerHTML='<h2>Ferry service</h2><p>Ship/plane services show departure and arrival, not a station chain.</p><fieldset><legend>Endpoints</legend><label>Departure<input value="Piraeus (sample)" type="text"></label><label>Arrival<input value="Santorini (sample)" type="text"></label></fieldset><p class="info">Only a real recorded service can define the ferry path. No invented route is drawn.</p>';return;}
+if(mode==='courier'){panel.innerHTML='<h2>Courier coverage</h2><p>Start with a postcode, then adjust a coverage shape using map tools in the implemented design.</p><fieldset><legend>Area draft</legend><label>Postcode<input type="text" value="11742"></label><label>Radius (km)<input type="number" min="0.1" value="3"></label></fieldset><p class="info">Draft only; no pricing or geography is saved.</p>';return;}
+if(mode==='add'){panel.innerHTML='<h2>Add a route</h2><p>New route fields live in this panel, not below the map.</p><fieldset><legend>Route draft</legend><label>Mode<select><option>Bus</option><option>Ferry</option><option>Flight</option><option>Courier</option></select></label><label>Line<input type="text" placeholder="Enter route label"></label><label>Origin<select><option>Choose origin</option>'+stations.map(s=>'<option>'+escape(s.name)+'</option>').join('')+'</select></label></fieldset><button type="button" id="previewSave">Save preview only</button>';panel.querySelector('#previewSave').addEventListener('click',()=>msg('This is a prototype: no server write. Review the workflow before implementation.'));return;}
+if(mode==='place'){panel.innerHTML='<h2>Place station</h2><p>Click anywhere, including a colored coverage patch, to choose coordinates. No object may intercept placement.</p><fieldset><legend>Unsaved position</legend><output id="draftPosition">Click the map to choose a point</output></fieldset><button id="cancel" type="button">Cancel draft</button>';panel.querySelector('#cancel').addEventListener('click',()=>setMode('line'));return;}
+}
+function move(from,to){if(from<0||to<0||from>=stations.length||to>=stations.length||from===to)return;const [item]=stations.splice(from,1);stations.splice(to,0,item);mode='line';selected=0;renderPins();renderPanel();route();}
+function setMode(next){mode=next;placement=next==='place';document.getElementById('place').setAttribute('aria-pressed',String(placement));if(previewMarker){map.removeLayer(previewMarker);previewMarker=null;}renderPanel();if(next==='line')route();else if(next==='ferry'||next==='courier'||next==='add'){++routeGeneration;if(road){map.removeLayer(road);road=null;}msg('Selection changed; sidebar contains only the selected object.');}}
+map.on('click',event=>{if(!placement)return;const p=event.latlng;if(previewMarker)map.removeLayer(previewMarker);previewMarker=L.circleMarker(p,{radius:8,color:'#164a85',fillColor:'#f59b2a',fillOpacity:1}).addTo(map);panel.querySelector('#draftPosition').textContent=p.lat.toFixed(5)+', '+p.lng.toFixed(5)+' — unsaved';msg('Position draft recorded despite nearby overlays. Not persisted.');});
+document.getElementById('showbus').addEventListener('click',()=>setMode('line'));
+document.getElementById('showferry').addEventListener('click',()=>setMode('ferry'));
+document.getElementById('showcourier').addEventListener('click',()=>setMode('courier'));
+document.getElementById('addroute').addEventListener('click',()=>setMode('add'));
+document.getElementById('place').addEventListener('click',()=>setMode('place'));
+document.addEventListener('keydown',event=>{if(event.key==='Escape'&&placement)setMode('line');});
+renderPins();renderPanel();route();
+})();
+</script></body></html>
