@@ -65,7 +65,7 @@ try {
   // Fixed-width station rows show concise column labels, while the
   // full names stay available as native tooltips and accessible labels.
   const stationHead=stage.locator('[data-grtrans-entity="stations"] thead');
-  assert.match(await stationHead.innerText(),/\\bOrigin\\b/);
+  assert.match(await stationHead.innerText(),/Origin/);
   assert.doesNotMatch(await stationHead.innerText(),/Can dispatch parcels|is origin hub/);
   const stationIdHeader=stationHead.locator('th').first();
   assert.equal((await stationIdHeader.innerText()).trim(),'No.');
