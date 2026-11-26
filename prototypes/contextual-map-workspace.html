@@ -75,7 +75,8 @@ const response=await fetch(url);if(!response.ok)throw new Error('Routing service
 const result=await response.json();
 if(generation!==routeGeneration)return;
 if(result.code!=='Ok'||!result.routes?.[0]?.geometry?.coordinates)throw new Error('No valid road path');
-road=L.geoJSON(result.routes[0].geometry,{style:{color:'#276da5',weight:4,opacity:.9}}).addTo(map);
+// Road preview is decorative: when placing a station, every click must reach the map.
+road=L.geoJSON(result.routes[0].geometry,{interactive:false,style:{color:'#276da5',weight:4,opacity:.9,interactive:false}}).addTo(map);
 msg('Road geometry loaded from OSRM. Prototype preview only; travel eligibility and pricing are not confirmed.');
 }catch(error){if(generation!==routeGeneration)return;msg('No valid road route is available. No straight-line fallback was drawn. '+error.message);}
 }
