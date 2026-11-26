@@ -53,7 +53,7 @@ function clearMarkers(){markers.forEach(m=>map.removeLayer(m));markers=[];if(roa
 function renderPins(){
 clearMarkers();
 stations.forEach((s,i)=>{
- const m=L.circleMarker([s.lat,s.lng],{radius:8,color:'#fff',weight:2,fillColor:dynamic?mix(s.price):'#2367aa',fillOpacity:1}).addTo(map);
+ const m=L.circleMarker([s.lat,s.lng],{radius:8,color:'#fff',weight:2,fillColor:dynamic?mix(s.price):'#2367aa',fillOpacity:1,interactive:!placement}).addTo(map);
  m.bindTooltip(s.name);m.on('click',()=>{if(placement)return;mode='station';selected=i;renderPanel();});
  markers.push(m);
 });
@@ -106,7 +106,7 @@ if(mode==='add'){panel.innerHTML='<h2>Add a route</h2><p>New route fields live i
 if(mode==='place'){panel.innerHTML='<h2>Place station</h2><p>Click anywhere, including a colored coverage patch, to choose coordinates. No object may intercept placement.</p><fieldset><legend>Unsaved position</legend><output id="draftPosition">Click the map to choose a point</output></fieldset><button id="cancel" type="button">Cancel draft</button>';panel.querySelector('#cancel').addEventListener('click',()=>setMode('line'));return;}
 }
 function move(from,to){if(from<0||to<0||from>=stations.length||to>=stations.length||from===to)return;const [item]=stations.splice(from,1);stations.splice(to,0,item);mode='line';selected=0;renderPins();renderPanel();route();}
-function setMode(next){mode=next;placement=next==='place';document.getElementById('place').setAttribute('aria-pressed',String(placement));if(previewMarker){map.removeLayer(previewMarker);previewMarker=null;}renderPanel();if(next==='line')route();else if(next==='ferry'||next==='courier'||next==='add'){++routeGeneration;if(road){map.removeLayer(road);road=null;}msg('Selection changed; sidebar contains only the selected object.');}}
+function setMode(next){mode=next;placement=next==='place';renderPins();document.getElementById('place').setAttribute('aria-pressed',String(placement));if(previewMarker){map.removeLayer(previewMarker);previewMarker=null;}renderPanel();if(next==='line')route();else if(next==='ferry'||next==='courier'||next==='add'){++routeGeneration;if(road){map.removeLayer(road);road=null;}msg('Selection changed; sidebar contains only the selected object.');}}
 map.on('click',event=>{if(!placement)return;const p=event.latlng;if(previewMarker)map.removeLayer(previewMarker);previewMarker=L.circleMarker(p,{radius:8,color:'#164a85',fillColor:'#f59b2a',fillOpacity:1}).addTo(map);panel.querySelector('#draftPosition').textContent=p.lat.toFixed(5)+', '+p.lng.toFixed(5)+' — unsaved';msg('Position draft recorded despite nearby overlays. Not persisted.');});
 document.getElementById('showbus').addEventListener('click',()=>setMode('line'));
 document.getElementById('showferry').addEventListener('click',()=>setMode('ferry'));
