@@ -48,8 +48,14 @@ const stations=[
 const escape=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let mode='line',dynamic=false,selected=0,markers=[],road=null,routeGeneration=0,placement=false,previewMarker=null;
 const msg=t=>status.textContent=t;
+// Mock service reaches remain on the map while modes change. They must
+// never intercept a placement click, even when they cover the location.
+stations.forEach(s=>{
+ L.circle([s.lat,s.lng],{radius:4000,color:'#2473b6',weight:1,fillOpacity:.08,interactive:false}).addTo(map);
+ L.circle([s.lat,s.lng],{radius:1800,color:'#2473b6',weight:1,fillOpacity:.22,interactive:false}).addTo(map);
+});
 const mix=(price)=>{const light=Math.max(24,65-Math.round(Number(price)*4));return 'hsl(210, 64%, '+light+'%)';};
-function clearMarkers(){markers.forEach(m=>map.removeLayer(m));markers=[];if(road){map.removeLayer(road);road=null;}}
+function clearMarkers(){markers.forEach(m=>map.removeLayer(m));markers=[];}
 function renderPins(){
 clearMarkers();
 stations.forEach((s,i)=>{
@@ -74,7 +80,7 @@ msg('Road geometry loaded from OSRM. Prototype preview only; travel eligibility 
 }catch(error){if(generation!==routeGeneration)return;msg('No valid road route is available. No straight-line fallback was drawn. '+error.message);}
 }
 function row(s,i){
-return '<div class="station '+(selected===i&&mode==='station'?'selected':'')+'" draggable="true" data-row="'+i+'">'+
+return '<div class="station '+(selected===i&&mode==='station'?'selected':'')+'" style="border-left:5px solid '+(dynamic?mix(s.price):'#cbd5e1')+'" draggable="true" data-row="'+i+'">'+
 '<span title="Drag to reorder" aria-hidden="true">⠿</span><input type="checkbox" aria-label="Select '+escape(s.name)+'" data-select="'+i+'" '+(selected===i&&mode==='station'?'checked':'')+'>'+
 '<button class="name" data-open="'+i+'" title="Open '+escape(s.name)+'">'+escape(s.name)+'<br><small>€'+s.price.toFixed(2)+'</small></button>'+
 '<div class="rowact"><button title="Move up" aria-label="Move '+escape(s.name)+' up" data-up="'+i+'">↑</button><button title="Move down" aria-label="Move '+escape(s.name)+' down" data-down="'+i+'">↓</button><button title="Centre map" aria-label="Centre '+escape(s.name)+'" data-center="'+i+'">◎</button></div></div>';
