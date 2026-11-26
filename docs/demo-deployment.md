@@ -30,7 +30,7 @@ Use fixtures and records reserved for testing. Preserve any existing merchant/te
 | Network workspace | Select station/connection, place/move disposable station, save/reload, verify visible connection and cancel draft; use column chooser and verify controls |
 | Dependency guards | Create disposable stations and link, reject deletion while genuinely linked, delete link then station; refresh create result must not duplicate |
 | Map services | Visible basemap, overlays, saved geometry or visible fallback, meaningful routing failure notice; record provider outages separately |
-| Simulator / public page | Address or station price, parcel/cart input where appropriate, public quote without JS, optional map pin and FAR confirmation; verify note privacy when that change is merged |
+| Simulator / public page | Address or station price, parcel/cart input where appropriate, public quote without JS, optional map pin and FAR confirmation; verify current POST-only quote-note privacy (merged in #169) |
 | Checkout / orders | Matched and unmatched Greek test addresses, pickup/FAR notice and frozen historical snapshot; no real payment capture |
 | Persistence | Reload changed fixtures and restore/remove only those fixtures; compare representative preexisting records |
 

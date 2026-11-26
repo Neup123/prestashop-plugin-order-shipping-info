@@ -22,6 +22,7 @@ The current 0.16.0 codebase combines flat merchant-defined shipping rules with a
 | [Operator guide](docs/network-operator-guide.md) | Configure workflow, map tools, pricing, branches, API and troubleshooting |
 | [Architecture and data flow](docs/architecture.md) | Component boundaries, data scope, security, persistence, build and deployment |
 | [Install and acceptance](docs/INSTALL-AND-ACCEPTANCE.md) | Installation, migration procedures and verification coverage |
+| [Demo promotion and rollback](docs/demo-deployment.md) | Verified module ZIP promotion, backups, acceptance and rollback in the Coolify-hosted test shop |
 | [Demo data sources](docs/DEMO-SOURCES.md) | Illustrative route data and provenance |
 | [Geographic connection model](docs/map-model/connection-model.svg) | Source-defined coverage and connection rendering reference |
 
