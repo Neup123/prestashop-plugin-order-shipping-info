@@ -35,6 +35,12 @@ const source=readFileSync(require.resolve('../grtransportshipping/views/js/compa
 for (const [key, short] of Object.entries({id_station:'No.',type:'Type',address_text:'Address',is_origin_hub:'Origin',outer_radius_km:'FAR reach'})) {
   assert.ok(source.includes(key + ": '" + short + "'"),'Compact station heading is missing: '+key);
 }
+// Server-generated table headers can already be human labels rather than field keys.
+for (const [label, short] of Object.entries({'Record number':'No.','Station type':'Type','Street address':'Address','Can dispatch parcels':'Origin','Extended service reach':'FAR reach'})) {
+  assert.ok(source.includes("'" + label + "': '" + short + "'"), 'Server label alias missing: '+label);
+}
+assert.match(source,/STATION_HEADER_SHORT\[fullLabel\]/,
+  'The compact header must resolve a server-supplied full label');
 assert.match(source,/th\.setAttribute\('aria-label',fullLabel\)/,
   'Station heading must preserve its full accessible name');
 assert.match(source,/th\.title=fullLabel/,
