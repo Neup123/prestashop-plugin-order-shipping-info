@@ -123,6 +123,24 @@
 #grtrans-configure .grtrans-record-facts dt {font-weight:600;color:var(--grtrans-quiet,#566371);white-space:normal}
 #grtrans-configure .grtrans-record-facts dd {margin:0;white-space:normal;overflow-wrap:anywhere}
 #grtrans-configure .grtrans-long-value {max-height:8rem;overflow:auto;font-family:monospace;font-size:.85rem}
+/* Modern browsers render row surfaces in the native top layer. Keep the
+   signed forms and fact nodes in their original DOM rows; legacy browsers
+   retain the preceding absolute-positioned details layout. */
+#grtrans-configure :is(.grtrans-record-facts,.grtrans-row-menu)[popover]:not(:popover-open) {display:none}
+#grtrans-configure :is(.grtrans-record-details,.grtrans-row-more)[open] > :is(.grtrans-record-facts,.grtrans-row-menu):popover-open {
+  position:fixed;inset:auto;margin:0;box-sizing:border-box;color:inherit;
+  max-height:min(22rem,var(--grtrans-popup-height,calc(100dvh - 16px)));overflow:auto;
+}
+#grtrans-configure .grtrans-record-details[open] > .grtrans-record-facts:popover-open {
+  display:grid;grid-template-columns:minmax(0,max-content) minmax(0,max-content);
+  max-width:min(40rem,var(--grtrans-popup-available,calc(100vw - 16px)));
+}
+#grtrans-configure .grtrans-record-facts:popover-open :is(dt,dd) {min-width:0;overflow-wrap:anywhere}
+#grtrans-configure .grtrans-record-facts:popover-open dd {max-width:35rem}
+#grtrans-configure .grtrans-row-more[open] > .grtrans-row-menu:popover-open {
+  display:block;width:max-content;min-width:min(10rem,var(--grtrans-popup-available,100vw));
+  max-width:min(22rem,var(--grtrans-popup-available,calc(100vw - 16px)));
+}
 #grtrans-configure .grtrans-editor-layout {display:flex;flex-wrap:wrap;gap:1rem;align-items:flex-start}
 #grtrans-configure .grtrans-editor-group,#grtrans-configure .grtrans-editor-advanced {min-width:0;width:max-content;max-width:100%;padding:.7rem .9rem;border:1px solid var(--grtrans-border,#ccd2d8);border-radius:5px;margin:.2rem 0}
 #grtrans-configure .grtrans-editor-group legend {width:auto;display:table;font-size:1rem;font-weight:650;margin:0;padding:0 .3rem;border:0}

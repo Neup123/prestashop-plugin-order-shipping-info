@@ -1,6 +1,6 @@
 const assert = require('node:assert/strict');
 const {readFileSync} = require('node:fs');
-const {filterRecords,sortRecords,normalize,KEEP,FIELDS,GROUPS,SIZE} =
+const {filterRecords,sortRecords,normalize,KEEP,FIELDS,GROUPS,SIZE,popupPosition} =
   require('../grtransportshipping/views/js/compact-records.js');
 const rows=[
   {id:1,label:'Αθήνα',search:'Athens ferry 26221',mode:'ferry',availability:'Available',verification:'Unverified',price:12},
@@ -17,6 +17,14 @@ assert.deepEqual(sortRecords(rows,'price').map(r=>r.id),[2,1,3]);
 assert.deepEqual(sortRecords(rows,'recent').map(r=>r.id),[3,2,1]);
 assert.deepEqual(sortRecords(rows,'original').map(r=>r.id),[1,2,3]);
 assert.deepEqual(rows.map(r=>r.id),[1,2,3],'Sorting must not mutate the server order');
+
+const view={left:216,right:992,top:8,bottom:592};
+assert.deepEqual(popupPosition({left:950,right:980,top:40,bottom:70},{width:200,height:100},view),{left:780,top:74});
+assert.deepEqual(popupPosition({left:220,right:250,top:540,bottom:570},{width:200,height:100},view),{left:216,top:436});
+assert.deepEqual(popupPosition({left:300,right:330,top:40,bottom:70},{width:200,height:100},view,true),{left:300,top:74});
+assert.deepEqual(popupPosition({left:950,right:980,top:540,bottom:570},{width:300,height:580},view,true),{left:692,top:12});
+assert.deepEqual(popupPosition({left:12,right:42,top:100,bottom:130},{width:280,height:150},{left:8,right:312,top:8,bottom:472}),{left:8,top:134});
+
 assert.deepEqual(KEEP.legs,[1,2,3,4,5,6,28,31],'Map stop order must not change the default visible leg fields');
 assert.ok(GROUPS.legs[0][1].includes('stop_order'),'Stop order is an actual network field');
 assert.deepEqual(KEEP.routes,[1,2,3,4,5,7,9,10,12]);
