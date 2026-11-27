@@ -148,6 +148,9 @@ try {
     await clipped.locator('.grtrans-record-facts:popover-open').waitFor({state:'detached'});
     assert.equal(await clipped.locator('#fixture-details summary').evaluate(el=>document.activeElement===el),true);
     await clipped.locator('#fixture-details summary').click();
+    // Native details toggle is asynchronous. Verify the first surface really
+    // opened before checking mutual exclusion with a second owner.
+    await assertSurface('.grtrans-record-facts');
     await clipped.locator('#fixture-menu').evaluate(el=>{el.open=true;});
     await assertSurface('.grtrans-row-menu');
     assert.equal(await clipped.locator('#fixture-details').getAttribute('open'),null,'Only one row popup may remain open');
@@ -159,6 +162,11 @@ try {
     await clipped.locator('.grtrans-row-menu:popover-open').waitFor({state:'detached'});
     await clipped.locator('#fixture-details summary').click();
     await clipped.setViewportSize({width:1024,height:700});
+    await clipped.waitForFunction(()=>{
+      const surface=document.querySelector('.grtrans-record-facts:popover-open');
+      const trigger=document.querySelector('#fixture-details summary');
+      return surface&&trigger&&Math.abs(surface.getBoundingClientRect().bottom-trigger.getBoundingClientRect().top+4)<2;
+    });
     await assertSurface('.grtrans-record-facts');
     await clipped.locator('#clip').evaluate(el=>{el.scrollTop=120;});
     await clipped.locator('.grtrans-record-facts:popover-open').waitFor({state:'detached'});
