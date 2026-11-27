@@ -82,7 +82,19 @@
     if(kind==='recent') return (Number(b.id)||0)-(Number(a.id)||0);
     return compare(a.label,b.label) || (Number(a.id)||0)-(Number(b.id)||0);
   });
-  if(typeof module!=='undefined' && module.exports) module.exports={filterRecords,sortRecords,normalize,KEEP,FIELDS,GROUPS,SIZE};
+  // Keep the surface beside its invoker, flip upward when space is short,
+  // and constrain its entire border box to the usable viewport.
+  function popupPosition(anchor,size,viewport,rtl=false) {
+    const gap=4;
+    const clamp=(value,min,max)=>Math.max(min,Math.min(value,Math.max(min,max)));
+    const preferredLeft=rtl?anchor.left:anchor.right-size.width;
+    const below=anchor.bottom+gap,above=anchor.top-gap-size.height;
+    const preferredTop=below+size.height<=viewport.bottom?below:
+      above>=viewport.top?above:below;
+    return {left:clamp(preferredLeft,viewport.left,viewport.right-size.width),
+      top:clamp(preferredTop,viewport.top,viewport.bottom-size.height)};
+  }
+  if(typeof module!=='undefined' && module.exports) module.exports={filterRecords,sortRecords,normalize,KEEP,FIELDS,GROUPS,SIZE,popupPosition};
   if(typeof document==='undefined') return;
   const root=document.getElementById('grtrans-configure');
   if(!root) return;
@@ -578,15 +590,79 @@
     syncVariants();
   }
   // Coordinate Details, more-actions and the portaled column chooser in one slot.
+  // Native top-layer popovers escape both scrolling tables and the map stacking
+  // context without reparenting row forms or breaking CRM fact lookup.
   const popupSelector='details.grtrans-record-details,details.grtrans-row-more,details.grtrans-columns-chooser';
+  const rowSurface=owner=>owner.querySelector(':scope > .grtrans-record-facts,:scope > .grtrans-row-menu');
+  let activeRowPopup=null;
+  function hideRowSurface(owner) {
+    const surface=rowSurface(owner);
+    if(typeof surface?.hidePopover==='function' && surface.matches(':popover-open'))surface.hidePopover();
+    if(activeRowPopup===owner)activeRowPopup=null;
+  }
+  function closePopup(owner) {
+    hideRowSurface(owner);
+    owner.open=false;
+  }
   const dismissPopovers=except=>{
     for(const panel of root.querySelectorAll(popupSelector))
-      if(panel!==except && panel.open)panel.open=false;
+      if(panel!==except && panel.open)closePopup(panel);
   };
+  function anchorVisible(trigger,rect,viewport) {
+    let left=Math.max(rect.left,viewport.left),right=Math.min(rect.right,viewport.right);
+    let top=Math.max(rect.top,viewport.top),bottom=Math.min(rect.bottom,viewport.bottom);
+    for(let parent=trigger.parentElement;parent;parent=parent.parentElement) {
+      const style=getComputedStyle(parent),bounds=parent.getBoundingClientRect();
+      if(/^(auto|scroll|hidden|clip|overlay)$/.test(style.overflowX)){
+        left=Math.max(left,bounds.left+parent.clientLeft);
+        right=Math.min(right,bounds.left+parent.clientLeft+parent.clientWidth);
+      }
+      if(/^(auto|scroll|hidden|clip|overlay)$/.test(style.overflowY)){
+        top=Math.max(top,bounds.top+parent.clientTop);
+        bottom=Math.min(bottom,bounds.top+parent.clientTop+parent.clientHeight);
+      }
+    }
+    return right>left && bottom>top;
+  }
+  function placeRowPopup(owner) {
+    const surface=rowSurface(owner),trigger=owner.querySelector(':scope > summary');
+    if(!surface || !trigger || typeof surface.showPopover!=='function')return;
+    if(!owner.open){hideRowSurface(owner);return;}
+    const width=document.documentElement.clientWidth,height=document.documentElement.clientHeight;
+    const contentLeft=width>=600?document.querySelector('#content')?.getBoundingClientRect().left||0:0;
+    const viewport={left:Math.max(8,Math.min(contentLeft+8,width-168)),right:width-8,top:8,bottom:height-8};
+    const rect=trigger.getBoundingClientRect();
+    if(!trigger.getClientRects().length || !anchorVisible(trigger,rect,viewport)){
+      closePopup(owner);return;
+    }
+    surface.setAttribute('popover','manual');
+    surface.style.setProperty('--grtrans-popup-available',Math.max(1,viewport.right-viewport.left)+'px');
+    surface.style.setProperty('--grtrans-popup-height',Math.max(1,viewport.bottom-viewport.top)+'px');
+    if(!surface.matches(':popover-open'))surface.showPopover();
+    const size=surface.getBoundingClientRect();
+    const position=popupPosition(rect,size,viewport,getComputedStyle(trigger).direction==='rtl');
+    surface.style.left=position.left+'px';surface.style.top=position.top+'px';
+    activeRowPopup=owner;
+  }
   root.addEventListener('toggle',event=>{
     const panel=event.target;
-    if(panel.matches?.(popupSelector) && panel.open)dismissPopovers(panel);
+    if(!panel.matches?.(popupSelector))return;
+    if(panel.open){dismissPopovers(panel);placeRowPopup(panel);}
+    else hideRowSurface(panel);
   },true);
+  // Scroll, viewport resize and hiding a row must not strand a top-layer panel.
+  let placementQueued=false;
+  function schedulePlacement() {
+    if(!activeRowPopup || placementQueued)return;
+    placementQueued=true;
+    requestAnimationFrame(()=>{
+      placementQueued=false;
+      if(activeRowPopup)placeRowPopup(activeRowPopup);
+    });
+  }
+  window.addEventListener('resize',schedulePlacement);
+  window.addEventListener('scroll',schedulePlacement,true);
+  new MutationObserver(schedulePlacement).observe(root,{subtree:true,attributes:true,attributeFilter:['hidden']});
   document.addEventListener('pointerdown',event=>{
     if(!event.target.closest?.(popupSelector+',body > .grtrans-columns-panel'))dismissPopovers();
   });
@@ -595,7 +671,7 @@
     const open=[...root.querySelectorAll(popupSelector)].find(panel=>panel.open);
     if(!open)return;
     event.preventDefault();event.stopPropagation();
-    open.open=false;open.querySelector('summary')?.focus();
+    closePopup(open);open.querySelector('summary')?.focus();
   },true);
   window.GrtransCRMLabels=FIELDS;
   enhanceRoutes();enhanceNetwork();enhanceRouteStationPickers();enhanceEditor();
