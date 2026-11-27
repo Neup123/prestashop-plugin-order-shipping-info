@@ -100,13 +100,72 @@ try {
   await chooser.waitFor({state:'detached'});
   assert.equal(await trigger.evaluate(el=>document.activeElement===el),true,'Escape restores chooser trigger focus');
   await trigger.click();await chooser.waitFor({state:'visible'});
-  await page.locator('#grtrans-routes .grtrans-record-details summary').first().click();
+  const routeDetails=page.locator('#grtrans-routes .grtrans-record-details').first();
+  await routeDetails.locator('summary').click();
+  await routeDetails.locator('.grtrans-record-facts:popover-open').waitFor({state:'visible'});
   await chooser.waitFor({state:'detached'});
   await trigger.click();await chooser.waitFor({state:'visible'});
   assert.equal(await page.locator('#grtrans-routes details.grtrans-record-details[open]').count(),0,'Chooser excludes row Details');
   await page.locator('#grtrans-routes .grtrans-record-count').click();
   await chooser.waitFor({state:'detached'});
   confirm('N2 chooser');
+  // Exercise the actual shipped CSS/JS in a deliberately clipped, synthetic
+  // record table, without touching the disposable shop's records.
+  const clipped=await browser.newPage({viewport:{width:360,height:480}});
+  try {
+    await clipped.setContent(`<!doctype html><style>
+      body{margin:0;font:16px sans-serif} #content{width:100%}
+      #clip{position:fixed;left:24px;bottom:24px;width:160px;height:56px;overflow:auto;transform:translateZ(0)}
+      #clip summary{height:26px} #clip article{height:190px}
+    </style><div id="content"><main id="grtrans-configure">
+      <button id="outside">Outside</button><div id="clip"><article id="fixture-row">
+        <details class="grtrans-record-details" id="fixture-details"><summary>Details</summary>
+          <dl class="grtrans-record-facts"><dt>Reference</dt><dd>Synthetic fixture data with a deliberately long description</dd>
+            <dt>Pickup only</dt><dd>Yes</dd><dt>Other fact</dt><dd>Another synthetic value</dd></dl></details>
+        <details class="grtrans-row-more" id="fixture-menu"><summary>More</summary>
+          <div class="grtrans-row-menu"><form id="fixture-form"><button type="button" id="fixture-action">Fixture action</button></form></div></details>
+      </article></div></main></div>`);
+    await clipped.addStyleTag({path:'grtransportshipping/views/css/compact-records.css'});
+    await clipped.addScriptTag({path:'grtransportshipping/views/js/compact-records.js'});
+    const assertSurface=async(selector)=>{
+      const surface=clipped.locator(selector+':popover-open');
+      await surface.waitFor({state:'visible'});
+      const b=await surface.evaluate(el=>{
+        const r=el.getBoundingClientRect(),port=document.querySelector('#clip').getBoundingClientRect();
+        const x=r.left+r.width/2,y=r.top+Math.min(r.height/2,10);
+        return {left:r.left,right:r.right,top:r.top,bottom:r.bottom,
+          width:document.documentElement.clientWidth,height:document.documentElement.clientHeight,
+          outsidePort:r.top<port.top||r.bottom>port.bottom||r.right>port.right||r.left<port.left,
+          hit:el.contains(document.elementFromPoint(x,y))};
+      });
+      assert.ok(b.left>=7&&b.top>=7&&b.right<=b.width-7&&b.bottom<=b.height-7,
+        'Popover must fit viewport: '+JSON.stringify(b));
+      assert.ok(b.outsidePort&&b.hit,'Top-layer surface must escape the clipped ancestor and remain clickable: '+JSON.stringify(b));
+    };
+    await clipped.locator('#fixture-details summary').click();
+    await assertSurface('.grtrans-record-facts');
+    await clipped.keyboard.press('Escape');
+    await clipped.locator('.grtrans-record-facts:popover-open').waitFor({state:'detached'});
+    assert.equal(await clipped.locator('#fixture-details summary').evaluate(el=>document.activeElement===el),true);
+    await clipped.locator('#fixture-details summary').click();
+    await clipped.locator('#fixture-menu').evaluate(el=>{el.open=true;});
+    await assertSurface('.grtrans-row-menu');
+    assert.equal(await clipped.locator('#fixture-details').getAttribute('open'),null,'Only one row popup may remain open');
+    assert.equal(await clipped.locator('#fixture-form').evaluate(el=>el.closest('#fixture-row')!==null),true,'Signed form remains in the original row');
+    await clipped.locator('#fixture-action').evaluate(el=>el.addEventListener('click',()=>el.dataset.clicked='yes'));
+    await clipped.locator('#fixture-action').click();
+    assert.equal(await clipped.locator('#fixture-action').getAttribute('data-clicked'),'yes');
+    await clipped.locator('#outside').click();
+    await clipped.locator('.grtrans-row-menu:popover-open').waitFor({state:'detached'});
+    await clipped.locator('#fixture-details summary').click();
+    await clipped.setViewportSize({width:1024,height:700});
+    await assertSurface('.grtrans-record-facts');
+    await clipped.locator('#clip').evaluate(el=>{el.scrollTop=120;});
+    await clipped.locator('.grtrans-record-facts:popover-open').waitFor({state:'detached'});
+    assert.equal(await clipped.locator('#fixture-details').getAttribute('open'),null,'Scrolling the invoker out of its table closes the surface');
+  }finally{await clipped.close();}
+  confirm('N2 clipped row Details/action panels, viewport, Escape and original DOM');
+
 
   // N4: real seed terminal names survive unchanged save; price edit persists.
   const route1=page.locator('#grtrans-routes tbody tr[data-grtrans-record-id="1"]');
